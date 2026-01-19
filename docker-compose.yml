@@ -5,11 +5,13 @@
 # Docker Services:
 #   - api: Go Fiber API Server (port 8080)
 #   - frontend: React/Vite + Nginx (port 3000)
-#   - cloudflared: Cloudflare Tunnel (exposes to internet)
 #   - nats: NATS JetStream (Job Queue + Pub/Sub)
 #   - postgres: PostgreSQL Database
 #   - redis: Cache + Distributed Locking
-#   - subtitle-worker: Subtitle Worker (OPTIONAL - can run on host for GPU)
+#
+# Optional (commented out):
+#   - cloudflared: Cloudflare Tunnel (แนะนำติดตั้งแยกบน host)
+#   - subtitle-worker: Subtitle Worker (ต้องใช้ GPU)
 #
 # Host Services (ไม่อยู่ใน Docker - ต้องใช้ GPU):
 #   - Transcode Worker: go run ./cmd/worker (ใช้ NVENC)
@@ -204,23 +206,28 @@ services:
   # ═══════════════════════════════════════════════════════════
   # Cloudflare Tunnel - Expose to Internet
   # ═══════════════════════════════════════════════════════════
-  cloudflared:
-    image: cloudflare/cloudflared:latest
-    container_name: suekk-tunnel
-    command: tunnel --no-autoupdate run
-    environment:
-      - TUNNEL_TOKEN=${CF_TUNNEL_TOKEN}
-    depends_on:
-      - api
-      - frontend
-    networks:
-      - suekk-network
-    restart: unless-stopped
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "50m"
-        max-file: "3"
+  # NOTE: ติดตั้งแยกบน host จะยืดหยุ่นกว่า:
+  #   cloudflared service install <TUNNEL_TOKEN>
+  # หรือรันเป็น container แยก:
+  #   docker run -d --name cloudflared cloudflare/cloudflared:latest tunnel --no-autoupdate run --token <TOKEN>
+  #
+  # cloudflared:
+  #   image: cloudflare/cloudflared:latest
+  #   container_name: suekk-tunnel
+  #   command: tunnel --no-autoupdate run
+  #   environment:
+  #     - TUNNEL_TOKEN=${CF_TUNNEL_TOKEN}
+  #   depends_on:
+  #     - api
+  #     - frontend
+  #   networks:
+  #     - suekk-network
+  #   restart: unless-stopped
+  #   logging:
+  #     driver: "json-file"
+  #     options:
+  #       max-size: "50m"
+  #       max-file: "3"
 
   # ═══════════════════════════════════════════════════════════
   # Subtitle Worker - Python (Whisper + Gemini)
