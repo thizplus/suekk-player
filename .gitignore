@@ -1,0 +1,77 @@
+# Dependencies
+node_modules/
+vendor/
+
+# Build outputs
+dist/
+build/
+*.exe
+*.dll
+
+# Environment files
+.env
+.env.local
+.env.*.local
+*.env
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+logs/
+*.log
+
+# Docker volumes (local data)
+pg-data/
+redis-data/
+nats-data/
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+
+# Python (subtitle worker)
+__pycache__/
+*.py[cod]
+*$py.class
+.Python
+*.so
+.eggs/
+*.egg-info/
+.installed.cfg
+*.egg
+venv/
+ENV/
+
+# Go
+*.test
+*.out
+
+# Exclude worker folders as requested
+_worker/
+_subtitle/
+
+# Exclude unnecessary documentation/planning files
+*.txt
+image.png
+nul
+nextjs/
+
+# Exclude claude files
+.claude/
+
+# Exclude old docs (keep only essential)
+_docs/
+docs/
+*.md
+!README.md
+!CLAUDE.md
+!CODE_REVIEW.md

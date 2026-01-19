@@ -1,0 +1,409 @@
+package handlers
+
+import (
+	"fmt"
+	"io"
+	"path/filepath"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/gofiber/fiber/v2"
+	"github.com/golang-jwt/jwt/v5"
+
+	"gofiber-template/domain/ports"
+	"gofiber-template/domain/services"
+	"gofiber-template/pkg/logger"
+)
+
+type HLSHandler struct {
+	videoService services.VideoService
+	storage      ports.StoragePort
+	cdnBaseURL   string // Cloudflare CDN URL
+	jwtSecret    string // JWT Secret สำหรับ sign token
+}
+
+func NewHLSHandler(videoService services.VideoService, storage ports.StoragePort, cdnBaseURL, jwtSecret string) *HLSHandler {
+	return &HLSHandler{
+		videoService: videoService,
+		storage:      storage,
+		cdnBaseURL:   cdnBaseURL,
+		jwtSecret:    jwtSecret,
+	}
+}
+
+// HLSAccessClaims JWT claims สำหรับ HLS access
+type HLSAccessClaims struct {
+	VideoCode string `json:"video_code"`
+	VideoID   string `json:"video_id"`
+	jwt.RegisteredClaims
+}
+
+// GetAccess สร้าง JWT token และ URL สำหรับเข้าถึง HLS
+// GET /api/v1/hls/:code/access
+func (h *HLSHandler) GetAccess(c *fiber.Ctx) error {
+	ctx := c.UserContext()
+	code := c.Params("code")
+
+	if code == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"success": false,
+			"error":   "Video code is required",
+		})
+	}
+
+	// ตรวจสอบว่า video มีอยู่และพร้อม stream
+	video, err := h.videoService.GetByCode(ctx, code)
+	if err != nil {
+		logger.WarnContext(ctx, "Video not found", "code", code)
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+			"success": false,
+			"error":   "Video not found",
+		})
+	}
+
+	if !video.IsReady() {
+		logger.WarnContext(ctx, "Video not ready", "code", code, "status", video.Status)
+		return c.Status(fiber.StatusServiceUnavailable).JSON(fiber.Map{
+			"success": false,
+			"error":   "Video is not ready for streaming",
+		})
+	}
+
+	// สร้าง JWT token (หมดอายุ 4 ชั่วโมง)
+	expiresAt := time.Now().Add(4 * time.Hour)
+	claims := HLSAccessClaims{
+		VideoCode: video.Code,
+		VideoID:   video.ID.String(),
+		RegisteredClaims: jwt.RegisteredClaims{
+			ExpiresAt: jwt.NewNumericDate(expiresAt),
+			IssuedAt:  jwt.NewNumericDate(time.Now()),
+			Issuer:    "suekk-api",
+		},
+	}
+
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	tokenString, err := token.SignedString([]byte(h.jwtSecret))
+	if err != nil {
+		logger.ErrorContext(ctx, "Failed to sign JWT", "error", err)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"success": false,
+			"error":   "Failed to generate access token",
+		})
+	}
+
+	// สร้าง URL สำหรับ HLS playlist (ผ่าน Cloudflare CDN)
+	// Format: {cdnBaseURL}/hls/{videoCode}/master.m3u8?token={jwt}
+	playlistURL := fmt.Sprintf("%s/hls/%s/master.m3u8?token=%s",
+		h.cdnBaseURL, video.Code, tokenString)
+
+	// Increment views
+	go h.videoService.IncrementViews(ctx, video.ID)
+
+	logger.InfoContext(ctx, "HLS access granted", "code", code, "expires_at", expiresAt)
+
+	return c.JSON(fiber.Map{
+		"success": true,
+		"data": fiber.Map{
+			"video_id":     video.ID,
+			"video_code":   video.Code,
+			"title":        video.Title,
+			"playlist_url": playlistURL,
+			"token":        tokenString,
+			"expires_at":   expiresAt.Unix(),
+			"cdn_base_url": h.cdnBaseURL,
+		},
+	})
+}
+
+// GetAccessByID สร้าง access token โดยใช้ video ID
+func (h *HLSHandler) GetAccessByID(c *fiber.Ctx) error {
+	ctx := c.UserContext()
+	idParam := c.Params("id")
+
+	if idParam == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"success": false,
+			"error":   "Video ID is required",
+		})
+	}
+
+	// Parse UUID
+	video, err := h.videoService.GetByCode(ctx, idParam)
+	if err != nil {
+		logger.WarnContext(ctx, "Video not found", "id", idParam)
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+			"success": false,
+			"error":   "Video not found",
+		})
+	}
+
+	// Redirect ไปยัง GetAccess
+	c.Request().URI().SetPath("/api/v1/hls/" + video.Code + "/access")
+	return h.GetAccess(c)
+}
+
+// VerifyToken endpoint สำหรับ debug
+// GET /api/v1/hls/verify?token=xxx
+func (h *HLSHandler) VerifyToken(c *fiber.Ctx) error {
+	tokenString := c.Query("token")
+	if tokenString == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"success": false,
+			"error":   "Token is required",
+		})
+	}
+
+	claims := &HLSAccessClaims{}
+	token, err := jwt.ParseWithClaims(tokenString, claims, func(token *jwt.Token) (interface{}, error) {
+		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
+		}
+		return []byte(h.jwtSecret), nil
+	})
+
+	if err != nil || !token.Valid {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
+			"success": false,
+			"error":   "Invalid token",
+		})
+	}
+
+	return c.JSON(fiber.Map{
+		"success": true,
+		"data": fiber.Map{
+			"video_code": claims.VideoCode,
+			"video_id":   claims.VideoID,
+			"expires_at": claims.ExpiresAt.Time.Unix(),
+			"issued_at":  claims.IssuedAt.Time.Unix(),
+		},
+	})
+}
+
+// ServeHLS serves HLS files from storage (IDrive/S3) with byte range support
+// Route: /hls/:code/*filepath
+func (h *HLSHandler) ServeHLS(c *fiber.Ctx) error {
+	ctx := c.UserContext()
+	code := c.Params("code")
+	filePath := c.Params("*")
+
+	if code == "" || filePath == "" {
+		return c.Status(fiber.StatusBadRequest).SendString("Invalid path")
+	}
+
+	// Validate X-Stream-Token header
+	tokenString := c.Get("X-Stream-Token")
+	if tokenString == "" {
+		// Fallback to query param for compatibility
+		tokenString = c.Query("token")
+	}
+
+	if tokenString == "" {
+		logger.WarnContext(ctx, "Missing HLS token", "code", code, "path", filePath)
+		return c.Status(fiber.StatusUnauthorized).SendString("Unauthorized")
+	}
+
+	// Parse and validate JWT
+	claims := &HLSAccessClaims{}
+	token, err := jwt.ParseWithClaims(tokenString, claims, func(token *jwt.Token) (interface{}, error) {
+		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
+		}
+		return []byte(h.jwtSecret), nil
+	})
+
+	if err != nil || !token.Valid {
+		logger.WarnContext(ctx, "Invalid HLS token", "code", code, "error", err)
+		return c.Status(fiber.StatusUnauthorized).SendString("Invalid token")
+	}
+
+	// Verify video code matches token
+	if claims.VideoCode != code {
+		logger.WarnContext(ctx, "Token video code mismatch", "token_code", claims.VideoCode, "request_code", code)
+		return c.Status(fiber.StatusForbidden).SendString("Forbidden")
+	}
+
+	// Construct storage path: hls/{code}/{filepath}
+	storagePath := fmt.Sprintf("hls/%s/%s", code, filePath)
+
+	// Set content type based on file extension
+	ext := strings.ToLower(filepath.Ext(filePath))
+	contentType := "application/octet-stream"
+	switch ext {
+	case ".m3u8":
+		contentType = "application/vnd.apple.mpegurl"
+	case ".ts":
+		contentType = "video/MP2T"
+	case ".jpg", ".jpeg":
+		contentType = "image/jpeg"
+	case ".png":
+		contentType = "image/png"
+	case ".webp":
+		contentType = "image/webp"
+	}
+
+	// Set common headers (CORS handled by global middleware)
+	c.Set("Content-Type", contentType)
+	c.Set("Content-Disposition", "inline") // ป้องกัน IDM ดักจับ
+	c.Set("Accept-Ranges", "bytes")
+	c.Set("Cache-Control", "public, max-age=31536000")
+
+	// Check for Range header (byte range requests)
+	rangeHeader := c.Get("Range")
+
+	// For .ts files with byte range requests, use GetFileRange
+	if ext == ".ts" && rangeHeader != "" {
+		return h.serveRangeRequest(c, storagePath, rangeHeader)
+	}
+
+	// For non-range requests or .m3u8 files, serve the full file
+	reader, _, err := h.storage.GetFileContent(storagePath)
+	if err != nil {
+		logger.WarnContext(ctx, "HLS file not found", "path", storagePath, "error", err)
+		return c.Status(fiber.StatusNotFound).SendString("File not found")
+	}
+	defer reader.Close()
+
+	// Stream the file
+	_, err = io.Copy(c.Response().BodyWriter(), reader)
+	if err != nil {
+		logger.ErrorContext(ctx, "Failed to stream HLS file", "path", storagePath, "error", err)
+		return c.Status(fiber.StatusInternalServerError).SendString("Stream error")
+	}
+
+	return nil
+}
+
+// ServeSubtitle serves subtitle files from storage (IDrive/S3)
+// Route: /subtitles/:code/*filepath
+func (h *HLSHandler) ServeSubtitle(c *fiber.Ctx) error {
+	ctx := c.UserContext()
+	code := c.Params("code")
+	filePath := c.Params("*")
+
+	if code == "" || filePath == "" {
+		return c.Status(fiber.StatusBadRequest).SendString("Invalid path")
+	}
+
+	// Validate X-Stream-Token header
+	tokenString := c.Get("X-Stream-Token")
+	if tokenString == "" {
+		// Fallback to query param for compatibility
+		tokenString = c.Query("token")
+	}
+
+	if tokenString == "" {
+		logger.WarnContext(ctx, "Missing subtitle token", "code", code, "path", filePath)
+		return c.Status(fiber.StatusUnauthorized).SendString("Unauthorized")
+	}
+
+	// Parse and validate JWT
+	claims := &HLSAccessClaims{}
+	token, err := jwt.ParseWithClaims(tokenString, claims, func(token *jwt.Token) (interface{}, error) {
+		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
+		}
+		return []byte(h.jwtSecret), nil
+	})
+
+	if err != nil || !token.Valid {
+		logger.WarnContext(ctx, "Invalid subtitle token", "code", code, "error", err)
+		return c.Status(fiber.StatusUnauthorized).SendString("Invalid token")
+	}
+
+	// Verify video code matches token
+	if claims.VideoCode != code {
+		logger.WarnContext(ctx, "Token video code mismatch", "token_code", claims.VideoCode, "request_code", code)
+		return c.Status(fiber.StatusForbidden).SendString("Forbidden")
+	}
+
+	// Construct storage path: subtitles/{code}/{filepath}
+	storagePath := fmt.Sprintf("subtitles/%s/%s", code, filePath)
+
+	// Set content type based on file extension
+	ext := strings.ToLower(filepath.Ext(filePath))
+	contentType := "text/plain; charset=utf-8"
+	switch ext {
+	case ".srt":
+		contentType = "application/x-subrip; charset=utf-8"
+	case ".vtt":
+		contentType = "text/vtt; charset=utf-8"
+	case ".ass", ".ssa":
+		contentType = "text/x-ssa; charset=utf-8"
+	}
+
+	// Set headers
+	c.Set("Content-Type", contentType)
+	c.Set("Cache-Control", "public, max-age=86400") // Cache 1 day
+
+	// Get file from storage
+	reader, _, err := h.storage.GetFileContent(storagePath)
+	if err != nil {
+		logger.WarnContext(ctx, "Subtitle file not found", "path", storagePath, "error", err)
+		return c.Status(fiber.StatusNotFound).SendString("File not found")
+	}
+	defer reader.Close()
+
+	// Stream the file
+	_, err = io.Copy(c.Response().BodyWriter(), reader)
+	if err != nil {
+		logger.ErrorContext(ctx, "Failed to stream subtitle file", "path", storagePath, "error", err)
+		return c.Status(fiber.StatusInternalServerError).SendString("Stream error")
+	}
+
+	logger.InfoContext(ctx, "Subtitle served", "code", code, "path", filePath)
+	return nil
+}
+
+// serveRangeRequest handles HTTP Range requests for byte-range HLS
+func (h *HLSHandler) serveRangeRequest(c *fiber.Ctx, storagePath, rangeHeader string) error {
+	ctx := c.UserContext()
+
+	// Parse Range header: "bytes=start-end" or "bytes=start-"
+	rangeHeader = strings.TrimPrefix(rangeHeader, "bytes=")
+	parts := strings.Split(rangeHeader, "-")
+	if len(parts) != 2 {
+		return c.Status(fiber.StatusBadRequest).SendString("Invalid range format")
+	}
+
+	start, err := strconv.ParseInt(parts[0], 10, 64)
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).SendString("Invalid range start")
+	}
+
+	var end int64 = -1
+	if parts[1] != "" {
+		end, err = strconv.ParseInt(parts[1], 10, 64)
+		if err != nil {
+			return c.Status(fiber.StatusBadRequest).SendString("Invalid range end")
+		}
+	}
+
+	// Get file with byte range from storage
+	reader, totalSize, err := h.storage.GetFileRange(storagePath, start, end)
+	if err != nil {
+		logger.WarnContext(ctx, "Failed to get file range", "path", storagePath, "start", start, "end", end, "error", err)
+		return c.Status(fiber.StatusNotFound).SendString("File not found")
+	}
+	defer reader.Close()
+
+	// Calculate actual end position
+	if end < 0 || end >= totalSize {
+		end = totalSize - 1
+	}
+	contentLength := end - start + 1
+
+	// Set 206 Partial Content headers
+	c.Status(fiber.StatusPartialContent)
+	c.Set("Content-Range", fmt.Sprintf("bytes %d-%d/%d", start, end, totalSize))
+	c.Set("Content-Length", strconv.FormatInt(contentLength, 10))
+
+	// Stream the range
+	_, err = io.Copy(c.Response().BodyWriter(), reader)
+	if err != nil {
+		logger.ErrorContext(ctx, "Failed to stream range", "path", storagePath, "error", err)
+		return c.Status(fiber.StatusInternalServerError).SendString("Stream error")
+	}
+
+	return nil
+}

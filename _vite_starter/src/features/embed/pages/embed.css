@@ -1,0 +1,330 @@
+/* Embed Player Styles - Full viewport for iframe embedding */
+
+.embed-container {
+  position: fixed;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  right: 0;
+  overflow: hidden;
+  background-color: black;
+}
+
+.embed-container.embed-center {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.embed-video {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+/* Force black background on video element */
+.embed-video::-webkit-media-controls-panel {
+  background-color: rgba(0, 0, 0, 0.7);
+}
+
+/* Pre-roll Ad Styles */
+.preroll-container {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  background-color: black;
+}
+
+/* Initial Start Overlay */
+.preroll-start-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background-color: black;
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  cursor: pointer;
+  z-index: 30;
+}
+
+.preroll-start-overlay::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.4);
+  transition: background-color 0.2s;
+}
+
+.preroll-start-overlay:hover::before {
+  background-color: rgba(0, 0, 0, 0.2);
+}
+
+/* Play State Button - เหมือน ArtPlayer */
+.preroll-start-state {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(255, 255, 255, 0.9);
+  opacity: 0.9;
+  transition: opacity 0.3s, transform 0.3s;
+}
+
+.preroll-start-overlay:hover .preroll-start-state {
+  opacity: 1;
+  transform: scale(1.1);
+}
+
+.preroll-video {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  cursor: pointer;
+}
+
+.preroll-label {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  background-color: rgba(0, 0, 0, 0.7);
+  color: rgba(255, 255, 255, 0.9);
+  padding: 4px 12px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 500;
+  z-index: 10;
+}
+
+.preroll-progress {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 4px;
+  background-color: rgba(255, 255, 255, 0.3);
+}
+
+.preroll-progress-bar {
+  height: 100%;
+  background-color: rgba(255, 255, 255, 0.9);
+  transition: width 0.1s linear;
+}
+
+.preroll-skip-area {
+  position: absolute;
+  bottom: 20px;
+  right: 12px;
+  z-index: 10;
+}
+
+.preroll-skip-button {
+  background-color: rgba(0, 0, 0, 0.7);
+  color: white;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  padding: 8px 16px;
+  border-radius: 4px;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.preroll-skip-button.preroll-skip-ready {
+  background-color: rgba(255, 255, 255, 0.9);
+  color: black;
+  border-color: transparent;
+}
+
+.preroll-skip-button.preroll-skip-ready:hover {
+  background-color: white;
+}
+
+.preroll-skip-countdown {
+  background-color: rgba(0, 0, 0, 0.7);
+  color: rgba(255, 255, 255, 0.8);
+  padding: 8px 16px;
+  border-radius: 4px;
+  font-size: 13px;
+}
+
+.preroll-skip-forced {
+  background-color: rgba(0, 0, 0, 0.5);
+  color: rgba(255, 255, 255, 0.6);
+  padding: 8px 16px;
+  border-radius: 4px;
+  font-size: 12px;
+}
+
+/* Clickable skip area */
+.preroll-skip-clickable {
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.preroll-skip-clickable:hover {
+  background-color: rgba(0, 0, 0, 0.8);
+}
+
+.preroll-skip-clicktext {
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.preroll-play-indicator {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 80px;
+  height: 80px;
+  background-color: rgba(0, 0, 0, 0.6);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: transform 0.2s, background-color 0.2s;
+}
+
+.preroll-play-indicator:hover {
+  transform: translate(-50%, -50%) scale(1.1);
+  background-color: rgba(0, 0, 0, 0.8);
+}
+
+.preroll-play-icon {
+  width: 40px;
+  height: 40px;
+  color: white;
+  margin-left: 4px;
+}
+
+/* Multi-ad Progress Dots */
+.preroll-dots {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  display: flex;
+  gap: 6px;
+  z-index: 10;
+}
+
+.preroll-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  transition: all 0.3s;
+}
+
+.preroll-dot-complete {
+  background-color: #22c55e;
+}
+
+.preroll-dot-active {
+  background-color: rgba(255, 255, 255, 0.9);
+  animation: pulse 1s infinite;
+}
+
+.preroll-dot-pending {
+  background-color: rgba(255, 255, 255, 0.3);
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.7;
+    transform: scale(1.2);
+  }
+}
+
+/* Loading & Error Overlays */
+.preroll-loading,
+.preroll-error {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background-color: rgba(0, 0, 0, 0.8);
+  z-index: 20;
+}
+
+.preroll-error {
+  background-color: rgba(0, 0, 0, 0.9);
+}
+
+/* Image Ad Styles */
+.preroll-image-container {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: black;
+}
+
+.preroll-image {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+
+/* Ad Title in Label */
+.preroll-title {
+  color: rgba(255, 255, 255, 0.8);
+  font-weight: 400;
+}
+
+/* Bottom Controls Container */
+.preroll-bottom-controls {
+  position: absolute;
+  bottom: 20px;
+  left: 12px;
+  right: 12px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  z-index: 10;
+}
+
+/* Click URL / Detail Button */
+.preroll-detail-button {
+  display: flex;
+  align-items: center;
+  background-color: rgba(255, 255, 255, 0.15);
+  color: white;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  padding: 8px 16px;
+  border-radius: 4px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.2s;
+  backdrop-filter: blur(4px);
+}
+
+.preroll-detail-button:hover {
+  background-color: rgba(255, 255, 255, 0.25);
+  border-color: rgba(255, 255, 255, 0.5);
+}
+
+/* Adjust skip area when inside bottom controls */
+.preroll-bottom-controls .preroll-skip-area {
+  position: static;
+  bottom: auto;
+  right: auto;
+}

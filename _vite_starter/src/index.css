@@ -1,0 +1,612 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+
+
+@font-face {
+  font-family: DB;
+  font-style: normal;
+  font-weight: 200 700;
+  font-display: swap;
+  src: url("/fonts/db.woff2") format("woff2");
+}
+
+:root {
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.1450 0 0);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.1450 0 0);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.1450 0 0);
+  --primary: oklch(0.2050 0 0);
+  --primary-foreground: oklch(0.9850 0 0);
+  --secondary: oklch(0.9700 0 0);
+  --secondary-foreground: oklch(0.2050 0 0);
+  --muted: oklch(0.9700 0 0);
+  --muted-foreground: oklch(0.5560 0 0);
+  --accent: oklch(0.9700 0 0);
+  --accent-foreground: oklch(0.2050 0 0);
+  --destructive: oklch(0.5770 0.2450 27.3250);
+  --destructive-foreground: oklch(1 0 0);
+  --border: oklch(0.9220 0 0);
+  --input: oklch(0.9220 0 0);
+  --ring: oklch(0.7080 0 0);
+
+  /* Status colors - Light mode */
+  --status-pending-bg: oklch(0.9700 0.0600 95);
+  --status-pending-text: oklch(0.4500 0.1200 75);
+  --status-queued-bg: oklch(0.9400 0.0500 195);
+  --status-queued-text: oklch(0.4000 0.1200 200);
+  --status-processing-bg: oklch(0.9400 0.0500 250);
+  --status-processing-text: oklch(0.4000 0.1500 260);
+  --status-success-bg: oklch(0.9500 0.0600 145);
+  --status-success-text: oklch(0.4000 0.1400 150);
+  --status-danger-bg: oklch(0.9400 0.0600 25);
+  --status-danger-text: oklch(0.5000 0.2000 25);
+  --status-info-bg: oklch(0.9400 0.0500 250);
+  --status-info-text: oklch(0.4500 0.1500 255);
+  --status-muted-bg: oklch(0.9500 0 0);
+  --status-muted-text: oklch(0.5000 0 0);
+  /* Worker type colors - Light mode */
+  --status-transcode-bg: oklch(0.9400 0.0500 250);
+  --status-transcode-text: oklch(0.4500 0.1500 255);
+  --status-subtitle-bg: oklch(0.9400 0.0700 300);
+  --status-subtitle-text: oklch(0.4500 0.1800 305);
+  --status-warning-bg: oklch(0.9500 0.0800 80);
+  --status-warning-text: oklch(0.5000 0.1500 70);
+  --chart-1: oklch(0.8100 0.1000 252);
+  --chart-2: oklch(0.6200 0.1900 260);
+  --chart-3: oklch(0.5500 0.2200 263);
+  --chart-4: oklch(0.4900 0.2200 264);
+  --chart-5: oklch(0.4200 0.1800 266);
+  /* Analytics chart colors - Light mode */
+  --chart-p2p: oklch(0.6500 0.1800 145);
+  --chart-cdn: oklch(0.5500 0.1800 255);
+  --chart-savings: oklch(0.5500 0.1800 145);
+  --chart-cost: oklch(0.5500 0.1800 25);
+  --sidebar: oklch(0.9850 0 0);
+  --sidebar-foreground: oklch(0.1450 0 0);
+  --sidebar-primary: oklch(0.2050 0 0);
+  --sidebar-primary-foreground: oklch(0.9850 0 0);
+  --sidebar-accent: oklch(0.9700 0 0);
+  --sidebar-accent-foreground: oklch(0.2050 0 0);
+  --sidebar-border: oklch(0.9220 0 0);
+  --sidebar-ring: oklch(0.7080 0 0);
+  --font-sans: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'Noto Sans', sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol', 'Noto Color Emoji';
+  --font-serif: ui-serif, Georgia, Cambria, "Times New Roman", Times, serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  --radius: 0.625rem;
+  --shadow-x: 0;
+  --shadow-y: 1px;
+  --shadow-blur: 3px;
+  --shadow-spread: 0px;
+  --shadow-opacity: 0.1;
+  --shadow-color: oklch(0 0 0);
+  --shadow-2xs: 0 1px 3px 0px hsl(0 0% 0% / 0.05);
+  --shadow-xs: 0 1px 3px 0px hsl(0 0% 0% / 0.05);
+  --shadow-sm: 0 1px 3px 0px hsl(0 0% 0% / 0.10), 0 1px 2px -1px hsl(0 0% 0% / 0.10);
+  --shadow: 0 1px 3px 0px hsl(0 0% 0% / 0.10), 0 1px 2px -1px hsl(0 0% 0% / 0.10);
+  --shadow-md: 0 1px 3px 0px hsl(0 0% 0% / 0.10), 0 2px 4px -1px hsl(0 0% 0% / 0.10);
+  --shadow-lg: 0 1px 3px 0px hsl(0 0% 0% / 0.10), 0 4px 6px -1px hsl(0 0% 0% / 0.10);
+  --shadow-xl: 0 1px 3px 0px hsl(0 0% 0% / 0.10), 0 8px 10px -1px hsl(0 0% 0% / 0.10);
+  --shadow-2xl: 0 1px 3px 0px hsl(0 0% 0% / 0.25);
+  --tracking-normal: 0em;
+  --spacing: 0.25rem;
+}
+
+.dark {
+  --background: oklch(0.1450 0 0);
+  --foreground: oklch(0.9850 0 0);
+  --card: oklch(0.2050 0 0);
+  --card-foreground: oklch(0.9850 0 0);
+  --popover: oklch(0.2690 0 0);
+  --popover-foreground: oklch(0.9850 0 0);
+  --primary: oklch(0.9220 0 0);
+  --primary-foreground: oklch(0.2050 0 0);
+  --secondary: oklch(0.2690 0 0);
+  --secondary-foreground: oklch(0.9850 0 0);
+  --muted: oklch(0.2690 0 0);
+  --muted-foreground: oklch(0.7080 0 0);
+  --accent: oklch(0.3710 0 0);
+  --accent-foreground: oklch(0.9850 0 0);
+  --destructive: oklch(0.7040 0.1910 22.2160);
+  --destructive-foreground: oklch(0.9850 0 0);
+  --border: oklch(0.2750 0 0);
+  --input: oklch(0.3250 0 0);
+  --ring: oklch(0.5560 0 0);
+
+  /* Status colors - Dark mode */
+  --status-pending-bg: oklch(0.3500 0.0800 85);
+  --status-pending-text: oklch(0.8500 0.1000 90);
+  --status-queued-bg: oklch(0.3000 0.0600 195);
+  --status-queued-text: oklch(0.8000 0.1000 195);
+  --status-processing-bg: oklch(0.3000 0.0800 250);
+  --status-processing-text: oklch(0.8000 0.1200 255);
+  --status-success-bg: oklch(0.3200 0.0800 150);
+  --status-success-text: oklch(0.8500 0.1200 145);
+  --status-danger-bg: oklch(0.3500 0.1000 25);
+  --status-danger-text: oklch(0.8500 0.1500 25);
+  --status-info-bg: oklch(0.3000 0.0800 250);
+  --status-info-text: oklch(0.8000 0.1200 255);
+  --status-muted-bg: oklch(0.2800 0 0);
+  --status-muted-text: oklch(0.6500 0 0);
+  /* Worker type colors - Dark mode */
+  --status-transcode-bg: oklch(0.3000 0.0800 250);
+  --status-transcode-text: oklch(0.8000 0.1200 255);
+  --status-subtitle-bg: oklch(0.3000 0.1000 300);
+  --status-subtitle-text: oklch(0.8000 0.1500 305);
+  --status-warning-bg: oklch(0.3500 0.1000 80);
+  --status-warning-text: oklch(0.8500 0.1200 75);
+  --chart-1: oklch(0.8100 0.1000 252);
+  --chart-2: oklch(0.6200 0.1900 260);
+  --chart-3: oklch(0.5500 0.2200 263);
+  --chart-4: oklch(0.4900 0.2200 264);
+  --chart-5: oklch(0.4200 0.1800 266);
+  /* Analytics chart colors - Dark mode */
+  --chart-p2p: oklch(0.7000 0.1800 145);
+  --chart-cdn: oklch(0.6000 0.1800 255);
+  --chart-savings: oklch(0.7000 0.1800 145);
+  --chart-cost: oklch(0.6000 0.1800 25);
+  --sidebar: oklch(0.2050 0 0);
+  --sidebar-foreground: oklch(0.9850 0 0);
+  --sidebar-primary: oklch(0.3500 0 0);
+  --sidebar-primary-foreground: oklch(0.9850 0 0);
+  --sidebar-accent: oklch(0.2690 0 0);
+  --sidebar-accent-foreground: oklch(0.9850 0 0);
+  --sidebar-border: oklch(0.2750 0 0);
+  --sidebar-ring: oklch(0.4390 0 0);
+  --font-sans: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'Noto Sans', sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol', 'Noto Color Emoji';
+  --font-serif: ui-serif, Georgia, Cambria, "Times New Roman", Times, serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  --radius: 0.625rem;
+  --shadow-x: 0;
+  --shadow-y: 1px;
+  --shadow-blur: 3px;
+  --shadow-spread: 0px;
+  --shadow-opacity: 0.1;
+  --shadow-color: oklch(0 0 0);
+  --shadow-2xs: 0 1px 3px 0px hsl(0 0% 0% / 0.05);
+  --shadow-xs: 0 1px 3px 0px hsl(0 0% 0% / 0.05);
+  --shadow-sm: 0 1px 3px 0px hsl(0 0% 0% / 0.10), 0 1px 2px -1px hsl(0 0% 0% / 0.10);
+  --shadow: 0 1px 3px 0px hsl(0 0% 0% / 0.10), 0 1px 2px -1px hsl(0 0% 0% / 0.10);
+  --shadow-md: 0 1px 3px 0px hsl(0 0% 0% / 0.10), 0 2px 4px -1px hsl(0 0% 0% / 0.10);
+  --shadow-lg: 0 1px 3px 0px hsl(0 0% 0% / 0.10), 0 4px 6px -1px hsl(0 0% 0% / 0.10);
+  --shadow-xl: 0 1px 3px 0px hsl(0 0% 0% / 0.10), 0 8px 10px -1px hsl(0 0% 0% / 0.10);
+  --shadow-2xl: 0 1px 3px 0px hsl(0 0% 0% / 0.25);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+
+  --font-sans: var(--font-sans);
+  --font-mono: var(--font-mono);
+  --font-serif: var(--font-serif);
+
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+
+  --shadow-2xs: var(--shadow-2xs);
+  --shadow-xs: var(--shadow-xs);
+  --shadow-sm: var(--shadow-sm);
+  --shadow: var(--shadow);
+  --shadow-md: var(--shadow-md);
+  --shadow-lg: var(--shadow-lg);
+  --shadow-xl: var(--shadow-xl);
+  --shadow-2xl: var(--shadow-2xl);
+}
+
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+}
+
+
+
+@layer base {
+  body {
+    font-family: Roboto, "Google Sans", "Google Sans Text", sans-serif;
+  }
+  h1 {
+    font-size: 2.5rem;
+  }
+}
+
+/* Semantic status component classes */
+@layer components {
+  .status-pending {
+    background-color: var(--status-pending-bg);
+    color: var(--status-pending-text);
+  }
+  .status-queued {
+    background-color: var(--status-queued-bg);
+    color: var(--status-queued-text);
+  }
+  .status-processing {
+    background-color: var(--status-processing-bg);
+    color: var(--status-processing-text);
+  }
+  .status-success {
+    background-color: var(--status-success-bg);
+    color: var(--status-success-text);
+  }
+  .status-danger {
+    background-color: var(--status-danger-bg);
+    color: var(--status-danger-text);
+  }
+  .status-info {
+    background-color: var(--status-info-bg);
+    color: var(--status-info-text);
+  }
+  .status-muted {
+    background-color: var(--status-muted-bg);
+    color: var(--status-muted-text);
+  }
+
+  /* Utility text colors for status */
+  .text-status-processing {
+    color: var(--status-processing-text);
+  }
+  .text-status-success {
+    color: var(--status-success-text);
+  }
+  .text-status-danger {
+    color: var(--status-danger-text);
+  }
+  .text-status-pending {
+    color: var(--status-pending-text);
+  }
+  .text-status-queued {
+    color: var(--status-queued-text);
+  }
+  .text-status-info {
+    color: var(--status-info-text);
+  }
+
+  /* Utility border colors for status */
+  .border-status-queued {
+    border-color: var(--status-queued-text);
+  }
+  .border-status-success {
+    border-color: var(--status-success-text);
+  }
+  .border-status-danger {
+    border-color: var(--status-danger-text);
+  }
+  .border-status-pending {
+    border-color: var(--status-pending-text);
+  }
+
+  /* Progress bar colors for disk levels */
+  .progress-success [data-slot="indicator"] {
+    background-color: var(--status-success-text);
+  }
+  .progress-pending [data-slot="indicator"] {
+    background-color: var(--status-pending-text);
+  }
+  .progress-danger [data-slot="indicator"] {
+    background-color: var(--status-danger-text);
+  }
+
+  /* Background only classes */
+  .bg-status-success {
+    background-color: var(--status-success-bg);
+  }
+  .bg-status-danger {
+    background-color: var(--status-danger-bg);
+  }
+  .bg-status-pending {
+    background-color: var(--status-pending-bg);
+  }
+  .bg-status-info {
+    background-color: var(--status-info-bg);
+  }
+
+  /* Online indicator (WebSocket) */
+  .indicator-online {
+    background-color: var(--status-success-text);
+  }
+  .indicator-online-ping {
+    background-color: var(--status-success-text);
+  }
+
+  /* Worker type badges */
+  .status-transcode {
+    background-color: var(--status-transcode-bg);
+    color: var(--status-transcode-text);
+  }
+  .status-subtitle {
+    background-color: var(--status-subtitle-bg);
+    color: var(--status-subtitle-text);
+  }
+  .status-warning {
+    background-color: var(--status-warning-bg);
+    color: var(--status-warning-text);
+  }
+
+  /* Text color utilities for worker types */
+  .text-status-transcode {
+    color: var(--status-transcode-text);
+  }
+  .text-status-subtitle {
+    color: var(--status-subtitle-text);
+  }
+  .text-status-warning {
+    color: var(--status-warning-text);
+  }
+}
+
+/* ========================================
+   ArtPlayer Styles
+   ======================================== */
+
+/* Container */
+.artplayer-container {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  background: #000;
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+/* ใช้ Google Sans font */
+.artplayer-container,
+.artplayer-container * {
+  font-family: "Google Sans", "Google Sans Text", Roboto, sans-serif;
+}
+
+/* Custom skip button styles */
+.artplayer-container .art-control[data-index="1"],
+.artplayer-container .art-control[data-index="3"] {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.artplayer-container .art-control svg text {
+  fill: currentColor;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   ArtPlayer Settings Panel - Force White Text on Dark Background
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* Force all text inside settings to be white */
+.art-setting,
+.art-setting *,
+.art-settings,
+.art-settings * {
+  color: #fff !important;
+}
+
+/* Settings Panel Container */
+.art-setting-panel,
+.art-settings-panel {
+  background: rgba(28, 28, 28, 0.98) !important;
+  border-radius: 8px !important;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5) !important;
+  color: #fff !important;
+}
+
+/* Setting Items */
+.art-setting-item,
+.art-settings-item {
+  color: #fff !important;
+  background: transparent !important;
+}
+
+.art-setting-item:hover,
+.art-settings-item:hover {
+  background: rgba(255, 255, 255, 0.1) !important;
+}
+
+/* Setting Item Text */
+.art-setting-item-left,
+.art-setting-item-right,
+.art-setting-item-left-text,
+.art-setting-item-right-text,
+.art-setting-item-right-tooltip,
+[class*="art-setting"] span,
+[class*="art-setting"] div {
+  color: #fff !important;
+}
+
+/* Icons */
+.art-setting-item .art-icon,
+.art-setting-item svg,
+[class*="art-setting"] svg {
+  color: #fff !important;
+  fill: #fff !important;
+}
+
+/* Selector Panel (Quality/Subtitle dropdown) */
+.art-selector,
+.art-selector-list {
+  background: rgba(28, 28, 28, 0.98) !important;
+  border-radius: 6px !important;
+  color: #fff !important;
+}
+
+.art-selector-item {
+  color: #fff !important;
+}
+
+.art-selector-item:hover {
+  background: rgba(255, 255, 255, 0.15) !important;
+}
+
+.art-selector-item.art-current {
+  color: #e50914 !important;
+  background: rgba(229, 9, 20, 0.15) !important;
+}
+
+/* Switch toggle */
+.art-setting-item-right-icon svg {
+  color: #fff !important;
+  fill: #fff !important;
+}
+
+/* Tooltip */
+[class*="tooltip"] {
+  color: rgba(255, 255, 255, 0.7) !important;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Subtitle Styles - Netflix-style (no background, responsive size)
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.artplayer-container .art-subtitle {
+  font-family: 'Google Sans', 'Google Sans Text', 'Noto Sans Thai', sans-serif !important;
+  /* Responsive font size: scales nicely from small to large screens */
+  font-size: clamp(18px, calc(1.5vw + 1.5vh + 8px), 56px) !important;
+  font-weight: 600 !important;
+  color: #fff !important;
+  /* Netflix-style text shadow for readability without background */
+  text-shadow:
+    0 0 4px rgba(0,0,0,0.9),
+    0 0 8px rgba(0,0,0,0.7),
+    2px 2px 4px rgba(0,0,0,0.9),
+    -2px -2px 4px rgba(0,0,0,0.9),
+    2px -2px 4px rgba(0,0,0,0.9),
+    -2px 2px 4px rgba(0,0,0,0.9) !important;
+  background-color: transparent !important;
+  padding: 0 !important;
+  line-height: 1.4 !important;
+}
+
+/* Fullscreen: larger subtitles */
+.artplayer-container.art-fullscreen .art-subtitle,
+.artplayer-container.art-fullscreen-web .art-subtitle {
+  font-size: clamp(24px, calc(2vw + 2vh + 10px), 64px) !important;
+}
+
+/* Thai subtitle - ใช้ Google Sans เหมือน default */
+.artplayer-container .art-subtitle-th {
+  font-family: 'Google Sans', 'Google Sans Text', 'Noto Sans Thai', sans-serif !important;
+}
+
+/* English subtitle */
+.artplayer-container .art-subtitle-en {
+  font-family: 'Google Sans', 'Google Sans Text', 'Roboto', sans-serif !important;
+}
+
+/* Japanese subtitle - ใช้ Noto Sans JP เป็น fallback */
+.artplayer-container .art-subtitle-ja {
+  font-family: 'Google Sans', 'Noto Sans JP', sans-serif !important;
+}
+
+/* Mobile: optimized for small screens */
+@media (max-width: 768px) {
+  .artplayer-container .art-subtitle {
+    font-size: clamp(16px, calc(3vw + 1vh), 28px) !important;
+  }
+}
+
+/* Large screens (TV/Monitor > 1440px) */
+@media (min-width: 1440px) {
+  .artplayer-container .art-subtitle {
+    font-size: clamp(28px, calc(1.8vw + 1.8vh + 10px), 64px) !important;
+  }
+}
+
+/* Extra large screens (4K) */
+@media (min-width: 2560px) {
+  .artplayer-container .art-subtitle {
+    font-size: clamp(36px, calc(2vw + 2vh + 12px), 80px) !important;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Quality Selector Styles
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.artplayer-container .art-control-quality {
+  background: transparent !important;
+  margin: 0 4px !important;
+  min-width: auto !important;
+  opacity: 0.9 !important;
+  transition: opacity 0.2s ease !important;
+}
+
+.artplayer-container .art-control-quality:hover {
+  opacity: 1 !important;
+}
+
+/* Quality selector dropdown */
+.artplayer-container .art-selector {
+  background: rgba(28, 28, 28, 0.95) !important;
+  border-radius: 8px !important;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5) !important;
+  overflow: hidden !important;
+}
+
+.artplayer-container .art-selector-item {
+  padding: 10px 20px !important;
+  font-size: 14px !important;
+  transition: background 0.15s ease !important;
+}
+
+.artplayer-container .art-selector-item:hover {
+  background: rgba(255, 255, 255, 0.1) !important;
+}
+
+.artplayer-container .art-selector-item.art-current {
+  color: #e50914 !important;
+  background: rgba(229, 9, 20, 0.1) !important;
+}
+
+/* Mobile optimizations */
+@media (max-width: 768px) {
+  .artplayer-container .art-bottom {
+    padding: 0 8px;
+  }
+
+  .artplayer-container .art-control {
+    padding: 0 6px;
+  }
+
+  .artplayer-container .art-control-quality {
+    font-size: 10px !important;
+    min-width: 40px !important;
+    padding: 0 6px !important;
+  }
+}

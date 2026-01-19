@@ -1,0 +1,283 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# SUEKK STREAM - Docker Setup (Full Stack)
+# ═══════════════════════════════════════════════════════════════════════════════
+#
+# Docker Services:
+#   - api: Go Fiber API Server (port 8080)
+#   - frontend: React/Vite + Nginx (port 3000)
+#   - cloudflared: Cloudflare Tunnel (exposes to internet)
+#   - nats: NATS JetStream (Job Queue + Pub/Sub)
+#   - postgres: PostgreSQL Database
+#   - redis: Cache + Distributed Locking
+#   - subtitle-worker: Subtitle Worker (OPTIONAL - can run on host for GPU)
+#
+# Host Services (ไม่อยู่ใน Docker - ต้องใช้ GPU):
+#   - Transcode Worker: go run ./cmd/worker (ใช้ NVENC)
+#   - Subtitle Worker: python run_worker.py (ใช้ Whisper GPU) - OR use Docker with GPU
+#
+# Usage:
+#   docker-compose up -d --build      # Build & Start all services
+#   docker-compose down               # Stop all services
+#   docker-compose logs -f api        # View API logs
+#   docker-compose logs -f frontend   # View Frontend logs
+#   docker-compose logs -f cloudflared # View Tunnel logs
+#
+# Endpoints (Local):
+#   - API: http://localhost:8080
+#   - Frontend: http://localhost:3000
+#   - NATS Monitor: http://localhost:8222
+#
+# Endpoints (Public via Tunnel):
+#   - API: https://apisteam.suekk.com
+#   - Frontend: https://app.suekk.com (ต้องตั้งใน CF Dashboard)
+#
+# ═══════════════════════════════════════════════════════════════════════════════
+
+services:
+  # ═══════════════════════════════════════════════════════════
+  # NATS JetStream - Job Queue + Pub/Sub
+  # ═══════════════════════════════════════════════════════════
+  nats:
+    image: nats:2.10-alpine
+    container_name: suekk-nats
+    ports:
+      - "${NATS_PORT:-4222}:4222"         # Client connections
+      - "${NATS_MONITOR_PORT:-8222}:8222" # HTTP monitoring
+    command:
+      - "--js"                            # Enable JetStream
+      - "--sd=/data"                      # Storage directory
+      - "-m=8222"                         # HTTP monitoring port
+    volumes:
+      - nats-data:/data
+    networks:
+      - suekk-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8222/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "3"
+
+  # ═══════════════════════════════════════════════════════════
+  # PostgreSQL - Main Database
+  # ═══════════════════════════════════════════════════════════
+  postgres:
+    image: postgres:15-alpine
+    container_name: suekk-postgres
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-suekk_stream}
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+    networks:
+      - suekk-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "3"
+
+  # ═══════════════════════════════════════════════════════════
+  # Redis - Cache + Distributed Locking
+  # ═══════════════════════════════════════════════════════════
+  redis:
+    image: redis:7-alpine
+    container_name: suekk-redis
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    command: redis-server --appendonly yes
+    volumes:
+      - redis-data:/data
+    networks:
+      - suekk-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "3"
+
+  # ═══════════════════════════════════════════════════════════
+  # API Server - Go Fiber
+  # ═══════════════════════════════════════════════════════════
+  api:
+    build:
+      context: ./_gofiber_starter
+      dockerfile: Dockerfile
+    container_name: suekk-api
+    ports:
+      - "8080:8080"
+    environment:
+      - APP_ENV=production
+      - APP_PORT=8080
+      - APP_NAME=Suekk Stream
+      # Database
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_USER=${POSTGRES_USER:-postgres}
+      - DB_PASSWORD=${POSTGRES_PASSWORD}
+      - DB_NAME=${POSTGRES_DB:-suekk_stream}
+      # NATS
+      - NATS_URL=nats://nats:4222
+      # Redis
+      - REDIS_URL=redis://redis:6379
+      # JWT
+      - JWT_SECRET=${JWT_SECRET}
+      # S3/IDrive Storage
+      - STORAGE_TYPE=s3
+      - S3_ENDPOINT=${S3_ENDPOINT}
+      - S3_ACCESS_KEY=${S3_ACCESS_KEY}
+      - S3_SECRET_KEY=${S3_SECRET_KEY}
+      - S3_BUCKET=${S3_BUCKET}
+      - S3_REGION=${S3_REGION}
+      - S3_USE_SSL=${S3_USE_SSL:-true}
+      # CDN
+      - CDN_BASE_URL=${CDN_BASE_URL:-https://cdn.suekk.com}
+      - STREAM_COOKIE_KEY=${STREAM_COOKIE_KEY}
+      - STREAM_COOKIE_DOMAIN=${STREAM_COOKIE_DOMAIN:-.suekk.com}
+      # Google OAuth
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
+      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
+      - GOOGLE_REDIRECT_URL=${GOOGLE_REDIRECT_URL}
+      - FRONTEND_URL=${FRONTEND_URL:-https://app.suekk.com}
+      # Storage Quota (5TB = 5497558138880 bytes, 0 = unlimited)
+      - STORAGE_QUOTA_TOTAL=${STORAGE_QUOTA_TOTAL:-5497558138880}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - suekk-network
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "3"
+
+  # ═══════════════════════════════════════════════════════════
+  # Frontend - React/Vite + Nginx
+  # ═══════════════════════════════════════════════════════════
+  frontend:
+    build:
+      context: ./_vite_starter
+      dockerfile: Dockerfile
+      args:
+        - VITE_API_URL=https://apisteam.suekk.com
+        - VITE_STREAM_URL=https://cdn.suekk.com/hls
+        - VITE_WS_URL=wss://apisteam.suekk.com
+        - VITE_APP_TITLE=Suekk Stream
+    container_name: suekk-frontend
+    ports:
+      - "3000:80"
+    networks:
+      - suekk-network
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "3"
+
+  # ═══════════════════════════════════════════════════════════
+  # Cloudflare Tunnel - Expose to Internet
+  # ═══════════════════════════════════════════════════════════
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: suekk-tunnel
+    command: tunnel --no-autoupdate run
+    environment:
+      - TUNNEL_TOKEN=${CF_TUNNEL_TOKEN}
+    depends_on:
+      - api
+      - frontend
+    networks:
+      - suekk-network
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "3"
+
+  # ═══════════════════════════════════════════════════════════
+  # Subtitle Worker - Python (Whisper + Gemini)
+  # ═══════════════════════════════════════════════════════════
+  # OPTIONAL: Uncomment to run in Docker with GPU
+  # Alternative: Run on host with `cd _subtitle && python run_worker.py`
+  #
+  # subtitle-worker:
+  #   build:
+  #     context: ./_subtitle
+  #     dockerfile: Dockerfile
+  #   container_name: suekk-subtitle-worker
+  #   deploy:
+  #     resources:
+  #       reservations:
+  #         devices:
+  #           - driver: nvidia
+  #             count: 1
+  #             capabilities: [gpu]
+  #   environment:
+  #     - NATS_URL=nats://nats:4222
+  #     - NATS_STREAM=SUBTITLE_JOBS
+  #     - NATS_SUBJECT_DETECT=jobs.subtitle.detect
+  #     - NATS_SUBJECT_TRANSCRIBE=jobs.subtitle.transcribe
+  #     - NATS_SUBJECT_TRANSLATE=jobs.subtitle.translate
+  #     - WORKER_ID=subtitle-worker-1
+  #     - API_BASE_URL=http://api:8080
+  #     - API_INTERNAL_KEY=${API_INTERNAL_KEY}
+  #     - S3_ENDPOINT=${S3_ENDPOINT}
+  #     - S3_ACCESS_KEY=${S3_ACCESS_KEY}
+  #     - S3_SECRET_KEY=${S3_SECRET_KEY}
+  #     - S3_BUCKET=${S3_BUCKET}
+  #     - S3_REGION=${S3_REGION}
+  #     - S3_USE_SSL=${S3_USE_SSL:-true}
+  #     - GEMINI_API_KEY=${GEMINI_API_KEY}
+  #   depends_on:
+  #     nats:
+  #       condition: service_healthy
+  #     api:
+  #       condition: service_started
+  #   networks:
+  #     - suekk-network
+  #   restart: unless-stopped
+  #   logging:
+  #     driver: "json-file"
+  #     options:
+  #       max-size: "100m"
+  #       max-file: "3"
+
+volumes:
+  nats-data:
+    driver: local
+  pg-data:
+    driver: local
+  redis-data:
+    driver: local
+
+networks:
+  suekk-network:
+    driver: bridge

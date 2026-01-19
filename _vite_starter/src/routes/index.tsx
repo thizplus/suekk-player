@@ -1,0 +1,140 @@
+import { Routes, Route, Navigate } from 'react-router-dom'
+import { lazy, Suspense } from 'react'
+
+// Layouts
+import { RootLayout, PageLayout } from '@/components/layouts'
+import { ProtectedRoute } from './ProtectedRoute'
+
+// Auth feature (not lazy - first load)
+import { LoginPage, RegisterPage, GoogleCallbackPage } from '@/features/auth'
+
+// Lazy load embed page (public, lightweight)
+const EmbedPage = lazy(() =>
+  import('@/features/embed').then((m) => ({ default: m.EmbedPage }))
+)
+
+// Lazy load preview page (admin preview, no ads)
+const PreviewPage = lazy(() =>
+  import('@/features/embed').then((m) => ({ default: m.PreviewPage }))
+)
+
+// Lazy load dashboard pages
+const AdminDashboard = lazy(() =>
+  import('@/features/dashboard').then((m) => ({ default: m.AdminDashboard }))
+)
+const AgentDashboard = lazy(() =>
+  import('@/features/dashboard').then((m) => ({ default: m.AgentDashboard }))
+)
+const SalesDashboard = lazy(() =>
+  import('@/features/dashboard').then((m) => ({ default: m.SalesDashboard }))
+)
+
+// Lazy load user pages
+const UserProfilePage = lazy(() =>
+  import('@/features/user').then((m) => ({ default: m.UserProfilePage }))
+)
+
+// Lazy load video pages
+const VideoListPage = lazy(() =>
+  import('@/features/video').then((m) => ({ default: m.VideoListPage }))
+)
+const DLQPage = lazy(() =>
+  import('@/features/video').then((m) => ({ default: m.DLQPage }))
+)
+
+// Lazy load category pages
+const CategoryListPage = lazy(() =>
+  import('@/features/category').then((m) => ({ default: m.CategoryListPage }))
+)
+
+// Lazy load transcoding page
+const TranscodingPage = lazy(() =>
+  import('@/features/transcoding').then((m) => ({ default: m.TranscodingPage }))
+)
+
+// Lazy load whitelist page (Phase 6)
+const WhitelistPage = lazy(() =>
+  import('@/features/whitelist').then((m) => ({ default: m.WhitelistPage }))
+)
+
+// Lazy load settings page (Admin Settings)
+const SettingsPage = lazy(() =>
+  import('@/features/settings').then((m) => ({ default: m.SettingsPage }))
+)
+
+// Lazy load workers page (Phase 0: Worker Registry)
+const WorkersPage = lazy(() =>
+  import('@/features/workers').then((m) => ({ default: m.WorkersPage }))
+)
+
+export default function AppRoutes() {
+  return (
+    <Routes>
+      {/* Embed route - standalone, no layout (for iframe embedding) */}
+      <Route
+        path="/embed/:code"
+        element={
+          <Suspense fallback={<div className="fixed inset-0 bg-black flex items-center justify-center"><div className="animate-spin h-8 w-8 border-2 border-white border-t-transparent rounded-full" /></div>}>
+            <EmbedPage />
+          </Suspense>
+        }
+      />
+
+      {/* Preview route - standalone, no ads (for admin preview) */}
+      <Route
+        path="/preview/:code"
+        element={
+          <Suspense fallback={<div className="fixed inset-0 bg-black flex items-center justify-center"><div className="animate-spin h-8 w-8 border-2 border-white border-t-transparent rounded-full" /></div>}>
+            <PreviewPage />
+          </Suspense>
+        }
+      />
+
+      <Route element={<RootLayout />}>
+        {/* Public routes */}
+        <Route path="/login" element={<LoginPage />} />
+        <Route path="/register" element={<RegisterPage />} />
+        <Route path="/auth/google/callback" element={<GoogleCallbackPage />} />
+
+        {/* Root redirect */}
+        <Route path="/" element={<Navigate to="/dashboard" replace />} />
+
+        {/* Protected routes with layout */}
+        <Route element={<ProtectedRoute />}>
+          <Route element={<PageLayout />}>
+            {/* Dashboard routes */}
+            <Route path="/dashboard" element={<AdminDashboard />} />
+            <Route path="/dashboard/admin" element={<AdminDashboard />} />
+            <Route path="/dashboard/agent" element={<AgentDashboard />} />
+            <Route path="/dashboard/sales" element={<SalesDashboard />} />
+
+            {/* Video routes */}
+            <Route path="/videos" element={<VideoListPage />} />
+            <Route path="/videos/dlq" element={<DLQPage />} />
+
+            {/* Category routes */}
+            <Route path="/categories" element={<CategoryListPage />} />
+
+            {/* Transcoding routes */}
+            <Route path="/transcoding" element={<TranscodingPage />} />
+
+            {/* Whitelist routes (Phase 6) */}
+            <Route path="/whitelist" element={<WhitelistPage />} />
+
+            {/* Settings routes (Admin Settings) */}
+            <Route path="/settings" element={<SettingsPage />} />
+
+            {/* Workers routes (Phase 0: Worker Registry) */}
+            <Route path="/workers" element={<WorkersPage />} />
+
+            {/* User routes */}
+            <Route path="/profile" element={<UserProfilePage />} />
+          </Route>
+        </Route>
+
+        {/* 404 route */}
+        <Route path="*" element={<Navigate to="/dashboard" replace />} />
+      </Route>
+    </Routes>
+  )
+}
