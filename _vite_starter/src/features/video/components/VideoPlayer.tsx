@@ -136,9 +136,6 @@ export function VideoPlayer({
           fragLoadingTimeOut: 20000,          // 20 วินาที
           levelLoadingTimeOut: 20000,         // 20 วินาที
 
-          // Buffer Hole Recovery (สำคัญมาก!)
-          skipBufferHole: true,               // ข้ามช่องว่างอัตโนมัติ
-
           // Reliability & Retry
           manifestLoadingMaxRetry: 4,
           levelLoadingMaxRetry: 4,
