@@ -10,6 +10,9 @@
 #   - redis: Cache + Distributed Locking
 #
 # Optional (commented out):
+#   - pgbouncer: Connection Pooler (เพิ่มเมื่อ traffic สูง)
+#
+# Optional (commented out):
 #   - cloudflared: Cloudflare Tunnel (แนะนำติดตั้งแยกบน host)
 #   - subtitle-worker: Subtitle Worker (ต้องใช้ GPU)
 #
@@ -29,9 +32,10 @@
 #   - Frontend: http://localhost:3000
 #   - NATS Monitor: http://localhost:8222
 #
-# Endpoints (Public via Tunnel):
-#   - API: https://apisteam.suekk.com
-#   - Frontend: https://app.suekk.com (ต้องตั้งใน CF Dashboard)
+# Endpoints (Public):
+#   - API: https://api.suekk.com
+#   - Frontend: https://player.suekk.com
+#   - CDN: https://cdn.suekk.com
 #
 # ═══════════════════════════════════════════════════════════════════════════════
 
@@ -69,7 +73,7 @@ services:
   # PostgreSQL - Main Database
   # ═══════════════════════════════════════════════════════════
   postgres:
-    image: postgres:15-alpine
+    image: postgres:13-alpine
     container_name: suekk-postgres
     ports:
       - "${POSTGRES_PORT:-5432}:5432"
@@ -91,6 +95,39 @@ services:
       driver: "json-file"
       options:
         max-size: "100m"
+        max-file: "3"
+
+  # ═══════════════════════════════════════════════════════════
+  # PgBouncer - Connection Pooler
+  # ═══════════════════════════════════════════════════════════
+  # รองรับ 10,000+ concurrent connections
+  # PostgreSQL 13 ใช้ MD5 auth ซึ่ง PgBouncer รองรับได้
+  pgbouncer:
+    image: edoburu/pgbouncer:latest
+    container_name: suekk-pgbouncer
+    environment:
+      - DATABASE_URL=postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-suekk_stream}
+      - POOL_MODE=transaction
+      - MAX_CLIENT_CONN=10000
+      - DEFAULT_POOL_SIZE=50
+      - AUTH_TYPE=md5
+    ports:
+      - "${PGBOUNCER_PORT:-6432}:5432"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - suekk-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "pg_isready", "-h", "localhost", "-p", "5432"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
         max-file: "3"
 
   # ═══════════════════════════════════════════════════════════
@@ -132,8 +169,8 @@ services:
       - APP_ENV=production
       - APP_PORT=8080
       - APP_NAME=Suekk Stream
-      # Database
-      - DB_HOST=postgres
+      # Database (ผ่าน PgBouncer connection pooler)
+      - DB_HOST=pgbouncer
       - DB_PORT=5432
       - DB_USER=${POSTGRES_USER:-postgres}
       - DB_PASSWORD=${POSTGRES_PASSWORD}
@@ -160,11 +197,11 @@ services:
       - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
       - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
       - GOOGLE_REDIRECT_URL=${GOOGLE_REDIRECT_URL}
-      - FRONTEND_URL=${FRONTEND_URL:-https://app.suekk.com}
+      - FRONTEND_URL=${FRONTEND_URL:-https://player.suekk.com}
       # Storage Quota (5TB = 5497558138880 bytes, 0 = unlimited)
       - STORAGE_QUOTA_TOTAL=${STORAGE_QUOTA_TOTAL:-5497558138880}
     depends_on:
-      postgres:
+      pgbouncer:
         condition: service_healthy
       nats:
         condition: service_healthy
@@ -187,9 +224,9 @@ services:
       context: ./_vite_starter
       dockerfile: Dockerfile
       args:
-        - VITE_API_URL=https://apisteam.suekk.com
+        - VITE_API_URL=https://api.suekk.com
         - VITE_STREAM_URL=https://cdn.suekk.com/hls
-        - VITE_WS_URL=wss://apisteam.suekk.com
+        - VITE_WS_URL=wss://api.suekk.com
         - VITE_APP_TITLE=Suekk Stream
     container_name: suekk-frontend
     ports:
