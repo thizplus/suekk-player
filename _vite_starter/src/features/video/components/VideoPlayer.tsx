@@ -114,12 +114,15 @@ export function VideoPlayer({
           // Web Worker (offload parsing from UI thread)
           enableWorker: true,
 
-          // Buffer Management (Critical for Seek Performance)
-          maxBufferLength: 60,              // Prefetch 60 seconds ahead
-          maxMaxBufferLength: 120,          // Max buffer cap
-          backBufferLength: 90,             // Keep 90 sec history for backward seek
-          maxBufferSize: 80 * 1000 * 1000,  // 80 MB max buffer
+          // Buffer Management (ปรับสำหรับ Seek ไม่กระตุก)
+          maxBufferLength: 30,              // Prefetch 30 seconds ahead (ลดจาก 60)
+          maxMaxBufferLength: 60,           // Max buffer cap (ลดจาก 120)
+          backBufferLength: 30,             // Keep 30 sec history (ลดจาก 90)
+          maxBufferSize: 60 * 1000 * 1000,  // 60 MB max buffer (ลดจาก 80)
           maxBufferHole: 0.5,               // Allow 0.5s gaps
+
+          // Limit concurrent loading (ลด request พร้อมกัน)
+          maxLoadingDelay: 4,               // Max delay before loading
 
           // Performance & Fast Start
           startLevel: -1,                   // Auto-select quality
