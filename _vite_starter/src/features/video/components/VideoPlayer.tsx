@@ -60,6 +60,7 @@ interface VideoPlayerProps {
   streamToken?: string
   autoPlay?: boolean
   subtitles?: SubtitleOption[]
+  isMobile?: boolean
   onPlay?: () => void
   onPause?: () => void
   onEnded?: () => void
@@ -72,6 +73,7 @@ export function VideoPlayer({
   streamToken,
   autoPlay = false,
   subtitles = [],
+  isMobile = false,
   onPlay,
   onPause,
   onEnded,
@@ -173,44 +175,64 @@ export function VideoPlayer({
           // Build quality options - sort by height descending
           const sortedLevels = [...data.levels].sort((a, b) => b.height - a.height)
 
-          // Add quality control button with selector
-          art.controls.add({
-            name: 'quality',
-            position: 'right',
-            index: 10,
-            html: '<span class="art-quality-label">AUTO</span>',
-            style: {
-              fontSize: '12px',
-              padding: '0 8px',
-              fontWeight: 'bold',
-            },
-            selector: [
-              { html: 'อัตโนมัติ', value: -1, default: true },
-              ...sortedLevels.map((level) => ({
-                html: `${level.height}p`,
-                value: data.levels.findIndex(l => l.height === level.height),
-              })),
-            ],
-            onSelect: function (item) {
-              const selected = item as { html: string; value: number }
-              console.log('[Quality] Selected:', selected.html, 'level:', selected.value)
-              hls.currentLevel = selected.value
-              isAutoMode = selected.value === -1
-              // Update button label
-              const labelEl = art.template.$player.querySelector('.art-quality-label')
-              if (labelEl) {
-                if (isAutoMode) {
-                  const currentLevel = hls.levels[hls.currentLevel]
-                  labelEl.textContent = currentLevel ? `AUTO ${currentLevel.height}p` : 'AUTO'
-                } else {
-                  labelEl.textContent = selected.html
-                }
-              }
-              return selected.html
-            },
-          })
+          const qualitySelector = [
+            { html: 'อัตโนมัติ', value: -1, default: true },
+            ...sortedLevels.map((level) => ({
+              html: `${level.height}p`,
+              value: data.levels.findIndex(l => l.height === level.height),
+            })),
+          ]
 
-          console.log('[ArtPlayer] Quality control added:', data.levels.map(l => `${l.height}p`))
+          const onQualitySelect = function (item: { html: string; value: number }) {
+            console.log('[Quality] Selected:', item.html, 'level:', item.value)
+            hls.currentLevel = item.value
+            isAutoMode = item.value === -1
+            // Update button label (only for controls mode)
+            const labelEl = art.template.$player.querySelector('.art-quality-label')
+            if (labelEl) {
+              if (isAutoMode) {
+                const currentLevel = hls.levels[hls.currentLevel]
+                labelEl.textContent = currentLevel ? `AUTO ${currentLevel.height}p` : 'AUTO'
+              } else {
+                labelEl.textContent = item.html
+              }
+            }
+            return item.html
+          }
+
+          if (isMobile) {
+            // Mobile: เพิ่มใน Settings menu (เฟือง)
+            art.setting.add({
+              name: 'quality',
+              html: 'คุณภาพวิดีโอ',
+              icon: '<svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>',
+              selector: qualitySelector,
+              onSelect: function (item) {
+                return onQualitySelect(item as unknown as { html: string; value: number })
+              },
+            })
+            console.log('[ArtPlayer] Quality added to settings (mobile)')
+          } else {
+            // Desktop: เพิ่มเป็น control button
+            art.controls.add({
+              name: 'quality',
+              position: 'right',
+              index: 10,
+              html: '<span class="art-quality-label">AUTO</span>',
+              style: {
+                fontSize: '12px',
+                padding: '0 8px',
+                fontWeight: 'bold',
+              },
+              selector: qualitySelector,
+              onSelect: function (item) {
+                return onQualitySelect(item as { html: string; value: number })
+              },
+            })
+            console.log('[ArtPlayer] Quality control added (desktop)')
+          }
+
+          console.log('[ArtPlayer] Quality options:', data.levels.map(l => `${l.height}p`))
 
         })
 
@@ -354,7 +376,7 @@ export function VideoPlayer({
           console.log('[ArtPlayer] Subtitle enabled')
         }
 
-        // Add subtitle control button (only if subtitles exist)
+        // Add subtitle control (only if subtitles exist)
         if (subtitles.length > 0 && plugin) {
           const getSubtitleLabel = (lang: string | null) => {
             if (!lang) return 'ปิด'
@@ -362,53 +384,74 @@ export function VideoPlayer({
             return sub?.name || lang
           }
 
-          art.controls.add({
-            name: 'subtitle',
-            position: 'right',
-            index: 20, // After quality selector
-            html: `<span class="art-subtitle-label">${getSubtitleLabel(activeSubtitleLang)}</span>`,
-            style: {
-              fontSize: '12px',
-              padding: '0 8px',
-              fontWeight: 'bold',
-            },
-            selector: [
-              { html: 'ปิด', value: '', default: !activeSubtitleLang },
-              ...subtitles.map(sub => ({
-                html: sub.name,
-                value: sub.language,
-                default: sub.language === activeSubtitleLang,
-              })),
-            ],
-            onSelect: function (item) {
-              const selected = item as { html: string; value: string }
-              console.log('[Subtitle] Selected:', selected.html, 'lang:', selected.value)
+          const subtitleSelector = [
+            { html: 'ปิด', value: '', default: !activeSubtitleLang },
+            ...subtitles.map(sub => ({
+              html: sub.name,
+              value: sub.language,
+              default: sub.language === activeSubtitleLang,
+            })),
+          ]
 
-              // Update label
-              const labelEl = art.template.$player.querySelector('.art-subtitle-label')
-              if (labelEl) {
-                labelEl.textContent = selected.html
+          const onSubtitleSelect = function (item: { html: string; value: string }) {
+            console.log('[Subtitle] Selected:', item.html, 'lang:', item.value)
+
+            // Update label (only for controls mode)
+            const labelEl = art.template.$player.querySelector('.art-subtitle-label')
+            if (labelEl) {
+              labelEl.textContent = item.html
+            }
+
+            if (item.value === '') {
+              // Turn off subtitles
+              plugin.tracks([])
+              if (art.subtitle) {
+                art.subtitle.show = false
               }
-
-              if (selected.value === '') {
-                // Turn off subtitles
-                plugin.tracks([])
-                if (art.subtitle) {
-                  art.subtitle.show = false
-                }
-                activeSubtitleLang = null
-              } else {
-                // Show selected subtitle
-                plugin.tracks([selected.value])
-                if (art.subtitle) {
-                  art.subtitle.show = true
-                }
-                activeSubtitleLang = selected.value
+              activeSubtitleLang = null
+            } else {
+              // Show selected subtitle
+              plugin.tracks([item.value])
+              if (art.subtitle) {
+                art.subtitle.show = true
               }
+              activeSubtitleLang = item.value
+            }
 
-              return selected.html
-            },
-          })
+            return item.html
+          }
+
+          if (isMobile) {
+            // Mobile: เพิ่มใน Settings menu (เฟือง)
+            art.setting.add({
+              name: 'subtitle',
+              html: 'คำบรรยาย',
+              icon: '<svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor"><path d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 14H4V6h16v12zM6 10h2v2H6zm0 4h8v2H6zm10 0h2v2h-2zm-6-4h8v2h-8z"/></svg>',
+              selector: subtitleSelector,
+              onSelect: function (item) {
+                return onSubtitleSelect(item as unknown as { html: string; value: string })
+              },
+            })
+            console.log('[ArtPlayer] Subtitle added to settings (mobile)')
+          } else {
+            // Desktop: เพิ่มเป็น control button
+            art.controls.add({
+              name: 'subtitle',
+              position: 'right',
+              index: 20,
+              html: `<span class="art-subtitle-label">${getSubtitleLabel(activeSubtitleLang)}</span>`,
+              style: {
+                fontSize: '12px',
+                padding: '0 8px',
+                fontWeight: 'bold',
+              },
+              selector: subtitleSelector,
+              onSelect: function (item) {
+                return onSubtitleSelect(item as { html: string; value: string })
+              },
+            })
+            console.log('[ArtPlayer] Subtitle control added (desktop)')
+          }
 
           console.log('[ArtPlayer] Subtitle control added:', subtitles.map(s => s.name))
         }
@@ -435,7 +478,7 @@ export function VideoPlayer({
       }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [src, poster, streamToken, autoPlay, subtitleConfig, defaultSubtitle, onPlay, onPause, onEnded, onTimeUpdate])
+  }, [src, poster, streamToken, autoPlay, subtitleConfig, defaultSubtitle, isMobile, onPlay, onPause, onEnded, onTimeUpdate])
 
   return (
     <div

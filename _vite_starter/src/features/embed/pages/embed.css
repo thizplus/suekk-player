@@ -328,3 +328,116 @@
   bottom: auto;
   right: auto;
 }
+
+/* ═══════════════════════════════════════════════════════════════════
+   ArtPlayer Mobile Optimizations
+   ═══════════════════════════════════════════════════════════════════ */
+
+/* Mobile: ปรับ control bar ให้ compact */
+@media (max-width: 640px) {
+  /* ลดขนาด padding ของ controls */
+  .art-controls .art-control {
+    padding: 0 4px !important;
+  }
+
+  /* ลดขนาด icon */
+  .art-controls .art-control svg {
+    width: 20px !important;
+    height: 20px !important;
+  }
+
+  /* ลดขนาด font ของ labels */
+  .art-quality-label,
+  .art-subtitle-label {
+    font-size: 10px !important;
+    padding: 0 4px !important;
+  }
+
+  /* ซ่อน skip buttons บน mobile เล็กมาก */
+  .art-control-skip-back,
+  .art-control-skip-forward {
+    display: none !important;
+  }
+
+  /* ปรับ progress bar ให้สูงขึ้นสำหรับ touch */
+  .art-progress {
+    height: 4px !important;
+  }
+
+  .art-progress:hover,
+  .art-progress:active {
+    height: 8px !important;
+  }
+
+  /* ปรับ volume ให้เล็กลง */
+  .art-volume-panel {
+    width: 60px !important;
+  }
+}
+
+/* Extra small screens (< 400px) */
+@media (max-width: 400px) {
+  /* ซ่อน volume slider บน mobile เล็กมาก */
+  .art-volume-panel {
+    display: none !important;
+  }
+
+  /* ลดขนาด controls อีก */
+  .art-controls .art-control {
+    padding: 0 2px !important;
+  }
+
+  .art-quality-label,
+  .art-subtitle-label {
+    font-size: 9px !important;
+    padding: 0 3px !important;
+  }
+}
+
+/* Touch-friendly: เพิ่ม hit area สำหรับ controls */
+@media (hover: none) and (pointer: coarse) {
+  .art-controls .art-control {
+    min-width: 36px;
+    min-height: 36px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  /* Progress bar touch area */
+  .art-progress {
+    padding: 8px 0 !important;
+    margin: -8px 0 !important;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   Mobile Controls Priority - ซ่อน controls ตามลำดับความสำคัญ
+   ═══════════════════════════════════════════════════════════════════ */
+
+/* Extra small (< 480px): ซ่อน settings และ volume */
+@media (max-width: 480px) {
+  .art-control-setting {
+    display: none !important;
+  }
+
+  .art-control-volume {
+    display: none !important;
+  }
+}
+
+/* Very small (< 360px): เหลือแค่ essential */
+@media (max-width: 360px) {
+  /* ซ่อน quality (ใช้ auto แทน) */
+  .art-control-quality {
+    display: none !important;
+  }
+
+  /* ลด subtitle label width */
+  .art-subtitle-label {
+    max-width: 50px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
