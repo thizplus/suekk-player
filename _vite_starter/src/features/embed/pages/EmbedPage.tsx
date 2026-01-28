@@ -298,7 +298,6 @@ export function EmbedPage() {
         poster={thumbnailBlobUrl}
         streamToken={streamAccess?.token}
         subtitles={subtitleOptions}
-        isMobile={isMobile}
       />
 
       {/* Watermark Overlay */}

@@ -412,32 +412,24 @@
 }
 
 /* ═══════════════════════════════════════════════════════════════════
-   Mobile Controls Priority - ซ่อน controls ตามลำดับความสำคัญ
+   Mobile Controls - ปรับขนาดและซ่อนบางตัวบนหน้าจอเล็ก
    ═══════════════════════════════════════════════════════════════════ */
 
-/* Extra small (< 480px): ซ่อน settings และ volume */
+/* Small screens (< 480px): ซ่อน volume slider */
 @media (max-width: 480px) {
-  .art-control-setting {
-    display: none !important;
-  }
-
   .art-control-volume {
     display: none !important;
   }
 }
 
-/* Very small (< 360px): เหลือแค่ essential */
+/* Very small (< 360px): ลดขนาด labels */
 @media (max-width: 360px) {
-  /* ซ่อน quality (ใช้ auto แทน) */
-  .art-control-quality {
-    display: none !important;
-  }
-
-  /* ลด subtitle label width */
+  .art-quality-label,
   .art-subtitle-label {
-    max-width: 50px;
+    max-width: 45px;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    font-size: 10px !important;
   }
 }

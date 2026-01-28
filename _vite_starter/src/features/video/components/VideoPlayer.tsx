@@ -60,7 +60,6 @@ interface VideoPlayerProps {
   streamToken?: string
   autoPlay?: boolean
   subtitles?: SubtitleOption[]
-  isMobile?: boolean
   onPlay?: () => void
   onPause?: () => void
   onEnded?: () => void
@@ -73,7 +72,6 @@ export function VideoPlayer({
   streamToken,
   autoPlay = false,
   subtitles = [],
-  isMobile = false,
   onPlay,
   onPause,
   onEnded,
@@ -200,37 +198,23 @@ export function VideoPlayer({
             return item.html
           }
 
-          if (isMobile) {
-            // Mobile: เพิ่มใน Settings menu (เฟือง)
-            art.setting.add({
-              name: 'quality',
-              html: 'คุณภาพวิดีโอ',
-              icon: '<svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>',
-              selector: qualitySelector,
-              onSelect: function (item) {
-                return onQualitySelect(item as unknown as { html: string; value: number })
-              },
-            })
-            console.log('[ArtPlayer] Quality added to settings (mobile)')
-          } else {
-            // Desktop: เพิ่มเป็น control button
-            art.controls.add({
-              name: 'quality',
-              position: 'right',
-              index: 10,
-              html: '<span class="art-quality-label">AUTO</span>',
-              style: {
-                fontSize: '12px',
-                padding: '0 8px',
-                fontWeight: 'bold',
-              },
-              selector: qualitySelector,
-              onSelect: function (item) {
-                return onQualitySelect(item as { html: string; value: number })
-              },
-            })
-            console.log('[ArtPlayer] Quality control added (desktop)')
-          }
+          // Add quality control button (both desktop and mobile)
+          art.controls.add({
+            name: 'quality',
+            position: 'right',
+            index: 10,
+            html: '<span class="art-quality-label">AUTO</span>',
+            style: {
+              fontSize: '12px',
+              padding: '0 8px',
+              fontWeight: 'bold',
+            },
+            selector: qualitySelector,
+            onSelect: function (item) {
+              return onQualitySelect(item as { html: string; value: number })
+            },
+          })
+          console.log('[ArtPlayer] Quality control added')
 
           console.log('[ArtPlayer] Quality options:', data.levels.map(l => `${l.height}p`))
 
@@ -421,37 +405,22 @@ export function VideoPlayer({
             return item.html
           }
 
-          if (isMobile) {
-            // Mobile: เพิ่มใน Settings menu (เฟือง)
-            art.setting.add({
-              name: 'subtitle',
-              html: 'คำบรรยาย',
-              icon: '<svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor"><path d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 14H4V6h16v12zM6 10h2v2H6zm0 4h8v2H6zm10 0h2v2h-2zm-6-4h8v2h-8z"/></svg>',
-              selector: subtitleSelector,
-              onSelect: function (item) {
-                return onSubtitleSelect(item as unknown as { html: string; value: string })
-              },
-            })
-            console.log('[ArtPlayer] Subtitle added to settings (mobile)')
-          } else {
-            // Desktop: เพิ่มเป็น control button
-            art.controls.add({
-              name: 'subtitle',
-              position: 'right',
-              index: 20,
-              html: `<span class="art-subtitle-label">${getSubtitleLabel(activeSubtitleLang)}</span>`,
-              style: {
-                fontSize: '12px',
-                padding: '0 8px',
-                fontWeight: 'bold',
-              },
-              selector: subtitleSelector,
-              onSelect: function (item) {
-                return onSubtitleSelect(item as { html: string; value: string })
-              },
-            })
-            console.log('[ArtPlayer] Subtitle control added (desktop)')
-          }
+          // Add subtitle control button (both desktop and mobile)
+          art.controls.add({
+            name: 'subtitle',
+            position: 'right',
+            index: 20,
+            html: `<span class="art-subtitle-label">${getSubtitleLabel(activeSubtitleLang)}</span>`,
+            style: {
+              fontSize: '12px',
+              padding: '0 8px',
+              fontWeight: 'bold',
+            },
+            selector: subtitleSelector,
+            onSelect: function (item) {
+              return onSubtitleSelect(item as { html: string; value: string })
+            },
+          })
 
           console.log('[ArtPlayer] Subtitle control added:', subtitles.map(s => s.name))
         }
@@ -478,7 +447,7 @@ export function VideoPlayer({
       }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [src, poster, streamToken, autoPlay, subtitleConfig, defaultSubtitle, isMobile, onPlay, onPause, onEnded, onTimeUpdate])
+  }, [src, poster, streamToken, autoPlay, subtitleConfig, defaultSubtitle, onPlay, onPause, onEnded, onTimeUpdate])
 
   return (
     <div
