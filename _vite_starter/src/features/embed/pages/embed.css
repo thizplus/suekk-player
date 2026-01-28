@@ -403,12 +403,6 @@
     align-items: center;
     justify-content: center;
   }
-
-  /* Progress bar touch area */
-  .art-progress {
-    padding: 8px 0 !important;
-    margin: -8px 0 !important;
-  }
 }
 
 /* ═══════════════════════════════════════════════════════════════════
