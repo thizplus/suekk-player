@@ -11,6 +11,9 @@ WORKDIR /app
 # Install build dependencies (NO FFmpeg!)
 RUN apk add --no-cache git ca-certificates
 
+# Use Go module proxy for faster downloads
+ENV GOPROXY=https://proxy.golang.org,direct
+
 COPY go.mod go.sum ./
 RUN go mod download
 
