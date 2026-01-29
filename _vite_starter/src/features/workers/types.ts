@@ -17,7 +17,20 @@ export interface WorkerJob {
 export interface WorkerStats {
   total_processed: number
   total_failed: number
+  total_retries: number
   uptime_seconds: number
+  recent_jobs?: CompletedJob[]
+}
+
+export interface CompletedJob {
+  video_id: string
+  video_code: string
+  title: string
+  status: 'success' | 'failed'
+  duration_sec?: number
+  completed_at: string
+  error?: string
+  job_type?: string // สำหรับ subtitle: transcribe, translate
 }
 
 export interface WorkerConfig {

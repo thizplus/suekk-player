@@ -6,6 +6,10 @@ import {
   Pause,
   ChevronDown,
   ChevronRight,
+  Clock,
+  CheckCircle2,
+  XCircle,
+  RefreshCw,
 } from 'lucide-react'
 import { formatDistanceToNow } from 'date-fns'
 import { th } from 'date-fns/locale'
@@ -48,6 +52,13 @@ export function WorkerTable({ workers }: WorkerTableProps) {
 
   const formatStartedAt = (startedAt: string) => {
     return formatDistanceToNow(new Date(startedAt), { addSuffix: true, locale: th })
+  }
+
+  const formatDuration = (seconds: number) => {
+    if (seconds < 60) return `${seconds.toFixed(1)}s`
+    const mins = Math.floor(seconds / 60)
+    const secs = Math.floor(seconds % 60)
+    return `${mins}m ${secs}s`
   }
 
   const statusConfig = {
@@ -153,10 +164,23 @@ export function WorkerTable({ workers }: WorkerTableProps) {
                     </span>
                   </TableCell>
                   <TableCell>
-                    <div className="text-sm text-muted-foreground">
-                      <span className="text-status-success">✓{worker.stats.total_processed}</span>
-                      {' '}
-                      <span className="text-status-danger">✗{worker.stats.total_failed}</span>
+                    <div className="text-sm flex items-center gap-2">
+                      <span className="text-status-success flex items-center gap-0.5">
+                        <CheckCircle2 className="h-3 w-3" />
+                        {worker.stats.total_processed}
+                      </span>
+                      {worker.stats.total_retries > 0 && (
+                        <span className="text-status-pending flex items-center gap-0.5">
+                          <RefreshCw className="h-3 w-3" />
+                          {worker.stats.total_retries}
+                        </span>
+                      )}
+                      {worker.stats.total_failed > 0 && (
+                        <span className="text-status-danger flex items-center gap-0.5">
+                          <XCircle className="h-3 w-3" />
+                          {worker.stats.total_failed}
+                        </span>
+                      )}
                     </div>
                   </TableCell>
                 </TableRow>
@@ -203,19 +227,68 @@ export function WorkerTable({ workers }: WorkerTableProps) {
 
                         {/* Current Job */}
                         {worker.current_jobs.length > 0 && (
-                          <div className="border rounded-lg p-3 space-y-2">
+                          <div className="border rounded-lg p-3 space-y-2 bg-background">
                             <div className="flex items-center justify-between">
-                              <span className="text-sm font-medium">
-                                กำลังประมวลผล: {worker.current_jobs[0].title}
-                              </span>
+                              <div className="flex items-center gap-2">
+                                <Loader2 className="h-4 w-4 animate-spin text-primary" />
+                                <span className="text-sm font-medium">
+                                  กำลังทำ: <span className="font-mono">{worker.current_jobs[0].video_code}</span>
+                                </span>
+                                <Badge variant="outline" className="text-xs">
+                                  {worker.current_jobs[0].stage}
+                                </Badge>
+                              </div>
                               <span className="text-sm font-semibold tabular-nums">
                                 {Math.round(worker.current_jobs[0].progress)}%
                               </span>
                             </div>
                             <Progress value={worker.current_jobs[0].progress} className="h-1.5" />
-                            <p className="text-xs text-muted-foreground">
-                              {worker.current_jobs[0].stage} • ETA: {worker.current_jobs[0].eta}
-                            </p>
+                            <div className="flex items-center justify-between text-xs text-muted-foreground">
+                              <span className="flex items-center gap-1">
+                                <Clock className="h-3 w-3" />
+                                เริ่ม {formatStartedAt(worker.current_jobs[0].started_at)}
+                              </span>
+                              {worker.current_jobs[0].eta && (
+                                <span>ETA: {worker.current_jobs[0].eta}</span>
+                              )}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Recent Jobs */}
+                        {worker.stats.recent_jobs && worker.stats.recent_jobs.length > 0 && (
+                          <div className="border rounded-lg p-3 space-y-2">
+                            <p className="text-sm font-medium text-muted-foreground">งานล่าสุด:</p>
+                            <div className="space-y-1.5">
+                              {worker.stats.recent_jobs.slice(0, 5).map((job, i) => (
+                                <div key={i} className="flex items-center justify-between text-sm">
+                                  <div className="flex items-center gap-2">
+                                    {job.status === 'success' ? (
+                                      <CheckCircle2 className="h-3.5 w-3.5 text-status-success" />
+                                    ) : (
+                                      <XCircle className="h-3.5 w-3.5 text-status-danger" />
+                                    )}
+                                    <span className="font-mono">{job.video_code}</span>
+                                    {job.job_type && (
+                                      <Badge variant="outline" className="text-xs py-0">
+                                        {job.job_type}
+                                      </Badge>
+                                    )}
+                                  </div>
+                                  <div className="flex items-center gap-3 text-muted-foreground text-xs">
+                                    {job.status === 'success' && job.duration_sec && (
+                                      <span>{formatDuration(job.duration_sec)}</span>
+                                    )}
+                                    {job.status === 'failed' && job.error && (
+                                      <span className="text-status-danger max-w-[200px] truncate" title={job.error}>
+                                        {job.error}
+                                      </span>
+                                    )}
+                                    <span>{formatStartedAt(job.completed_at)}</span>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
                           </div>
                         )}
                       </div>
