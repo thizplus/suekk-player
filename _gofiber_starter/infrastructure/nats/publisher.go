@@ -148,9 +148,23 @@ type WorkerJob struct {
 
 // WorkerStats สถิติของ Worker
 type WorkerStats struct {
-	TotalProcessed int   `json:"total_processed"`
-	TotalFailed    int   `json:"total_failed"`
-	UptimeSeconds  int64 `json:"uptime_seconds"`
+	TotalProcessed int            `json:"total_processed"`
+	TotalFailed    int            `json:"total_failed"`
+	TotalRetries   int            `json:"total_retries"`
+	UptimeSeconds  int64          `json:"uptime_seconds"`
+	RecentJobs     []CompletedJob `json:"recent_jobs,omitempty"`
+}
+
+// CompletedJob งานที่เสร็จแล้ว (สำหรับ history)
+type CompletedJob struct {
+	VideoID     string  `json:"video_id"`
+	VideoCode   string  `json:"video_code"`
+	Title       string  `json:"title"`
+	Status      string  `json:"status"`                 // success, failed
+	DurationSec float64 `json:"duration_sec,omitempty"` // เวลาที่ใช้ประมวลผล
+	CompletedAt string  `json:"completed_at"`
+	Error       string  `json:"error,omitempty"`
+	JobType     string  `json:"job_type,omitempty"` // สำหรับ subtitle: transcribe, translate
 }
 
 // WorkerConfig การตั้งค่าของ Worker
