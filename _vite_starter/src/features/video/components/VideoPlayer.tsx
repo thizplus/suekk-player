@@ -96,8 +96,21 @@ export function VideoPlayer({
   // Store art reference for callbacks (will be set after player creation)
   const artInstanceRef = useRef<Artplayer | null>(null)
 
+  // Track if initial HLS loading started (ป้องกัน re-create player เมื่อ subtitles โหลดเสร็จ)
+  const initializedRef = useRef(false)
+  const prevSrcRef = useRef<string | null>(null)
+
   useEffect(() => {
     if (!containerRef.current || !src) return
+
+    // ถ้า src ไม่เปลี่ยน และ player สร้างแล้ว → ไม่ต้อง recreate
+    // เพราะ subtitles สามารถโหลดแยกได้ทีหลัง
+    if (initializedRef.current && prevSrcRef.current === src && artRef.current) {
+      console.log('[VideoPlayer] Skipping recreation - src unchanged, player exists')
+      return
+    }
+
+    prevSrcRef.current = src
 
     // Store HLS instance
     let hlsInstance: HlsInstance | null = null
@@ -329,6 +342,7 @@ export function VideoPlayer({
 
     artRef.current = art
     artInstanceRef.current = art // Set ref for settings callbacks
+    initializedRef.current = true // Mark as initialized to prevent recreation
 
     // Debug subtitle plugin
     if (subtitles.length > 0) {
@@ -445,9 +459,12 @@ export function VideoPlayer({
         artRef.current.destroy(false)
         artRef.current = null
       }
+      initializedRef.current = false
     }
+  // Note: subtitleConfig/defaultSubtitle removed from deps to prevent player recreation
+  // when subtitle blobs finish loading. Subtitles are loaded on first render only.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [src, poster, streamToken, autoPlay, subtitleConfig, defaultSubtitle, onPlay, onPause, onEnded, onTimeUpdate])
+  }, [src, streamToken])
 
   return (
     <div

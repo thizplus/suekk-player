@@ -49,19 +49,31 @@ export function EmbedPage() {
   // State สำหรับ subtitle blob URLs (เพราะต้อง fetch ด้วย token)
   const [subtitleBlobUrls, setSubtitleBlobUrls] = useState<Record<string, string>>({})
 
+  // Track when subtitle blobs are ready (to prevent player recreation)
+  const [subtitlesReady, setSubtitlesReady] = useState(false)
+
   // State สำหรับ thumbnail blob URL
   const [thumbnailBlobUrl, setThumbnailBlobUrl] = useState<string | undefined>()
 
   // Fetch subtitles ด้วย token แล้วสร้าง Blob URLs
+  // ต้องรอให้เสร็จก่อนแสดง player เพื่อไม่ให้ player ถูก recreate
   useEffect(() => {
-    if (!subtitleData?.subtitles || !streamAccess?.token) return
+    // รอจนกว่า streamAccess จะพร้อม
+    if (!streamAccess?.token) return
 
-    const readySubtitles = subtitleData.subtitles.filter(
+    // ถ้าไม่มี subtitle data หรือไม่มี ready subtitles → พร้อมแสดง player เลย
+    const readySubtitles = subtitleData?.subtitles?.filter(
       sub => sub.status === 'ready' && sub.srtPath
-    )
+    ) || []
 
-    if (readySubtitles.length === 0) return
+    if (readySubtitles.length === 0) {
+      console.log('[Subtitle] No subtitles available, marking ready')
+      setSubtitlesReady(true)
+      return
+    }
 
+    // มี subtitles → ต้อง fetch blob ก่อน
+    console.log(`[Subtitle] Fetching ${readySubtitles.length} subtitle(s)...`)
     const blobUrls: Record<string, string> = {}
     const fetchPromises = readySubtitles.map(async (sub) => {
       try {
@@ -88,6 +100,8 @@ export function EmbedPage() {
 
     Promise.all(fetchPromises).then(() => {
       setSubtitleBlobUrls(blobUrls)
+      setSubtitlesReady(true) // Mark ready AFTER blobs are fetched
+      console.log('[Subtitle] All subtitles ready')
     })
 
     // Cleanup blob URLs on unmount
@@ -200,8 +214,9 @@ export function EmbedPage() {
     setPhase('main')
   }, [])
 
-  // Loading state
-  if (phase === 'loading' || videoLoading || configLoading || streamLoading) {
+  // Loading state - รอให้ subtitle blobs พร้อมก่อนแสดง player
+  // เพื่อป้องกัน player ถูก recreate เมื่อ subtitles โหลดเสร็จ (ทำให้ m3u8 ถูก cancel)
+  if (phase === 'loading' || videoLoading || configLoading || streamLoading || !subtitlesReady) {
     return (
       <div className="embed-container embed-center">
         <Loader2 className="h-8 w-8 animate-spin text-white" />
