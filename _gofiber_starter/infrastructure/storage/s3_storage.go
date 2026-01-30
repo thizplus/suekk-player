@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"net/http"
 	"net/url"
 	"strings"
 	"time"
@@ -36,11 +37,20 @@ type S3StorageConfig struct {
 
 // NewS3Storage สร้าง S3Storage instance
 func NewS3Storage(config S3StorageConfig) (ports.StoragePort, error) {
+	// สร้าง custom transport สำหรับ connection pool ที่ใหญ่ขึ้น
+	// รองรับ cache warming หลาย concurrent requests
+	transport := &http.Transport{
+		MaxIdleConns:        100, // idle connections ทั้งหมด
+		MaxIdleConnsPerHost: 50,  // idle connections ต่อ host (e2)
+		MaxConnsPerHost:     100, // connections ทั้งหมดต่อ host
+	}
+
 	// สร้าง MinIO client
 	client, err := minio.New(config.Endpoint, &minio.Options{
-		Creds:  credentials.NewStaticV4(config.AccessKey, config.SecretKey, ""),
-		Secure: config.UseSSL,
-		Region: config.Region,
+		Creds:     credentials.NewStaticV4(config.AccessKey, config.SecretKey, ""),
+		Secure:    config.UseSSL,
+		Region:    config.Region,
+		Transport: transport,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to create S3 client: %w", err)
