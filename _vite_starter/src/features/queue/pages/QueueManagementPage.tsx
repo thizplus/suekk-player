@@ -392,7 +392,7 @@ function TranscodeTab() {
                         <Tooltip>
                           <TooltipTrigger asChild>
                             <Button variant="ghost" size="sm" asChild>
-                              <Link to={`/videos?search=${item.code}`}>
+                              <Link to={`/videos?code=${item.code}`}>
                                 <ExternalLink className="h-4 w-4" />
                               </Link>
                             </Button>
@@ -584,7 +584,7 @@ function SubtitleTab() {
                       <Tooltip>
                         <TooltipTrigger asChild>
                           <Button variant="ghost" size="sm" asChild>
-                            <Link to={`/videos?search=${item.videoCode}`}>
+                            <Link to={`/videos?code=${item.videoCode}`}>
                               <ExternalLink className="h-4 w-4" />
                             </Link>
                           </Button>
@@ -787,7 +787,7 @@ function WarmCacheTab() {
                         <Tooltip>
                           <TooltipTrigger asChild>
                             <Button variant="ghost" size="sm" asChild>
-                              <Link to={`/videos?search=${item.code}`}>
+                              <Link to={`/videos?code=${item.code}`}>
                                 <ExternalLink className="h-4 w-4" />
                               </Link>
                             </Button>

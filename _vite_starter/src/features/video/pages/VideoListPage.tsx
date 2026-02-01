@@ -1,4 +1,5 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { Plus, Eye, Trash2, RefreshCw, Copy, MoreVertical, Loader2, Video, Clock, Files, HardDrive, Languages, CheckCircle2, AlertCircle, Sparkles, Folder } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -37,7 +38,7 @@ import {
   EmptyDescription,
   EmptyContent,
 } from '@/components/ui/empty'
-import { useVideos, useDeleteVideo, useQueueTranscoding } from '../hooks'
+import { useVideos, useDeleteVideo, useQueueTranscoding, useVideoByCode } from '../hooks'
 import { VideoUploadDialog } from '../components/VideoUploadDialog'
 import { VideoBatchUploadDialog } from '../components/VideoBatchUploadDialog'
 import { VideoDetailSheet } from '../components/VideoDetailSheet'
@@ -54,6 +55,7 @@ interface DeleteTarget {
 }
 
 export function VideoListPage() {
+  const [searchParams, setSearchParams] = useSearchParams()
   const [filters, setFilters] = useState<VideoFilterParams>({
     page: 1,
     limit: 15,
@@ -64,6 +66,19 @@ export function VideoListPage() {
   const [batchUploadDialogOpen, setBatchUploadDialogOpen] = useState(false)
   const [selectedVideoId, setSelectedVideoId] = useState<string | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<DeleteTarget | null>(null)
+
+  // รองรับเปิด detail sheet จาก URL param ?code=xxx
+  const codeParam = searchParams.get('code')
+  const { data: videoByCode } = useVideoByCode(codeParam || '')
+
+  // เมื่อ fetch video by code สำเร็จ → เปิด sheet
+  useEffect(() => {
+    if (codeParam && videoByCode?.id) {
+      setSelectedVideoId(videoByCode.id)
+      // ลบ param ออกจาก URL เพื่อไม่ให้ refresh แล้วเปิดซ้ำ
+      setSearchParams({}, { replace: true })
+    }
+  }, [codeParam, videoByCode?.id, setSearchParams])
 
   const { data, isLoading, error } = useVideos(filters)
   const deleteVideo = useDeleteVideo()
