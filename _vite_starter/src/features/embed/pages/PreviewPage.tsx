@@ -24,7 +24,7 @@ export function PreviewPage() {
   })
 
   // ดึง subtitles สำหรับวิดีโอ
-  const { data: subtitleData, isLoading: subtitleLoading } = useSubtitlesByCode(code || '', {
+  const { data: subtitleData } = useSubtitlesByCode(code || '', {
     enabled: !!code && !!video && video.status === 'ready',
   })
 
@@ -40,8 +40,8 @@ export function PreviewPage() {
   // Fetch subtitles ด้วย token แล้วสร้าง Blob URLs
   // ต้องรอให้เสร็จก่อนแสดง player เพื่อไม่ให้ player ถูก recreate
   useEffect(() => {
-    // รอจนกว่า streamAccess และ subtitle query จะพร้อม
-    if (!streamAccess?.token || subtitleLoading) return
+    // รอจนกว่า streamAccess จะพร้อม
+    if (!streamAccess?.token) return
 
     // ถ้าไม่มี subtitle data หรือไม่มี ready subtitles → พร้อมแสดง player เลย
     const readySubtitles = subtitleData?.subtitles?.filter(
@@ -49,11 +49,13 @@ export function PreviewPage() {
     ) || []
 
     if (readySubtitles.length === 0) {
+      console.log('[Subtitle] No subtitles available, marking ready')
       setSubtitlesReady(true)
       return
     }
 
     // มี subtitles → ต้อง fetch blob ก่อน
+    console.log(`[Subtitle] Fetching ${readySubtitles.length} subtitle(s)...`)
     const blobUrls: Record<string, string> = {}
     const fetchPromises = readySubtitles.map(async (sub) => {
       try {
@@ -64,24 +66,30 @@ export function PreviewPage() {
           },
         })
 
-        if (!response.ok) return
+        if (!response.ok) {
+          console.error(`[Subtitle] Failed to fetch ${sub.language}:`, response.status)
+          return
+        }
 
         const blob = await response.blob()
-        blobUrls[sub.language] = URL.createObjectURL(blob)
-      } catch {
-        // Ignore errors
+        const blobUrl = URL.createObjectURL(blob)
+        blobUrls[sub.language] = blobUrl
+        console.log(`[Subtitle] Loaded ${sub.language}:`, blobUrl)
+      } catch (error) {
+        console.error(`[Subtitle] Error fetching ${sub.language}:`, error)
       }
     })
 
     Promise.all(fetchPromises).then(() => {
       setSubtitleBlobUrls(blobUrls)
       setSubtitlesReady(true) // Mark ready AFTER blobs are fetched
+      console.log('[Subtitle] All subtitles ready')
     })
 
     return () => {
       Object.values(blobUrls).forEach(url => URL.revokeObjectURL(url))
     }
-  }, [subtitleData, subtitleLoading, streamAccess?.token])
+  }, [subtitleData, streamAccess?.token])
 
   // Fetch thumbnail ด้วย token
   useEffect(() => {
@@ -128,7 +136,7 @@ export function PreviewPage() {
   }, [subtitleData, subtitleBlobUrls])
 
   // Loading state - รอให้ subtitle blobs พร้อมก่อนแสดง player
-  if (videoLoading || streamLoading || !subtitlesReady) {
+  if (videoLoading || streamLoading || !subtitlesReady || !streamAccess?.token) {
     return (
       <div className="embed-container embed-center">
         <Loader2 className="h-8 w-8 animate-spin text-white" />
@@ -159,12 +167,17 @@ export function PreviewPage() {
 
   const hlsUrl = `${APP_CONFIG.streamUrl}/${video.code}/master.m3u8`
 
+  // Debug logs
+  console.log('[PreviewPage] subtitleData:', subtitleData)
+  console.log('[PreviewPage] subtitleBlobUrls:', subtitleBlobUrls)
+  console.log('[PreviewPage] subtitleOptions:', subtitleOptions)
+
   return (
     <div className="embed-container">
       <VideoPlayer
         src={hlsUrl}
         poster={thumbnailBlobUrl}
-        streamToken={streamAccess.token}
+        streamToken={streamAccess?.token}
         subtitles={subtitleOptions}
       />
     </div>
