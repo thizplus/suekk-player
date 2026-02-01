@@ -1,3 +1,5 @@
+import type { Subtitle } from '@/features/subtitle/types'
+
 // Video Status enum ตรงกับ backend
 export type VideoStatus = 'pending' | 'queued' | 'processing' | 'ready' | 'failed' | 'dead_letter'
 
@@ -32,6 +34,7 @@ export interface Video {
   hasAudio?: boolean
   detectedLanguage?: string
   subtitleSummary?: SubtitleSummary  // สรุป subtitle
+  subtitles?: Subtitle[]             // Full subtitle list (สำหรับ embed/preview)
   createdAt: string
   updatedAt: string
 }

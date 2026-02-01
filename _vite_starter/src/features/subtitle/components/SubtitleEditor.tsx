@@ -29,6 +29,7 @@ interface SubtitleEditorProps {
   segments: SubtitleSegment[]
   currentTime: number // video time in seconds
   onSegmentChange: (index: number, text: string) => void
+  onTimecodeChange?: (index: number, startTime: string, endTime: string) => void
   onSeek: (seconds: number) => void
   onSave: () => void
   onReset: () => void
@@ -42,6 +43,7 @@ export function SubtitleEditor({
   segments,
   currentTime,
   onSegmentChange,
+  onTimecodeChange,
   onSeek,
   onSave,
   onReset,
@@ -209,23 +211,56 @@ export function SubtitleEditor({
                   key={segment.index}
                   ref={isActive ? activeRowRef : null}
                   className={cn(
-                    'flex items-center gap-2 px-3 py-1.5 transition-colors',
+                    'flex items-center gap-1.5 px-2 py-1.5 transition-colors',
                     isActive ? 'bg-primary/10' : 'hover:bg-muted/50'
                   )}
                 >
-                  {/* Timestamp */}
-                  <button
-                    onClick={() => onSeek(startSeconds)}
-                    className="shrink-0 font-mono text-[10px] text-muted-foreground hover:text-primary"
-                    title="ข้ามไป"
-                  >
-                    {segment.startTime.slice(0, 8)}
-                  </button>
+                  {/* Start Time - click to seek, editable */}
+                  {onTimecodeChange ? (
+                    <input
+                      type="text"
+                      value={segment.startTime.slice(0, 8)}
+                      onChange={(e) => {
+                        const newStart = e.target.value + segment.startTime.slice(8)
+                        onTimecodeChange(index, newStart, segment.endTime)
+                      }}
+                      onFocus={() => onSeek(startSeconds)}
+                      className="w-[62px] shrink-0 rounded border border-transparent bg-transparent px-1 font-mono text-[10px] text-muted-foreground hover:border-border focus:border-primary focus:outline-none"
+                      title="คลิกเพื่อข้ามไป"
+                    />
+                  ) : (
+                    <button
+                      onClick={() => onSeek(startSeconds)}
+                      className="shrink-0 font-mono text-[10px] text-muted-foreground hover:text-primary"
+                      title="ข้ามไป"
+                    >
+                      {segment.startTime.slice(0, 8)}
+                    </button>
+                  )}
 
-                  {/* Text input - border bottom only */}
+                  {/* End Time - click to seek, editable */}
+                  {onTimecodeChange && (
+                    <>
+                      <span className="text-[10px] text-muted-foreground/50">→</span>
+                      <input
+                        type="text"
+                        value={segment.endTime.slice(0, 8)}
+                        onChange={(e) => {
+                          const newEnd = e.target.value + segment.endTime.slice(8)
+                          onTimecodeChange(index, segment.startTime, newEnd)
+                        }}
+                        onFocus={() => onSeek(timestampToSeconds(segment.endTime))}
+                        className="w-[62px] shrink-0 rounded border border-transparent bg-transparent px-1 font-mono text-[10px] text-muted-foreground hover:border-border focus:border-primary focus:outline-none"
+                        title="คลิกเพื่อข้ามไป"
+                      />
+                    </>
+                  )}
+
+                  {/* Text input - border bottom only, click to seek */}
                   <Input
                     value={segment.text.replace(/\n/g, ' ')}
                     onChange={(e) => onSegmentChange(index, e.target.value)}
+                    onFocus={() => onSeek(startSeconds)}
                     className={cn(
                       'h-7 flex-1 rounded-none border-0 border-b bg-transparent px-1 text-sm shadow-none focus-visible:ring-0 focus-visible:border-primary',
                       isActive && 'border-primary font-medium'

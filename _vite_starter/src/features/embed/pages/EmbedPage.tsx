@@ -1,7 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useParams } from 'react-router-dom'
 import { useVideoByCode, VideoPlayer } from '@/features/video'
-import { useSubtitlesByCode } from '@/features/subtitle'
 import { Loader2 } from 'lucide-react'
 import { APP_CONFIG } from '@/constants/app-config'
 import { LANGUAGE_LABELS } from '@/constants/enums'
@@ -41,11 +40,6 @@ export function EmbedPage() {
     enabled: !!code && !!video && video.status === 'ready' && !!embedConfig?.isAllowed,
   })
 
-  // ดึง subtitles สำหรับวิดีโอ (ใช้ code แทน id เพราะเป็น public endpoint)
-  const { data: subtitleData } = useSubtitlesByCode(code || '', {
-    enabled: !!code && !!video && video.status === 'ready',
-  })
-
   // State สำหรับ subtitle blob URLs (เพราะต้อง fetch ด้วย token)
   const [subtitleBlobUrls, setSubtitleBlobUrls] = useState<Record<string, string>>({})
 
@@ -58,11 +52,11 @@ export function EmbedPage() {
   // Fetch subtitles ด้วย token แล้วสร้าง Blob URLs
   // ต้องรอให้เสร็จก่อนแสดง player เพื่อไม่ให้ player ถูก recreate
   useEffect(() => {
-    // รอจนกว่า streamAccess จะพร้อม
-    if (!streamAccess?.token) return
+    // รอจนกว่า video และ streamAccess จะพร้อม
+    if (!video || !streamAccess?.token) return
 
-    // ถ้าไม่มี subtitle data หรือไม่มี ready subtitles → พร้อมแสดง player เลย
-    const readySubtitles = subtitleData?.subtitles?.filter(
+    // ถ้าไม่มี subtitles หรือไม่มี ready subtitles → พร้อมแสดง player เลย
+    const readySubtitles = video.subtitles?.filter(
       sub => sub.status === 'ready' && sub.srtPath
     ) || []
 
@@ -110,7 +104,7 @@ export function EmbedPage() {
         URL.revokeObjectURL(url)
       })
     }
-  }, [subtitleData, streamAccess?.token])
+  }, [video, streamAccess?.token])
 
   // Fetch thumbnail ด้วย token แล้วสร้าง Blob URL
   useEffect(() => {
@@ -152,9 +146,9 @@ export function EmbedPage() {
 
   // Build subtitle options สำหรับ player (ใช้ Blob URLs)
   const subtitleOptions = useMemo(() => {
-    if (!subtitleData?.subtitles) return []
+    if (!video?.subtitles) return []
 
-    return subtitleData.subtitles
+    return video.subtitles
       .filter(sub => sub.status === 'ready' && sub.srtPath && subtitleBlobUrls[sub.language])
       .map(sub => ({
         url: subtitleBlobUrls[sub.language], // ใช้ Blob URL แทน
@@ -162,7 +156,7 @@ export function EmbedPage() {
         language: sub.language,
         default: sub.language === 'th', // ใช้ภาษาไทยเป็น default ถ้ามี
       }))
-  }, [subtitleData, subtitleBlobUrls])
+  }, [video?.subtitles, subtitleBlobUrls])
 
   const deviceType = getDeviceType()
   const isMobile = deviceType === 'mobile'

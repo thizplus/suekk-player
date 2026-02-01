@@ -1,7 +1,6 @@
 import { useState, useEffect, useMemo } from 'react'
 import { useParams } from 'react-router-dom'
 import { useVideoByCode, VideoPlayer } from '@/features/video'
-import { useSubtitlesByCode } from '@/features/subtitle'
 import { Loader2 } from 'lucide-react'
 import { APP_CONFIG } from '@/constants/app-config'
 import { LANGUAGE_LABELS } from '@/constants/enums'
@@ -15,16 +14,11 @@ import './embed.css'
 export function PreviewPage() {
   const { code } = useParams<{ code: string }>()
 
-  // ดึงข้อมูล video จาก API โดยใช้ code
+  // ดึงข้อมูล video จาก API โดยใช้ code (subtitles มาพร้อมกับ video แล้ว)
   const { data: video, isLoading: videoLoading, error: videoError } = useVideoByCode(code || '')
 
   // ดึง HLS access token (JWT) สำหรับเล่นวิดีโอ
   const { data: streamAccess, isLoading: streamLoading } = useStreamAccess(code || '', {
-    enabled: !!code && !!video && video.status === 'ready',
-  })
-
-  // ดึง subtitles สำหรับวิดีโอ
-  const { data: subtitleData } = useSubtitlesByCode(code || '', {
     enabled: !!code && !!video && video.status === 'ready',
   })
 
@@ -40,11 +34,11 @@ export function PreviewPage() {
   // Fetch subtitles ด้วย token แล้วสร้าง Blob URLs
   // ต้องรอให้เสร็จก่อนแสดง player เพื่อไม่ให้ player ถูก recreate
   useEffect(() => {
-    // รอจนกว่า streamAccess จะพร้อม
-    if (!streamAccess?.token) return
+    // รอจนกว่า video และ streamAccess จะพร้อม
+    if (!video || !streamAccess?.token) return
 
-    // ถ้าไม่มี subtitle data หรือไม่มี ready subtitles → พร้อมแสดง player เลย
-    const readySubtitles = subtitleData?.subtitles?.filter(
+    // ถ้าไม่มี subtitles หรือไม่มี ready subtitles → พร้อมแสดง player เลย
+    const readySubtitles = video.subtitles?.filter(
       sub => sub.status === 'ready' && sub.srtPath
     ) || []
 
@@ -89,7 +83,7 @@ export function PreviewPage() {
     return () => {
       Object.values(blobUrls).forEach(url => URL.revokeObjectURL(url))
     }
-  }, [subtitleData, streamAccess?.token])
+  }, [video, streamAccess?.token])
 
   // Fetch thumbnail ด้วย token
   useEffect(() => {
@@ -123,9 +117,9 @@ export function PreviewPage() {
 
   // Build subtitle options
   const subtitleOptions = useMemo(() => {
-    if (!subtitleData?.subtitles) return []
+    if (!video?.subtitles) return []
 
-    return subtitleData.subtitles
+    return video.subtitles
       .filter(sub => sub.status === 'ready' && sub.srtPath && subtitleBlobUrls[sub.language])
       .map(sub => ({
         url: subtitleBlobUrls[sub.language],
@@ -133,7 +127,7 @@ export function PreviewPage() {
         language: sub.language,
         default: sub.language === 'th',
       }))
-  }, [subtitleData, subtitleBlobUrls])
+  }, [video?.subtitles, subtitleBlobUrls])
 
   // Loading state - รอให้ subtitle blobs พร้อมก่อนแสดง player
   if (videoLoading || streamLoading || !subtitlesReady || !streamAccess?.token) {
@@ -168,7 +162,7 @@ export function PreviewPage() {
   const hlsUrl = `${APP_CONFIG.streamUrl}/${video.code}/master.m3u8`
 
   // Debug logs
-  console.log('[PreviewPage] subtitleData:', subtitleData)
+  console.log('[PreviewPage] video.subtitles:', video.subtitles)
   console.log('[PreviewPage] subtitleBlobUrls:', subtitleBlobUrls)
   console.log('[PreviewPage] subtitleOptions:', subtitleOptions)
 

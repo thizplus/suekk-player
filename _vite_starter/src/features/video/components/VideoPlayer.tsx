@@ -60,10 +60,14 @@ interface VideoPlayerProps {
   streamToken?: string
   autoPlay?: boolean
   subtitles?: SubtitleOption[]
+  /** ใช้ native subtitle แทน plugin (สำหรับ editor ที่ต้องการ dynamic update) */
+  dynamicSubtitle?: boolean
   onPlay?: () => void
   onPause?: () => void
   onEnded?: () => void
   onTimeUpdate?: (currentTime: number, duration: number) => void
+  /** Callback เมื่อ player พร้อมใช้งาน - ส่ง art instance มาให้ */
+  onReady?: (art: Artplayer) => void
 }
 
 export function VideoPlayer({
@@ -72,10 +76,12 @@ export function VideoPlayer({
   streamToken,
   autoPlay = false,
   subtitles = [],
+  dynamicSubtitle = false,
   onPlay,
   onPause,
   onEnded,
   onTimeUpdate,
+  onReady,
 }: VideoPlayerProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const artRef = useRef<Artplayer | null>(null)
@@ -319,8 +325,21 @@ export function VideoPlayer({
       customType: {
         m3u8: playM3u8,
       },
-      // Plugins - Multiple Subtitles
-      plugins: subtitleConfig.length > 0 ? [
+      // Native subtitle config (สำหรับ dynamicSubtitle mode เท่านั้น)
+      ...(dynamicSubtitle && defaultSubtitle ? {
+        subtitle: {
+          url: defaultSubtitle.url,
+          type: 'srt',
+          encoding: 'utf-8',
+          style: {
+            color: '#fff',
+            fontSize: '20px',
+            textShadow: '0 1px 2px rgba(0,0,0,0.8)',
+          },
+        },
+      } : {}),
+      // Plugins - Multiple Subtitles (ไม่ใช้เมื่อ dynamicSubtitle = true)
+      plugins: (!dynamicSubtitle && subtitleConfig.length > 0) ? [
         artplayerPluginMultipleSubtitles({
           subtitles: subtitleConfig,
         }),
@@ -361,6 +380,12 @@ export function VideoPlayer({
     artRef.current = art
     artInstanceRef.current = art // Set ref for settings callbacks
     initializedRef.current = true // Mark as initialized to prevent recreation
+
+    // Call onReady callback when player is ready
+    art.on('ready', () => {
+      console.log('[ArtPlayer] Ready')
+      onReady?.(art)
+    })
 
     // Debug subtitle plugin
     if (subtitles.length > 0) {
@@ -483,6 +508,37 @@ export function VideoPlayer({
   // when subtitle blobs finish loading. Subtitles are loaded on first render only.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [src, streamToken])
+
+  // === Dynamic Subtitle Update (for real-time editing) ===
+  // เมื่อ subtitle URL เปลี่ยน (เช่น จากการแก้ไข) ให้ update player โดยไม่ต้อง recreate
+  const prevSubtitleUrlRef = useRef<string | null>(null)
+
+  useEffect(() => {
+    // Only update dynamically when dynamicSubtitle mode is enabled
+    if (!dynamicSubtitle) return
+
+    const art = artRef.current
+    if (!art || subtitles.length === 0) return
+
+    // ใช้ subtitle ตัวแรก (สำหรับ editor ที่มีแค่ภาษาเดียว)
+    const currentSubtitle = subtitles[0]
+    if (!currentSubtitle?.url) return
+
+    // Skip if URL hasn't changed (prevent infinite loop)
+    if (prevSubtitleUrlRef.current === currentSubtitle.url) return
+    prevSubtitleUrlRef.current = currentSubtitle.url
+
+    // Update subtitle URL dynamically using native API
+    try {
+      if (art.subtitle) {
+        art.subtitle.switch(currentSubtitle.url, { type: 'srt' })
+        art.subtitle.show = true
+        console.log('[VideoPlayer] Dynamic subtitle updated:', currentSubtitle.url)
+      }
+    } catch (error) {
+      console.error('[VideoPlayer] Failed to update subtitle:', error)
+    }
+  }, [dynamicSubtitle, subtitles])
 
   return (
     <div

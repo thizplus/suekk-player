@@ -4,9 +4,10 @@
  */
 
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
+import type Artplayer from 'artplayer'
 import { useParams, useNavigate, useBeforeUnload } from 'react-router-dom'
 import { useVideoByCode, VideoPlayer } from '@/features/video'
-import { useSubtitlesByCode, useSubtitleContent, useUpdateSubtitleContent } from '@/features/subtitle'
+import { useSubtitleContent, useUpdateSubtitleContent } from '@/features/subtitle'
 import { SubtitleEditor } from '../components/SubtitleEditor'
 import { parseSRT, generateSRT } from '../utils/srt-parser'
 import type { SubtitleSegment, Subtitle } from '../types'
@@ -47,19 +48,16 @@ export function SubtitleEditorPage() {
   const { data: streamAccess, isLoading: streamLoading } = useStreamAccess(code || '', {
     enabled: !!code && !!video && video.status === 'ready',
   })
-  const { data: subtitleData, isLoading: subtitleLoading } = useSubtitlesByCode(code || '', {
-    enabled: !!code && !!video && video.status === 'ready',
-  })
 
-  // หา Thai subtitle ที่ ready
+  // หา Thai subtitle ที่ ready (subtitles มาพร้อมกับ video แล้ว)
   const thaiSubtitle = useMemo((): Subtitle | undefined => {
-    console.log('[SubtitleEditor] Looking for Thai subtitle:', subtitleData?.subtitles)
-    const found = subtitleData?.subtitles?.find(
+    console.log('[SubtitleEditor] Looking for Thai subtitle:', video?.subtitles)
+    const found = video?.subtitles?.find(
       (sub) => sub.language === 'th' && sub.status === 'ready' && sub.srtPath
     )
     console.log('[SubtitleEditor] Found Thai subtitle:', found)
     return found
-  }, [subtitleData])
+  }, [video?.subtitles])
 
   // ดึง content ของ Thai subtitle
   const {
@@ -78,6 +76,10 @@ export function SubtitleEditorPage() {
   const [currentTime, setCurrentTime] = useState(0)
   const [subtitleBlobUrl, setSubtitleBlobUrl] = useState<string>('')
   const [thumbnailBlobUrl, setThumbnailBlobUrl] = useState<string | undefined>()
+  // Track when subtitle blob is ready (to prevent player mounting before subtitle is loaded)
+  const [subtitleReady, setSubtitleReady] = useState(false)
+  // Store Artplayer instance for seek control
+  const artRef = useRef<Artplayer | null>(null)
 
   // Track if content has changed
   const isDirty = useMemo(() => {
@@ -109,14 +111,28 @@ export function SubtitleEditorPage() {
 
   // === Create initial subtitle Blob URL ===
   useEffect(() => {
+    // รอให้ video พร้อม (subtitles มาพร้อมกับ video แล้ว)
+    if (!video || video.status !== 'ready') {
+      console.log('[SubtitleEditor] Waiting for video to be ready...')
+      return
+    }
+
     console.log('[SubtitleEditor] Creating blob URL...', {
       hasToken: !!streamAccess?.token,
       thaiSubtitle,
       srtPath: thaiSubtitle?.srtPath,
     })
 
-    if (!streamAccess?.token || !thaiSubtitle?.srtPath) {
-      console.log('[SubtitleEditor] Skipping - missing token or srtPath')
+    // ถ้าไม่มี thaiSubtitle → mark as ready (จะไปแสดง error page)
+    if (!thaiSubtitle?.srtPath) {
+      console.log('[SubtitleEditor] No Thai subtitle found')
+      setSubtitleReady(true)
+      return
+    }
+
+    // ถ้ายังไม่มี token → รอ (streamAccess ยังโหลดอยู่)
+    if (!streamAccess?.token) {
+      console.log('[SubtitleEditor] Waiting for stream token...')
       return
     }
 
@@ -132,15 +148,18 @@ export function SubtitleEditorPage() {
 
         if (!response.ok) {
           console.error('[SubtitleEditor] Fetch failed:', response.status)
+          setSubtitleReady(true) // Mark ready even on error so page doesn't hang
           return
         }
 
         const blob = await response.blob()
         blobUrl = URL.createObjectURL(blob)
         setSubtitleBlobUrl(blobUrl)
+        setSubtitleReady(true) // Mark ready AFTER blob URL is set
         console.log('[SubtitleEditor] Subtitle blob URL created:', blobUrl)
       } catch (error) {
         console.error('[SubtitleEditor] Error:', error)
+        setSubtitleReady(true) // Mark ready even on error
       }
     }
 
@@ -149,7 +168,7 @@ export function SubtitleEditorPage() {
     return () => {
       if (blobUrl) URL.revokeObjectURL(blobUrl)
     }
-  }, [streamAccess?.token, thaiSubtitle?.srtPath])
+  }, [video, streamAccess?.token, thaiSubtitle?.srtPath])
 
   // === Fetch thumbnail ===
   useEffect(() => {
@@ -218,12 +237,44 @@ export function SubtitleEditorPage() {
     [debouncedUpdatePreview]
   )
 
+  const handleTimecodeChange = useCallback(
+    (index: number, startTime: string, endTime: string) => {
+      setSegments((prev) => {
+        const newSegments = [...prev]
+        newSegments[index] = { ...newSegments[index], startTime, endTime }
+
+        // Trigger real-time preview
+        debouncedUpdatePreview(newSegments)
+
+        return newSegments
+      })
+    },
+    [debouncedUpdatePreview]
+  )
+
   const handleSeek = useCallback((seconds: number) => {
-    // Find video element and seek
+    // Use stored Artplayer instance for reliable seeking
+    if (artRef.current) {
+      artRef.current.seek = seconds
+      console.log('[SubtitleEditor] Seek via artRef to:', seconds)
+      return
+    }
+
+    // Fallback: use video element directly
     const videoEl = document.querySelector('.artplayer-container video') as HTMLVideoElement
     if (videoEl) {
       videoEl.currentTime = seconds
+      // Force frame update if paused
+      if (videoEl.paused) {
+        videoEl.play().then(() => videoEl.pause()).catch(() => {})
+      }
     }
+  }, [])
+
+  // Handle player ready - store art instance
+  const handlePlayerReady = useCallback((art: Artplayer) => {
+    artRef.current = art
+    console.log('[SubtitleEditor] Player ready, art instance stored')
   }, [])
 
   const handleSave = useCallback(async () => {
@@ -274,7 +325,8 @@ export function SubtitleEditorPage() {
   }, [subtitleBlobUrl])
 
   // === Loading states ===
-  const isLoading = videoLoading || streamLoading || subtitleLoading
+  // รอให้ subtitle blob พร้อมก่อน mount player เพื่อให้ subtitle แสดงตั้งแต่แรก
+  const isLoading = videoLoading || streamLoading || !subtitleReady
 
   if (isLoading) {
     return (
@@ -358,7 +410,9 @@ export function SubtitleEditorPage() {
               poster={thumbnailBlobUrl}
               streamToken={streamAccess.token}
               subtitles={subtitleOptions}
+              dynamicSubtitle={true}
               onTimeUpdate={handleTimeUpdate}
+              onReady={handlePlayerReady}
             />
           </div>
         </div>
@@ -369,6 +423,7 @@ export function SubtitleEditorPage() {
             segments={segments}
             currentTime={currentTime}
             onSegmentChange={handleSegmentChange}
+            onTimecodeChange={handleTimecodeChange}
             onSeek={handleSeek}
             onSave={handleSave}
             onReset={handleReset}
