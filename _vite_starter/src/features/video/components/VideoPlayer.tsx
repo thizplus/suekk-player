@@ -121,25 +121,29 @@ export function VideoPlayer({
         if (hlsInstance) hlsInstance.destroy()
         const hls = new Hls({
           // ═══════════════════════════════════════════════════════
-          // SEEK FAST OPTIMIZATION - Phase 1
+          // SEEK FAST OPTIMIZATION - Phase 2 (Fix Cancel Delay)
           // ═══════════════════════════════════════════════════════
 
           // Web Worker (offload parsing from UI thread)
           enableWorker: true,
 
-          // Buffer Management (ปรับสำหรับ Seek ไม่กระตุก)
-          maxBufferLength: 30,              // Prefetch 30 seconds ahead (ลดจาก 60)
-          maxMaxBufferLength: 60,           // Max buffer cap (ลดจาก 120)
-          backBufferLength: 30,             // Keep 30 sec history (ลดจาก 90)
-          maxBufferSize: 60 * 1000 * 1000,  // 60 MB max buffer (ลดจาก 80)
+          // Buffer Management (ลดให้เหมาะกับ seek)
+          maxBufferLength: 30,              // Prefetch 30 seconds ahead
+          maxMaxBufferLength: 60,           // Max buffer cap
+          backBufferLength: 10,             // ลดจาก 30 → 10 (ไม่ต้องเก็บ history มาก)
+          maxBufferSize: 60 * 1000 * 1000,  // 60 MB max buffer
           maxBufferHole: 0.5,               // Allow 0.5s gaps
 
-          // Limit concurrent loading (ลด request พร้อมกัน)
-          maxLoadingDelay: 4,               // Max delay before loading
+          // ═══════════════════════════════════════════════════════
+          // CRITICAL: Fast Abort Settings (แก้ปัญหา 700ms cancel)
+          // ═══════════════════════════════════════════════════════
+          maxLoadingDelay: 2,               // ลดจาก 4 → 2 (abort เร็วขึ้น)
+          highBufferWatchdogPeriod: 1,      // Check buffer ทุก 1 วินาที (default: 3)
 
           // Performance & Fast Start
           startLevel: -1,                   // Auto-select quality
           capLevelToPlayerSize: true,       // Don't load 1080p on small player
+          startFragPrefetch: true,          // Prefetch first fragment
 
           // ABR (Adaptive Bitrate)
           abrEwmaDefaultEstimate: 5_000_000,  // 5 Mbps default estimate
@@ -147,16 +151,16 @@ export function VideoPlayer({
           abrBandWidthUpFactor: 0.7,          // Conservative when upgrading quality
           testBandwidth: true,
 
-          // Timeout settings (เพิ่มสำหรับ Server จริง)
-          manifestLoadingTimeOut: 20000,      // 20 วินาที
-          fragLoadingTimeOut: 20000,          // 20 วินาที
-          levelLoadingTimeOut: 20000,         // 20 วินาที
+          // Timeout settings (ลดลงเพื่อ fail fast)
+          manifestLoadingTimeOut: 15000,      // 15 วินาที (ลดจาก 20)
+          fragLoadingTimeOut: 15000,          // 15 วินาที (ลดจาก 20)
+          levelLoadingTimeOut: 15000,         // 15 วินาที (ลดจาก 20)
 
           // Reliability & Retry
-          manifestLoadingMaxRetry: 4,
-          levelLoadingMaxRetry: 4,
-          fragLoadingMaxRetry: 6,
-          fragLoadingMaxRetryTimeout: 64000,
+          manifestLoadingMaxRetry: 3,         // ลดจาก 4
+          levelLoadingMaxRetry: 3,            // ลดจาก 4
+          fragLoadingMaxRetry: 4,             // ลดจาก 6
+          fragLoadingMaxRetryTimeout: 32000,  // ลดจาก 64000
 
           // Seek Optimization
           nudgeOffset: 0.1,
@@ -255,6 +259,20 @@ export function VideoPlayer({
         hls.attachMedia(video)
         hlsInstance = hls
         art.on('destroy', () => hls.destroy())
+
+        // ═══════════════════════════════════════════════════════
+        // SEEK HANDLER: Abort loading immediately when user seeks
+        // แก้ปัญหา request ค้าง 700ms ก่อน cancel
+        // ═══════════════════════════════════════════════════════
+        art.on('seek', () => {
+          console.log('[HLS] Seek detected - aborting current loading')
+          // Stop current fragment loading immediately
+          hls.stopLoad()
+          // Resume loading at new position
+          setTimeout(() => {
+            hls.startLoad()
+          }, 50)
+        })
       } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
         // Native HLS support (Safari)
         video.src = url
