@@ -64,7 +64,7 @@ export const queueService = {
   },
 
   async clearSubtitleAll(): Promise<ClearResponse> {
-    return apiClient.delete<ClearResponse>(QUEUE_ROUTES.SUBTITLE_CLEAR_ALL)
+    return apiClient.deleteWithResponse<ClearResponse>(QUEUE_ROUTES.SUBTITLE_CLEAR_ALL)
   },
 
   async queueMissingSubtitles(): Promise<QueueMissingResponse> {
