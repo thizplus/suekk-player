@@ -86,16 +86,3 @@ export interface WarmAllResponse {
   message: string
 }
 
-// ==================== Paginated Response ====================
-
-export interface PaginatedResponse<T> {
-  data: T[]
-  meta: {
-    total: number
-    page: number
-    limit: number
-    total_pages: number
-    has_next: boolean
-    has_prev: boolean
-  }
-}

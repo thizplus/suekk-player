@@ -1,4 +1,4 @@
-import { apiClient } from '@/lib/api-client'
+import { apiClient, type PaginationMeta } from '@/lib/api-client'
 import { QUEUE_ROUTES } from '@/constants/api-routes'
 import type {
   QueueStatsResponse,
@@ -8,7 +8,6 @@ import type {
   RetryResponse,
   WarmCacheResponse,
   WarmAllResponse,
-  PaginatedResponse,
 } from './types'
 
 interface ListParams {
@@ -16,77 +15,72 @@ interface ListParams {
   limit?: number
 }
 
+interface PaginatedResult<T> {
+  data: T[]
+  meta: PaginationMeta
+}
+
 export const queueService = {
   // === Stats ===
   async getStats(): Promise<QueueStatsResponse> {
-    const res = await apiClient.get<{ data: QueueStatsResponse }>(QUEUE_ROUTES.STATS)
-    return res.data.data
+    return apiClient.get<QueueStatsResponse>(QUEUE_ROUTES.STATS)
   },
 
   // === Transcode Queue ===
-  async getTranscodeFailed(params?: ListParams): Promise<PaginatedResponse<TranscodeQueueItem>> {
-    const res = await apiClient.get<PaginatedResponse<TranscodeQueueItem>>(
+  async getTranscodeFailed(params?: ListParams): Promise<PaginatedResult<TranscodeQueueItem>> {
+    return apiClient.getPaginated<TranscodeQueueItem>(
       QUEUE_ROUTES.TRANSCODE_FAILED,
       { params }
     )
-    return res.data
   },
 
   async retryTranscodeAll(): Promise<RetryResponse> {
-    const res = await apiClient.post<{ data: RetryResponse }>(QUEUE_ROUTES.TRANSCODE_RETRY_ALL)
-    return res.data.data
+    return apiClient.post<RetryResponse>(QUEUE_ROUTES.TRANSCODE_RETRY_ALL)
   },
 
   async retryTranscodeOne(id: string): Promise<void> {
-    await apiClient.post(QUEUE_ROUTES.TRANSCODE_RETRY_ONE(id))
+    await apiClient.postVoid(QUEUE_ROUTES.TRANSCODE_RETRY_ONE(id))
   },
 
   // === Subtitle Queue ===
-  async getSubtitleStuck(params?: ListParams): Promise<PaginatedResponse<SubtitleQueueItem>> {
-    const res = await apiClient.get<PaginatedResponse<SubtitleQueueItem>>(
+  async getSubtitleStuck(params?: ListParams): Promise<PaginatedResult<SubtitleQueueItem>> {
+    return apiClient.getPaginated<SubtitleQueueItem>(
       QUEUE_ROUTES.SUBTITLE_STUCK,
       { params }
     )
-    return res.data
   },
 
-  async getSubtitleFailed(params?: ListParams): Promise<PaginatedResponse<SubtitleQueueItem>> {
-    const res = await apiClient.get<PaginatedResponse<SubtitleQueueItem>>(
+  async getSubtitleFailed(params?: ListParams): Promise<PaginatedResult<SubtitleQueueItem>> {
+    return apiClient.getPaginated<SubtitleQueueItem>(
       QUEUE_ROUTES.SUBTITLE_FAILED,
       { params }
     )
-    return res.data
   },
 
   async retrySubtitleAll(): Promise<RetryResponse> {
-    const res = await apiClient.post<{ data: RetryResponse }>(QUEUE_ROUTES.SUBTITLE_RETRY_ALL)
-    return res.data.data
+    return apiClient.post<RetryResponse>(QUEUE_ROUTES.SUBTITLE_RETRY_ALL)
   },
 
   // === Warm Cache Queue ===
-  async getWarmCachePending(params?: ListParams): Promise<PaginatedResponse<WarmCacheQueueItem>> {
-    const res = await apiClient.get<PaginatedResponse<WarmCacheQueueItem>>(
+  async getWarmCachePending(params?: ListParams): Promise<PaginatedResult<WarmCacheQueueItem>> {
+    return apiClient.getPaginated<WarmCacheQueueItem>(
       QUEUE_ROUTES.WARM_CACHE_PENDING,
       { params }
     )
-    return res.data
   },
 
-  async getWarmCacheFailed(params?: ListParams): Promise<PaginatedResponse<WarmCacheQueueItem>> {
-    const res = await apiClient.get<PaginatedResponse<WarmCacheQueueItem>>(
+  async getWarmCacheFailed(params?: ListParams): Promise<PaginatedResult<WarmCacheQueueItem>> {
+    return apiClient.getPaginated<WarmCacheQueueItem>(
       QUEUE_ROUTES.WARM_CACHE_FAILED,
       { params }
     )
-    return res.data
   },
 
   async warmCacheOne(id: string): Promise<WarmCacheResponse> {
-    const res = await apiClient.post<{ data: WarmCacheResponse }>(QUEUE_ROUTES.WARM_CACHE_ONE(id))
-    return res.data.data
+    return apiClient.post<WarmCacheResponse>(QUEUE_ROUTES.WARM_CACHE_ONE(id))
   },
 
   async warmCacheAll(): Promise<WarmAllResponse> {
-    const res = await apiClient.post<{ data: WarmAllResponse }>(QUEUE_ROUTES.WARM_CACHE_ALL)
-    return res.data.data
+    return apiClient.post<WarmAllResponse>(QUEUE_ROUTES.WARM_CACHE_ALL)
   },
 }

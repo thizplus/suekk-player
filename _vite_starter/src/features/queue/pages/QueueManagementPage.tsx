@@ -5,7 +5,6 @@ import {
   Monitor,
   Languages,
   Database,
-  AlertCircle,
   Clock,
   CheckCircle,
   XCircle,
@@ -327,17 +326,17 @@ function TranscodeTab() {
               </TableBody>
             </Table>
 
-            {meta && meta.total_pages > 1 && (
+            {meta && meta.totalPages > 1 && (
               <div className="flex items-center justify-between mt-4">
                 <p className="text-sm text-muted-foreground">
-                  Page {meta.page} of {meta.total_pages} ({meta.total} items)
+                  Page {meta.page} of {meta.totalPages} ({meta.total} items)
                 </p>
                 <div className="flex gap-2">
                   <Button
                     variant="outline"
                     size="sm"
                     onClick={() => setPage((p) => Math.max(1, p - 1))}
-                    disabled={!meta.has_prev}
+                    disabled={!meta.hasPrev}
                   >
                     Previous
                   </Button>
@@ -345,7 +344,7 @@ function TranscodeTab() {
                     variant="outline"
                     size="sm"
                     onClick={() => setPage((p) => p + 1)}
-                    disabled={!meta.has_next}
+                    disabled={!meta.hasNext}
                   >
                     Next
                   </Button>
@@ -459,17 +458,17 @@ function SubtitleTab() {
               </TableBody>
             </Table>
 
-            {meta && meta.total_pages > 1 && (
+            {meta && meta.totalPages > 1 && (
               <div className="flex items-center justify-between mt-4">
                 <p className="text-sm text-muted-foreground">
-                  Page {meta.page} of {meta.total_pages} ({meta.total} items)
+                  Page {meta.page} of {meta.totalPages} ({meta.total} items)
                 </p>
                 <div className="flex gap-2">
                   <Button
                     variant="outline"
                     size="sm"
                     onClick={() => setPage((p) => Math.max(1, p - 1))}
-                    disabled={!meta.has_prev}
+                    disabled={!meta.hasPrev}
                   >
                     Previous
                   </Button>
@@ -477,7 +476,7 @@ function SubtitleTab() {
                     variant="outline"
                     size="sm"
                     onClick={() => setPage((p) => p + 1)}
-                    disabled={!meta.has_next}
+                    disabled={!meta.hasNext}
                   >
                     Next
                   </Button>
@@ -624,17 +623,17 @@ function WarmCacheTab() {
               </TableBody>
             </Table>
 
-            {meta && meta.total_pages > 1 && (
+            {meta && meta.totalPages > 1 && (
               <div className="flex items-center justify-between mt-4">
                 <p className="text-sm text-muted-foreground">
-                  Page {meta.page} of {meta.total_pages} ({meta.total} items)
+                  Page {meta.page} of {meta.totalPages} ({meta.total} items)
                 </p>
                 <div className="flex gap-2">
                   <Button
                     variant="outline"
                     size="sm"
                     onClick={() => setPage((p) => Math.max(1, p - 1))}
-                    disabled={!meta.has_prev}
+                    disabled={!meta.hasPrev}
                   >
                     Previous
                   </Button>
@@ -642,7 +641,7 @@ function WarmCacheTab() {
                     variant="outline"
                     size="sm"
                     onClick={() => setPage((p) => p + 1)}
-                    disabled={!meta.has_next}
+                    disabled={!meta.hasNext}
                   >
                     Next
                   </Button>
