@@ -75,3 +75,12 @@ docs/
 !README.md
 !CLAUDE.md
 !CODE_REVIEW.md
+
+# Backup files
+*.backup
+
+# Warm cache service (separate repo/deploy)
+_warm_cache/
+
+# Nginx config (local only)
+nginx-*.conf
