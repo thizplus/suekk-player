@@ -306,3 +306,37 @@ func (p *Publisher) PublishTranslateJob(ctx context.Context, job *services.Trans
 
 	return nil
 }
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Warm Cache Job Publishing
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// PublishWarmCacheJob ส่ง warm cache job ไปยัง NATS
+func (p *Publisher) PublishWarmCacheJob(ctx context.Context, job *WarmCacheJob) error {
+	data, err := json.Marshal(job)
+	if err != nil {
+		return fmt.Errorf("failed to marshal warm cache job: %w", err)
+	}
+
+	// Publish to JetStream
+	ack, err := p.client.js.Publish(ctx, SubjectWarmCache, data)
+	if err != nil {
+		logger.Error("Failed to publish warm cache job",
+			"video_id", job.VideoID,
+			"video_code", job.VideoCode,
+			"error", err,
+		)
+		return fmt.Errorf("failed to publish warm cache job: %w", err)
+	}
+
+	logger.Info("Warm cache job published to JetStream",
+		"video_id", job.VideoID,
+		"video_code", job.VideoCode,
+		"hls_path", job.HLSPath,
+		"priority", job.Priority,
+		"stream", ack.Stream,
+		"sequence", ack.Sequence,
+	)
+
+	return nil
+}

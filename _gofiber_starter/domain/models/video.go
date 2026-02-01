@@ -82,6 +82,16 @@ const (
 	VideoStatusDeadLetter VideoStatus = "dead_letter" // Poison pill - ต้องตรวจสอบ manual
 )
 
+// CacheStatus สถานะ CDN cache
+type CacheStatus string
+
+const (
+	CacheStatusPending CacheStatus = "pending" // ยังไม่ได้ warm
+	CacheStatusWarming CacheStatus = "warming" // กำลัง warm
+	CacheStatusCached  CacheStatus = "cached"  // warm สำเร็จ
+	CacheStatusFailed  CacheStatus = "failed"  // warm ล้มเหลว
+)
+
 
 type Video struct {
 	ID           uuid.UUID   `gorm:"primaryKey;type:uuid;default:gen_random_uuid()"`
@@ -114,6 +124,12 @@ type Video struct {
 	// Audio fields (สำหรับ subtitle worker - extracted during transcode)
 	AudioPath        string `gorm:"type:text"` // S3 path to extracted audio (WAV)
 	DetectedLanguage string `gorm:"size:10"`   // Detected language code (ja, en, etc.) - nullable
+
+	// Cache warming tracking (สำหรับ CDN cache)
+	CacheStatus     string     `gorm:"size:20;default:pending"` // pending|warming|cached|failed
+	CachePercentage float64    `gorm:"default:0"`               // 0-100%
+	CacheError      string     `gorm:"type:text"`               // error message if failed
+	LastWarmedAt    *time.Time `gorm:"type:timestamptz"`        // last warm time
 
 	CreatedAt time.Time
 	UpdatedAt time.Time

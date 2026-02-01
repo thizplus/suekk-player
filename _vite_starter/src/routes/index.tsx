@@ -67,6 +67,11 @@ const WorkersPage = lazy(() =>
   import('@/features/workers').then((m) => ({ default: m.WorkersPage }))
 )
 
+// Lazy load queue management page
+const QueueManagementPage = lazy(() =>
+  import('@/features/queue').then((m) => ({ default: m.QueueManagementPage }))
+)
+
 export default function AppRoutes() {
   return (
     <Routes>
@@ -126,6 +131,9 @@ export default function AppRoutes() {
 
             {/* Workers routes (Phase 0: Worker Registry) */}
             <Route path="/workers" element={<WorkersPage />} />
+
+            {/* Queue Management routes */}
+            <Route path="/queues" element={<QueueManagementPage />} />
 
             {/* User routes */}
             <Route path="/profile" element={<UserProfilePage />} />

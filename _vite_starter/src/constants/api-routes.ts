@@ -129,6 +129,25 @@ export const STORAGE_ROUTES = {
   STATS: '/api/v1/storage/stats',
 }
 
+// Queue Management - จัดการ queue ทั้งหมด (transcode/subtitle/warmcache)
+export const QUEUE_ROUTES = {
+  // Stats รวมทุก queue
+  STATS: '/api/v1/admin/queues/stats',
+  // Transcode Queue
+  TRANSCODE_FAILED: '/api/v1/admin/queues/transcode/failed',
+  TRANSCODE_RETRY_ALL: '/api/v1/admin/queues/transcode/retry-all',
+  TRANSCODE_RETRY_ONE: (id: string) => `/api/v1/admin/queues/transcode/${id}/retry`,
+  // Subtitle Queue
+  SUBTITLE_STUCK: '/api/v1/admin/queues/subtitle/stuck',
+  SUBTITLE_FAILED: '/api/v1/admin/queues/subtitle/failed',
+  SUBTITLE_RETRY_ALL: '/api/v1/admin/queues/subtitle/retry-all',
+  // Warm Cache Queue
+  WARM_CACHE_PENDING: '/api/v1/admin/queues/warm-cache/pending',
+  WARM_CACHE_FAILED: '/api/v1/admin/queues/warm-cache/failed',
+  WARM_CACHE_ONE: (id: string) => `/api/v1/admin/queues/warm-cache/${id}/warm`,
+  WARM_CACHE_ALL: '/api/v1/admin/queues/warm-cache/warm-all',
+}
+
 // Subtitle - จัดการ subtitle และ translation
 export const SUBTITLE_ROUTES = {
   // ภาษาที่รองรับ

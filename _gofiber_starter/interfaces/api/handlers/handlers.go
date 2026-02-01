@@ -23,6 +23,7 @@ type Services struct {
 	WhitelistService   services.WhitelistService // Phase 6: Domain Whitelist & Ad Management
 	SettingService     services.SettingService   // Admin Settings
 	SubtitleService    services.SubtitleService  // Subtitle management
+	QueueService       services.QueueService     // Queue management (transcode/subtitle/warmcache)
 	VideoRepository    repositories.VideoRepository // สำหรับ SubtitleHandler
 	StreamCookieService     *serviceimpl.StreamCookieService         // Signed cookie สำหรับ CDN access
 	NATSPublisher           *natspkg.Publisher                       // NATS JetStream publisher (แทน AsynqClient)
@@ -52,6 +53,7 @@ type Handlers struct {
 	WhitelistHandler     *WhitelistHandler                // Phase 6: Domain Whitelist & Ad Management
 	SettingHandler       *SettingHandler                  // Admin Settings
 	SubtitleHandler      *SubtitleHandler                 // Subtitle management
+	QueueHandler         *QueueHandler                    // Queue management (transcode/subtitle/warmcache)
 	DirectUploadHandler  *DirectUploadHandler             // Direct Upload via Presigned URL
 	StreamCookieService  *serviceimpl.StreamCookieService // Signed cookie สำหรับ CDN access
 }
@@ -75,6 +77,7 @@ func NewHandlers(services *Services) *Handlers {
 		WhitelistHandler:     NewWhitelistHandler(services.WhitelistService, services.StreamCookieService, services.CDNBaseURL+"/hls"),
 		SettingHandler:       NewSettingHandler(services.SettingService),
 		SubtitleHandler:      NewSubtitleHandler(services.SubtitleService, services.VideoRepository),
+		QueueHandler:         NewQueueHandler(services.QueueService),
 		DirectUploadHandler:  NewDirectUploadHandler(services.StoragePort, services.VideoService, services.SettingService, services.NATSPublisher),
 		StreamCookieService:  services.StreamCookieService,
 	}

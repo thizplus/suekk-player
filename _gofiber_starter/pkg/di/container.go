@@ -67,6 +67,7 @@ type Container struct {
 	WhitelistService       services.WhitelistService
 	SettingService         services.SettingService
 	SubtitleService        services.SubtitleService
+	QueueService           services.QueueService
 
 	// Settings Cache
 	SettingsCache *settings.SettingsCache
@@ -117,6 +118,16 @@ func (c *Container) Initialize() error {
 	if err := c.initTranscoding(); err != nil {
 		return err
 	}
+
+	// Initialize QueueService after TranscodingService is available
+	c.QueueService = serviceimpl.NewQueueService(
+		c.VideoRepository,
+		c.SubtitleRepository,
+		c.TranscodingService,
+		c.SubtitleService,
+		c.NATSPublisher,
+	)
+	logger.Info("Queue service initialized")
 
 	if err := c.initStorageCleanup(); err != nil {
 		return err
@@ -396,6 +407,11 @@ func (c *Container) initServices() error {
 	// Subtitle Service with NATS job publisher
 	c.SubtitleService = serviceimpl.NewSubtitleService(c.VideoRepository, c.SubtitleRepository, c.NATSPublisher)
 	logger.Info("Subtitle service initialized", "has_publisher", c.NATSPublisher != nil)
+
+	// Queue Service (unified queue management)
+	// Note: TranscodingService ต้องถูก init ก่อนใน initTranscoding()
+	// จึงย้ายไป init หลังจาก initTranscoding()
+	logger.Info("Queue service will be initialized after transcoding")
 
 	logger.Info("Services initialized")
 	return nil
@@ -721,6 +737,7 @@ func (c *Container) GetHandlerServices() *handlers.Services {
 		WhitelistService:    c.WhitelistService,
 		SettingService:      c.SettingService,
 		SubtitleService:     c.SubtitleService,
+		QueueService:        c.QueueService,
 		VideoRepository:     c.VideoRepository, // สำหรับ SubtitleHandler
 		StreamCookieService: c.StreamCookieService, // Signed cookie สำหรับ CDN access
 		NATSPublisher:       c.NATSPublisher,

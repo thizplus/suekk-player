@@ -26,6 +26,7 @@ func SetupRoutes(app *fiber.App, h *handlers.Handlers) {
 	SetupWhitelistRoutes(api, h)      // Phase 6: Domain Whitelist & Ad Management
 	SetupSettingRoutes(api, h)        // Admin Settings Management
 	SetupSubtitleRoutes(api, h)       // Subtitle management
+	SetupQueueRoutes(api, h)          // Queue management (transcode/subtitle/warmcache)
 	SetupDirectUploadRoutes(api, h)   // Direct Upload via Presigned URL
 
 	// Setup Monitoring routes (needs app for /api/v1/monitoring)

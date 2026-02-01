@@ -18,6 +18,11 @@ const (
 	SubjectSubtitleTranscribe  = "jobs.subtitle.transcribe"
 	SubjectSubtitleTranslate   = "jobs.subtitle.translate"
 	SubjectSubtitleProgress    = "progress.subtitle"
+
+	// Warm Cache Jobs Stream and Subjects
+	WarmCacheStreamName   = "WARM_CACHE_JOBS"
+	WarmCacheConsumerName = "WARM_CACHE_WORKER"
+	SubjectWarmCache      = "jobs.warmcache"
 )
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -91,5 +96,30 @@ func NewTranscodeJob(videoID, videoCode, inputPath, outputPath, codec string, qu
 		Qualities:    qualities,
 		UseByteRange: useByteRange,
 		CreatedAt:    time.Now().Unix(),
+	}
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// WarmCacheJob - API → Warm Cache Worker (via JetStream)
+// ⚠️ โครงสร้างนี้ต้องตรงกับ _warm_cache Worker
+// ═══════════════════════════════════════════════════════════════════════════════
+type WarmCacheJob struct {
+	VideoID       string         `json:"video_id"`
+	VideoCode     string         `json:"video_code"`
+	HLSPath       string         `json:"hls_path"`        // hls/{code}/
+	SegmentCounts map[string]int `json:"segment_counts"`  // {"1080p": 150, "720p": 150, ...}
+	Priority      int            `json:"priority"`        // 1=new, 2=popular, 3=backfill
+	CreatedAt     int64          `json:"created_at"`
+}
+
+// NewWarmCacheJob สร้าง WarmCacheJob ใหม่
+func NewWarmCacheJob(videoID, videoCode, hlsPath string, segmentCounts map[string]int, priority int) *WarmCacheJob {
+	return &WarmCacheJob{
+		VideoID:       videoID,
+		VideoCode:     videoCode,
+		HLSPath:       hlsPath,
+		SegmentCounts: segmentCounts,
+		Priority:      priority,
+		CreatedAt:     time.Now().Unix(),
 	}
 }
