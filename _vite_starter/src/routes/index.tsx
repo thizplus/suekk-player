@@ -1,5 +1,6 @@
 import { Routes, Route, Navigate } from 'react-router-dom'
-import { lazy, Suspense } from 'react'
+import { Suspense } from 'react'
+import { lazyWithReload } from '@/lib/lazy-with-reload'
 
 // Layouts
 import { RootLayout, PageLayout } from '@/components/layouts'
@@ -9,66 +10,66 @@ import { ProtectedRoute } from './ProtectedRoute'
 import { LoginPage, RegisterPage, GoogleCallbackPage } from '@/features/auth'
 
 // Lazy load embed page (public, lightweight)
-const EmbedPage = lazy(() =>
+const EmbedPage = lazyWithReload(() =>
   import('@/features/embed').then((m) => ({ default: m.EmbedPage }))
 )
 
 // Lazy load preview page (admin preview, no ads)
-const PreviewPage = lazy(() =>
+const PreviewPage = lazyWithReload(() =>
   import('@/features/embed').then((m) => ({ default: m.PreviewPage }))
 )
 
 // Lazy load dashboard pages
-const AdminDashboard = lazy(() =>
+const AdminDashboard = lazyWithReload(() =>
   import('@/features/dashboard').then((m) => ({ default: m.AdminDashboard }))
 )
-const AgentDashboard = lazy(() =>
+const AgentDashboard = lazyWithReload(() =>
   import('@/features/dashboard').then((m) => ({ default: m.AgentDashboard }))
 )
-const SalesDashboard = lazy(() =>
+const SalesDashboard = lazyWithReload(() =>
   import('@/features/dashboard').then((m) => ({ default: m.SalesDashboard }))
 )
 
 // Lazy load user pages
-const UserProfilePage = lazy(() =>
+const UserProfilePage = lazyWithReload(() =>
   import('@/features/user').then((m) => ({ default: m.UserProfilePage }))
 )
 
 // Lazy load video pages
-const VideoListPage = lazy(() =>
+const VideoListPage = lazyWithReload(() =>
   import('@/features/video').then((m) => ({ default: m.VideoListPage }))
 )
-const DLQPage = lazy(() =>
+const DLQPage = lazyWithReload(() =>
   import('@/features/video').then((m) => ({ default: m.DLQPage }))
 )
 
 // Lazy load category pages
-const CategoryListPage = lazy(() =>
+const CategoryListPage = lazyWithReload(() =>
   import('@/features/category').then((m) => ({ default: m.CategoryListPage }))
 )
 
 // Lazy load transcoding page
-const TranscodingPage = lazy(() =>
+const TranscodingPage = lazyWithReload(() =>
   import('@/features/transcoding').then((m) => ({ default: m.TranscodingPage }))
 )
 
 // Lazy load whitelist page (Phase 6)
-const WhitelistPage = lazy(() =>
+const WhitelistPage = lazyWithReload(() =>
   import('@/features/whitelist').then((m) => ({ default: m.WhitelistPage }))
 )
 
 // Lazy load settings page (Admin Settings)
-const SettingsPage = lazy(() =>
+const SettingsPage = lazyWithReload(() =>
   import('@/features/settings').then((m) => ({ default: m.SettingsPage }))
 )
 
 // Lazy load workers page (Phase 0: Worker Registry)
-const WorkersPage = lazy(() =>
+const WorkersPage = lazyWithReload(() =>
   import('@/features/workers').then((m) => ({ default: m.WorkersPage }))
 )
 
 // Lazy load queue management page
-const QueueManagementPage = lazy(() =>
+const QueueManagementPage = lazyWithReload(() =>
   import('@/features/queue').then((m) => ({ default: m.QueueManagementPage }))
 )
 
