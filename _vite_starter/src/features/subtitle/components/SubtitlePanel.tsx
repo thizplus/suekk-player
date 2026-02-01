@@ -292,6 +292,7 @@ export function SubtitlePanel({ videoId, videoStatus }: SubtitlePanelProps) {
                 <p className="text-xs text-destructive truncate mt-0.5">{originalSubtitle.error}</p>
               )}
             </div>
+            {/* Download button - only when ready */}
             {originalSubtitle.status === 'ready' && originalSubtitle.srtPath && (
               <Button size="icon" variant="ghost" className="size-8 shrink-0" asChild>
                 <a href={getSrtUrl(originalSubtitle)!} download title="ดาวน์โหลด SRT">
@@ -299,29 +300,31 @@ export function SubtitlePanel({ videoId, videoStatus }: SubtitlePanelProps) {
                 </a>
               </Button>
             )}
-            {originalSubtitle.status === 'failed' && (
-              <>
-                <Button
-                  size="icon"
-                  variant="ghost"
-                  className="size-8 shrink-0"
-                  onClick={() => handleRetryOriginal(originalSubtitle.id)}
-                  disabled={deleteSubtitle.isPending || isProcessing}
-                  title="ลองใหม่"
-                >
-                  <RefreshCw className="size-4" />
-                </Button>
-                <Button
-                  size="icon"
-                  variant="ghost"
-                  className="size-8 shrink-0 text-destructive hover:text-destructive"
-                  onClick={() => handleDelete(originalSubtitle.id)}
-                  disabled={deleteSubtitle.isPending}
-                  title="ลบ"
-                >
-                  <Trash2 className="size-4" />
-                </Button>
-              </>
+            {/* Retry button - for queued, failed, ready */}
+            {['queued', 'failed', 'ready'].includes(originalSubtitle.status) && (
+              <Button
+                size="icon"
+                variant="ghost"
+                className="size-8 shrink-0"
+                onClick={() => handleRetryOriginal(originalSubtitle.id)}
+                disabled={deleteSubtitle.isPending || isProcessing}
+                title={originalSubtitle.status === 'queued' ? 'Queue ใหม่' : 'ลองใหม่'}
+              >
+                <RefreshCw className="size-4" />
+              </Button>
+            )}
+            {/* Delete button - for queued, failed */}
+            {['queued', 'failed'].includes(originalSubtitle.status) && (
+              <Button
+                size="icon"
+                variant="ghost"
+                className="size-8 shrink-0 text-destructive hover:text-destructive"
+                onClick={() => handleDelete(originalSubtitle.id)}
+                disabled={deleteSubtitle.isPending}
+                title="ลบ"
+              >
+                <Trash2 className="size-4" />
+              </Button>
             )}
             <Badge className={SUBTITLE_STATUS_STYLES[originalSubtitle.status]}>
               {SUBTITLE_STATUS_LABELS[originalSubtitle.status]}
@@ -377,6 +380,7 @@ export function SubtitlePanel({ videoId, videoStatus }: SubtitlePanelProps) {
                 <p className="text-xs text-destructive truncate mt-0.5">{sub.error}</p>
               )}
             </div>
+            {/* Download button - only when ready */}
             {sub.status === 'ready' && sub.srtPath && (
               <Button size="icon" variant="ghost" className="size-8 shrink-0" asChild>
                 <a href={getSrtUrl(sub)!} download title="ดาวน์โหลด SRT">
@@ -384,29 +388,31 @@ export function SubtitlePanel({ videoId, videoStatus }: SubtitlePanelProps) {
                 </a>
               </Button>
             )}
-            {sub.status === 'failed' && (
-              <>
-                <Button
-                  size="icon"
-                  variant="ghost"
-                  className="size-8 shrink-0"
-                  onClick={() => handleRetryTranslation(sub.id, sub.language)}
-                  disabled={deleteSubtitle.isPending || isProcessing}
-                  title="ลองใหม่"
-                >
-                  <RefreshCw className="size-4" />
-                </Button>
-                <Button
-                  size="icon"
-                  variant="ghost"
-                  className="size-8 shrink-0 text-destructive hover:text-destructive"
-                  onClick={() => handleDelete(sub.id)}
-                  disabled={deleteSubtitle.isPending}
-                  title="ลบ"
-                >
-                  <Trash2 className="size-4" />
-                </Button>
-              </>
+            {/* Retry button - for queued, failed, ready */}
+            {['queued', 'failed', 'ready'].includes(sub.status) && (
+              <Button
+                size="icon"
+                variant="ghost"
+                className="size-8 shrink-0"
+                onClick={() => handleRetryTranslation(sub.id, sub.language)}
+                disabled={deleteSubtitle.isPending || isProcessing}
+                title={sub.status === 'queued' ? 'Queue ใหม่' : 'ลองใหม่'}
+              >
+                <RefreshCw className="size-4" />
+              </Button>
+            )}
+            {/* Delete button - for queued, failed */}
+            {['queued', 'failed'].includes(sub.status) && (
+              <Button
+                size="icon"
+                variant="ghost"
+                className="size-8 shrink-0 text-destructive hover:text-destructive"
+                onClick={() => handleDelete(sub.id)}
+                disabled={deleteSubtitle.isPending}
+                title="ลบ"
+              >
+                <Trash2 className="size-4" />
+              </Button>
             )}
             <Badge className={SUBTITLE_STATUS_STYLES[sub.status]}>
               {SUBTITLE_STATUS_LABELS[sub.status]}
