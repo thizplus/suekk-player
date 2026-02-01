@@ -1,4 +1,4 @@
-import { lazy, ComponentType } from 'react'
+import { lazy, type ComponentType } from 'react'
 
 /**
  * Wrapper รอบ React.lazy() ที่จัดการ chunk load error
