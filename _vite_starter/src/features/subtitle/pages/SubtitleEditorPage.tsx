@@ -53,9 +53,12 @@ export function SubtitleEditorPage() {
 
   // หา Thai subtitle ที่ ready
   const thaiSubtitle = useMemo((): Subtitle | undefined => {
-    return subtitleData?.subtitles?.find(
+    console.log('[SubtitleEditor] Looking for Thai subtitle:', subtitleData?.subtitles)
+    const found = subtitleData?.subtitles?.find(
       (sub) => sub.language === 'th' && sub.status === 'ready' && sub.srtPath
     )
+    console.log('[SubtitleEditor] Found Thai subtitle:', found)
+    return found
   }, [subtitleData])
 
   // ดึง content ของ Thai subtitle
@@ -106,24 +109,38 @@ export function SubtitleEditorPage() {
 
   // === Create initial subtitle Blob URL ===
   useEffect(() => {
-    if (!streamAccess?.token || !thaiSubtitle?.srtPath) return
+    console.log('[SubtitleEditor] Creating blob URL...', {
+      hasToken: !!streamAccess?.token,
+      thaiSubtitle,
+      srtPath: thaiSubtitle?.srtPath,
+    })
+
+    if (!streamAccess?.token || !thaiSubtitle?.srtPath) {
+      console.log('[SubtitleEditor] Skipping - missing token or srtPath')
+      return
+    }
 
     let blobUrl: string | undefined
 
     const fetchSubtitle = async () => {
       try {
         const url = `${APP_CONFIG.cdnUrl}/${thaiSubtitle.srtPath}`
+        console.log('[SubtitleEditor] Fetching subtitle from:', url)
         const response = await fetch(url, {
           headers: { 'X-Stream-Token': streamAccess.token },
         })
 
-        if (!response.ok) return
+        if (!response.ok) {
+          console.error('[SubtitleEditor] Fetch failed:', response.status)
+          return
+        }
 
         const blob = await response.blob()
         blobUrl = URL.createObjectURL(blob)
         setSubtitleBlobUrl(blobUrl)
-      } catch {
-        // Ignore errors
+        console.log('[SubtitleEditor] Subtitle blob URL created:', blobUrl)
+      } catch (error) {
+        console.error('[SubtitleEditor] Error:', error)
       }
     }
 
