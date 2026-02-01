@@ -108,9 +108,9 @@ export function QueueManagementPage() {
                     Failed: {stats.transcode.failed}
                   </Badge>
                 )}
-                {stats.transcode.dead_letter > 0 && (
+                {stats.transcode.deadLetter > 0 && (
                   <Badge variant="destructive" className="gap-1">
-                    DLQ: {stats.transcode.dead_letter}
+                    DLQ: {stats.transcode.deadLetter}
                   </Badge>
                 )}
               </div>
@@ -166,28 +166,28 @@ export function QueueManagementPage() {
             </CardHeader>
             <CardContent>
               <div className="flex flex-wrap gap-2 text-xs">
-                {stats.warm_cache.not_cached > 0 && (
+                {stats.warmCache.notCached > 0 && (
                   <Badge variant="outline" className="gap-1">
                     <Clock className="h-3 w-3" />
-                    Pending: {stats.warm_cache.not_cached}
+                    Pending: {stats.warmCache.notCached}
                   </Badge>
                 )}
-                {stats.warm_cache.warming > 0 && (
+                {stats.warmCache.warming > 0 && (
                   <Badge className="gap-1 status-processing">
                     <Flame className="h-3 w-3" />
-                    Warming: {stats.warm_cache.warming}
+                    Warming: {stats.warmCache.warming}
                   </Badge>
                 )}
-                {stats.warm_cache.cached > 0 && (
+                {stats.warmCache.cached > 0 && (
                   <Badge variant="outline" className="gap-1 text-status-success border-status-success">
                     <CheckCircle className="h-3 w-3" />
-                    Cached: {stats.warm_cache.cached}
+                    Cached: {stats.warmCache.cached}
                   </Badge>
                 )}
-                {stats.warm_cache.failed > 0 && (
+                {stats.warmCache.failed > 0 && (
                   <Badge variant="destructive" className="gap-1">
                     <XCircle className="h-3 w-3" />
-                    Failed: {stats.warm_cache.failed}
+                    Failed: {stats.warmCache.failed}
                   </Badge>
                 )}
               </div>
@@ -220,9 +220,9 @@ export function QueueManagementPage() {
           <TabsTrigger value="warmcache" className="gap-2">
             <Database className="h-4 w-4" />
             Warm Cache
-            {stats?.warm_cache?.not_cached ? (
+            {stats?.warmCache?.notCached ? (
               <Badge variant="secondary" className="ml-1 h-5 px-1.5">
-                {stats.warm_cache.not_cached}
+                {stats.warmCache.notCached}
               </Badge>
             ) : null}
           </TabsTrigger>
@@ -309,7 +309,7 @@ function TranscodeTab() {
                       </span>
                     </TableCell>
                     <TableCell className="text-center">
-                      <Badge variant="outline">{item.retry_count}</Badge>
+                      <Badge variant="outline">{item.retryCount}</Badge>
                     </TableCell>
                     <TableCell>
                       <Button
@@ -440,8 +440,8 @@ function SubtitleTab() {
               <TableBody>
                 {items.map((item: SubtitleQueueItem) => (
                   <TableRow key={item.id}>
-                    <TableCell className="font-mono text-xs">{item.video_code}</TableCell>
-                    <TableCell className="max-w-[200px] truncate">{item.video_title}</TableCell>
+                    <TableCell className="font-mono text-xs">{item.videoCode}</TableCell>
+                    <TableCell className="max-w-[200px] truncate">{item.videoTitle}</TableCell>
                     <TableCell>
                       <Badge variant="outline">{item.language}</Badge>
                     </TableCell>
@@ -591,13 +591,13 @@ function WarmCacheTab() {
                     </TableCell>
                     <TableCell>
                       <Badge
-                        variant={item.cache_status === 'failed' ? 'destructive' : 'secondary'}
+                        variant={item.cacheStatus === 'failed' ? 'destructive' : 'secondary'}
                       >
-                        {item.cache_status}
+                        {item.cacheStatus}
                       </Badge>
-                      {item.cache_percentage > 0 && (
+                      {item.cachePercentage > 0 && (
                         <span className="ml-2 text-xs text-muted-foreground">
-                          {item.cache_percentage.toFixed(0)}%
+                          {item.cachePercentage.toFixed(0)}%
                         </span>
                       )}
                     </TableCell>

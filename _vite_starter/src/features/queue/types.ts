@@ -5,7 +5,7 @@ export interface TranscodeStats {
   queued: number
   processing: number
   failed: number
-  dead_letter: number
+  deadLetter: number
 }
 
 export interface SubtitleStats {
@@ -15,7 +15,7 @@ export interface SubtitleStats {
 }
 
 export interface WarmCacheStats {
-  not_cached: number
+  notCached: number
   warming: number
   cached: number
   failed: number
@@ -24,7 +24,7 @@ export interface WarmCacheStats {
 export interface QueueStatsResponse {
   transcode: TranscodeStats
   subtitle: SubtitleStats
-  warm_cache: WarmCacheStats
+  warmCache: WarmCacheStats
 }
 
 // ==================== Queue Items ====================
@@ -35,54 +35,53 @@ export interface TranscodeQueueItem {
   title: string
   status: string
   error: string
-  retry_count: number
-  created_at: string
-  updated_at: string
+  retryCount: number
+  createdAt: string
+  updatedAt: string
 }
 
 export interface SubtitleQueueItem {
   id: string
-  video_id: string
-  video_code: string
-  video_title: string
+  videoId: string
+  videoCode: string
+  videoTitle: string
   language: string
   type: string // transcribed | translated
   status: string
   error: string
-  created_at: string
-  updated_at: string
+  createdAt: string
+  updatedAt: string
 }
 
 export interface WarmCacheQueueItem {
   id: string
   code: string
   title: string
-  cache_status: string
-  cache_percentage: number
+  cacheStatus: string
+  cachePercentage: number
   qualities: string[]
   error: string
-  last_warmed_at: string | null
+  lastWarmedAt: string | null
 }
 
 // ==================== Response Types ====================
 
 export interface RetryResponse {
-  total_found: number
-  total_retried: number
+  totalFound: number
+  totalRetried: number
   skipped: number
   message: string
   errors?: string[]
 }
 
 export interface WarmCacheResponse {
-  video_id: string
+  videoId: string
   code: string
   message: string
 }
 
 export interface WarmAllResponse {
-  total_found: number
-  total_queued: number
+  totalFound: number
+  totalQueued: number
   message: string
 }
-
