@@ -228,3 +228,30 @@ func (c *Client) Ping() error {
 func (c *Client) IsConnected() bool {
 	return c.conn != nil && c.conn.IsConnected()
 }
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Stream Purge Operations
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// PurgeSubtitleStream ลบ messages ทั้งหมดใน SUBTITLE_JOBS stream (ไม่กระทบ transcode/warmcache)
+func (c *Client) PurgeSubtitleStream(ctx context.Context) (uint64, error) {
+	if c.subtitleStream == nil {
+		return 0, fmt.Errorf("subtitle stream not initialized")
+	}
+
+	// Get current message count before purge
+	info, err := c.subtitleStream.Info(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("failed to get subtitle stream info: %w", err)
+	}
+	beforeCount := info.State.Msgs
+
+	// Purge all messages in the stream
+	err = c.subtitleStream.Purge(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("failed to purge subtitle stream: %w", err)
+	}
+
+	logger.Info("Purged subtitle stream", "messages_deleted", beforeCount)
+	return beforeCount, nil
+}

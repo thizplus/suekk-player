@@ -18,12 +18,18 @@ type WarmCachePublisher interface {
 	PublishWarmCacheJob(ctx context.Context, job *nats.WarmCacheJob) error
 }
 
+// SubtitleStreamPurger interface สำหรับ purge subtitle stream (แยกจาก transcode/warmcache)
+type SubtitleStreamPurger interface {
+	PurgeSubtitleStream(ctx context.Context) (uint64, error)
+}
+
 type QueueServiceImpl struct {
-	videoRepo          repositories.VideoRepository
-	subtitleRepo       repositories.SubtitleRepository
-	transcodingService services.TranscodingService
-	subtitleService    services.SubtitleService
-	warmCachePublisher WarmCachePublisher
+	videoRepo            repositories.VideoRepository
+	subtitleRepo         repositories.SubtitleRepository
+	transcodingService   services.TranscodingService
+	subtitleService      services.SubtitleService
+	warmCachePublisher   WarmCachePublisher
+	subtitleStreamPurger SubtitleStreamPurger
 }
 
 func NewQueueService(
@@ -32,13 +38,15 @@ func NewQueueService(
 	transcodingService services.TranscodingService,
 	subtitleService services.SubtitleService,
 	warmCachePublisher WarmCachePublisher,
+	subtitleStreamPurger SubtitleStreamPurger,
 ) services.QueueService {
 	return &QueueServiceImpl{
-		videoRepo:          videoRepo,
-		subtitleRepo:       subtitleRepo,
-		transcodingService: transcodingService,
-		subtitleService:    subtitleService,
-		warmCachePublisher: warmCachePublisher,
+		videoRepo:            videoRepo,
+		subtitleRepo:         subtitleRepo,
+		transcodingService:   transcodingService,
+		subtitleService:      subtitleService,
+		warmCachePublisher:   warmCachePublisher,
+		subtitleStreamPurger: subtitleStreamPurger,
 	}
 }
 
@@ -302,6 +310,124 @@ func (s *QueueServiceImpl) RetrySubtitleStuck(ctx context.Context) (*dto.RetryRe
 		Message:      result.Message,
 		Errors:       result.Errors,
 	}, nil
+}
+
+func (s *QueueServiceImpl) ClearSubtitleStuck(ctx context.Context) (*dto.ClearResponse, error) {
+	logger.InfoContext(ctx, "Clearing all stuck subtitles and purging NATS queue")
+
+	response := &dto.ClearResponse{}
+
+	// 1. Purge NATS subtitle stream (ไม่กระทบ transcode/warmcache)
+	if s.subtitleStreamPurger != nil {
+		purgedCount, err := s.subtitleStreamPurger.PurgeSubtitleStream(ctx)
+		if err != nil {
+			logger.WarnContext(ctx, "Failed to purge subtitle stream", "error", err)
+			// Continue anyway - still delete DB records
+		} else {
+			response.NATSJobsPurged = int(purgedCount)
+			logger.InfoContext(ctx, "Purged NATS subtitle stream", "jobs_purged", purgedCount)
+		}
+	}
+
+	// 2. ดึง subtitles ที่ status = queued จาก DB
+	stuckSubtitles, err := s.subtitleRepo.GetByStatus(ctx, models.SubtitleStatusQueued)
+	if err != nil {
+		return nil, err
+	}
+
+	response.TotalFound = len(stuckSubtitles)
+
+	// 3. ลบ subtitle records ใน DB
+	for _, subtitle := range stuckSubtitles {
+		if err := s.subtitleRepo.Delete(ctx, subtitle.ID); err != nil {
+			logger.WarnContext(ctx, "Failed to delete stuck subtitle",
+				"subtitle_id", subtitle.ID,
+				"error", err,
+			)
+			response.Skipped++
+			continue
+		}
+		response.TotalDeleted++
+	}
+
+	response.Message = fmt.Sprintf("Purged %d NATS jobs, deleted %d/%d DB records",
+		response.NATSJobsPurged, response.TotalDeleted, response.TotalFound)
+
+	logger.InfoContext(ctx, "Clear subtitle queue completed",
+		"nats_purged", response.NATSJobsPurged,
+		"db_deleted", response.TotalDeleted,
+	)
+
+	return response, nil
+}
+
+// QueueMissingSubtitles สแกน videos ที่ยังไม่มี subtitle แล้ว queue ใหม่
+func (s *QueueServiceImpl) QueueMissingSubtitles(ctx context.Context) (*dto.QueueMissingResponse, error) {
+	logger.InfoContext(ctx, "Scanning videos for missing subtitles")
+
+	response := &dto.QueueMissingResponse{}
+
+	// 1. ดึง videos ทั้งหมดที่ ready
+	videos, err := s.videoRepo.GetByStatus(ctx, models.VideoStatusReady, 0, 10000)
+	if err != nil {
+		logger.ErrorContext(ctx, "Failed to get ready videos", "error", err)
+		return nil, err
+	}
+
+	response.TotalVideos = len(videos)
+	logger.InfoContext(ctx, "Found ready videos", "count", len(videos))
+
+	// 2. วนลูปตรวจสอบแต่ละ video
+	for _, video := range videos {
+		// 2.1 ต้องมี audio
+		if video.AudioPath == "" {
+			response.Skipped++
+			continue
+		}
+
+		// 2.2 ตรวจสอบว่ามี original subtitle ที่ ready หรือกำลังทำอยู่หรือไม่
+		existingOriginal, _ := s.subtitleRepo.GetOriginalByVideoID(ctx, video.ID)
+		if existingOriginal != nil {
+			// มี subtitle อยู่แล้ว
+			if existingOriginal.Status == models.SubtitleStatusReady {
+				// ready แล้ว ไม่ต้องทำอะไร
+				continue
+			}
+			if existingOriginal.IsInProgress() {
+				// กำลังทำอยู่ ไม่ต้อง queue ซ้ำ
+				continue
+			}
+			// failed → ลบแล้ว queue ใหม่
+			s.subtitleRepo.Delete(ctx, existingOriginal.ID)
+		}
+
+		// 2.3 Video นี้ต้องการ subtitle → Queue ผ่าน SubtitleService
+		response.TotalMissing++
+
+		_, err := s.subtitleService.TriggerTranscribe(ctx, video.ID)
+		if err != nil {
+			logger.WarnContext(ctx, "Failed to queue transcribe for video",
+				"video_id", video.ID,
+				"video_code", video.Code,
+				"error", err,
+			)
+			response.Skipped++
+			continue
+		}
+		response.TotalQueued++
+	}
+
+	response.Message = fmt.Sprintf("Queued %d/%d videos for transcription (%d skipped)",
+		response.TotalQueued, response.TotalMissing, response.Skipped)
+
+	logger.InfoContext(ctx, "Queue missing subtitles completed",
+		"total_videos", response.TotalVideos,
+		"total_missing", response.TotalMissing,
+		"total_queued", response.TotalQueued,
+		"skipped", response.Skipped,
+	)
+
+	return response, nil
 }
 
 // === Warm Cache Queue ===

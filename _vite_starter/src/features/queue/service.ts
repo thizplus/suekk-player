@@ -6,6 +6,8 @@ import type {
   SubtitleQueueItem,
   WarmCacheQueueItem,
   RetryResponse,
+  ClearResponse,
+  QueueMissingResponse,
   WarmCacheResponse,
   WarmAllResponse,
 } from './types'
@@ -59,6 +61,14 @@ export const queueService = {
 
   async retrySubtitleAll(): Promise<RetryResponse> {
     return apiClient.post<RetryResponse>(QUEUE_ROUTES.SUBTITLE_RETRY_ALL)
+  },
+
+  async clearSubtitleAll(): Promise<ClearResponse> {
+    return apiClient.delete<ClearResponse>(QUEUE_ROUTES.SUBTITLE_CLEAR_ALL)
+  },
+
+  async queueMissingSubtitles(): Promise<QueueMissingResponse> {
+    return apiClient.post<QueueMissingResponse>(QUEUE_ROUTES.SUBTITLE_QUEUE_MISSING)
   },
 
   // === Warm Cache Queue ===

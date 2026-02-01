@@ -144,6 +144,38 @@ func (h *QueueHandler) RetrySubtitleStuck(c *fiber.Ctx) error {
 	return utils.SuccessResponse(c, result)
 }
 
+// ClearSubtitleStuck ลบ subtitle stuck ทั้งหมด
+// DELETE /api/v1/admin/queues/subtitle/clear-all
+func (h *QueueHandler) ClearSubtitleStuck(c *fiber.Ctx) error {
+	ctx := c.UserContext()
+
+	logger.InfoContext(ctx, "Clear subtitle stuck request")
+
+	result, err := h.queueService.ClearSubtitleStuck(ctx)
+	if err != nil {
+		logger.ErrorContext(ctx, "Failed to clear subtitle stuck", "error", err)
+		return utils.InternalServerErrorResponse(c)
+	}
+
+	return utils.SuccessResponse(c, result)
+}
+
+// QueueMissingSubtitles สแกน videos ที่ยังไม่มี subtitle แล้ว queue ใหม่
+// POST /api/v1/admin/queues/subtitle/queue-missing
+func (h *QueueHandler) QueueMissingSubtitles(c *fiber.Ctx) error {
+	ctx := c.UserContext()
+
+	logger.InfoContext(ctx, "Queue missing subtitles request")
+
+	result, err := h.queueService.QueueMissingSubtitles(ctx)
+	if err != nil {
+		logger.ErrorContext(ctx, "Failed to queue missing subtitles", "error", err)
+		return utils.InternalServerErrorResponse(c)
+	}
+
+	return utils.SuccessResponse(c, result)
+}
+
 // === Warm Cache Queue ===
 
 // GetWarmCachePending ดึงรายการ video ที่ยังไม่ได้ warm cache

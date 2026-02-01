@@ -141,6 +141,8 @@ export const QUEUE_ROUTES = {
   SUBTITLE_STUCK: '/api/v1/admin/queues/subtitle/stuck',
   SUBTITLE_FAILED: '/api/v1/admin/queues/subtitle/failed',
   SUBTITLE_RETRY_ALL: '/api/v1/admin/queues/subtitle/retry-all',
+  SUBTITLE_CLEAR_ALL: '/api/v1/admin/queues/subtitle/clear-all',
+  SUBTITLE_QUEUE_MISSING: '/api/v1/admin/queues/subtitle/queue-missing',
   // Warm Cache Queue
   WARM_CACHE_PENDING: '/api/v1/admin/queues/warm-cache/pending',
   WARM_CACHE_FAILED: '/api/v1/admin/queues/warm-cache/failed',

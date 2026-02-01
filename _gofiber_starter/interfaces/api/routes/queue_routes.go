@@ -25,6 +25,8 @@ func SetupQueueRoutes(api fiber.Router, h *handlers.Handlers) {
 	subtitle.Get("/stuck", h.QueueHandler.GetSubtitleStuck)
 	subtitle.Get("/failed", h.QueueHandler.GetSubtitleFailed)
 	subtitle.Post("/retry-all", h.QueueHandler.RetrySubtitleStuck)
+	subtitle.Delete("/clear-all", h.QueueHandler.ClearSubtitleStuck)
+	subtitle.Post("/queue-missing", h.QueueHandler.QueueMissingSubtitles)
 
 	// Warm cache queue
 	warmCache := admin.Group("/warm-cache")

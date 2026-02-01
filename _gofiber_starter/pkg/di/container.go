@@ -126,6 +126,7 @@ func (c *Container) Initialize() error {
 		c.TranscodingService,
 		c.SubtitleService,
 		c.NATSPublisher,
+		c.NATSClient, // สำหรับ PurgeSubtitleStream
 	)
 	logger.Info("Queue service initialized")
 

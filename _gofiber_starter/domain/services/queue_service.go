@@ -36,6 +36,12 @@ type QueueService interface {
 	// RetrySubtitleStuck retry subtitle ที่ค้างทั้งหมด (reuse existing logic)
 	RetrySubtitleStuck(ctx context.Context) (*dto.RetryResponse, error)
 
+	// ClearSubtitleStuck ลบ subtitle ที่ค้างทั้งหมด + purge NATS queue
+	ClearSubtitleStuck(ctx context.Context) (*dto.ClearResponse, error)
+
+	// QueueMissingSubtitles สแกน videos ที่ยังไม่มี subtitle แล้ว queue ใหม่
+	QueueMissingSubtitles(ctx context.Context) (*dto.QueueMissingResponse, error)
+
 	// === Warm Cache Queue ===
 
 	// GetWarmCachePending ดึงรายการ video ที่ยังไม่ได้ warm cache

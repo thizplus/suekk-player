@@ -122,3 +122,21 @@ type WarmAllResponse struct {
 	TotalQueued int    `json:"totalQueued"`
 	Message     string `json:"message"`
 }
+
+// ClearResponse response หลัง clear queue
+type ClearResponse struct {
+	TotalFound      int    `json:"totalFound"`
+	TotalDeleted    int    `json:"totalDeleted"`
+	Skipped         int    `json:"skipped"`
+	NATSJobsPurged  int    `json:"natsJobsPurged"`  // จำนวน jobs ที่ถูก purge จาก NATS
+	Message         string `json:"message"`
+}
+
+// QueueMissingResponse response หลัง queue missing subtitles
+type QueueMissingResponse struct {
+	TotalVideos    int    `json:"totalVideos"`    // จำนวน video ทั้งหมดที่ ready
+	TotalMissing   int    `json:"totalMissing"`   // จำนวน video ที่ยังไม่มี subtitle
+	TotalQueued    int    `json:"totalQueued"`    // จำนวน video ที่ queue สำเร็จ
+	Skipped        int    `json:"skipped"`        // จำนวนที่ skip (ไม่มี audio, etc.)
+	Message        string `json:"message"`
+}

@@ -98,6 +98,34 @@ export function useRetrySubtitleAll() {
   })
 }
 
+export function useClearSubtitleAll() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: () => queueService.clearSubtitleAll(),
+    onSuccess: (data) => {
+      toast.success(data.message)
+      queryClient.invalidateQueries({ queryKey: queueKeys.all })
+    },
+    onError: () => {
+      toast.error('ลบไม่สำเร็จ')
+    },
+  })
+}
+
+export function useQueueMissingSubtitles() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: () => queueService.queueMissingSubtitles(),
+    onSuccess: (data) => {
+      toast.success(data.message)
+      queryClient.invalidateQueries({ queryKey: queueKeys.all })
+    },
+    onError: () => {
+      toast.error('Queue ไม่สำเร็จ')
+    },
+  })
+}
+
 // ==================== Warm Cache Queue ====================
 
 export function useWarmCachePending(page = 1, limit = 20) {

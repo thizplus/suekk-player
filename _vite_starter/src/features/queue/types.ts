@@ -74,6 +74,22 @@ export interface RetryResponse {
   errors?: string[]
 }
 
+export interface ClearResponse {
+  totalFound: number
+  totalDeleted: number
+  skipped: number
+  natsJobsPurged: number
+  message: string
+}
+
+export interface QueueMissingResponse {
+  totalVideos: number
+  totalMissing: number
+  totalQueued: number
+  skipped: number
+  message: string
+}
+
 export interface WarmCacheResponse {
   videoId: string
   code: string

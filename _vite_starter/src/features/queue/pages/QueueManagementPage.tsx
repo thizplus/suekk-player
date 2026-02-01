@@ -14,6 +14,8 @@ import {
   ExternalLink,
   HelpCircle,
   AlertTriangle,
+  Trash2,
+  Plus,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -46,6 +48,8 @@ import {
   useSubtitleStuck,
   useSubtitleFailed,
   useRetrySubtitleAll,
+  useClearSubtitleAll,
+  useQueueMissingSubtitles,
   useWarmCachePending,
   useWarmCacheFailed,
   useWarmCacheOne,
@@ -443,6 +447,8 @@ function SubtitleTab() {
   const stuckQuery = useSubtitleStuck(page)
   const failedQuery = useSubtitleFailed(page)
   const retryAll = useRetrySubtitleAll()
+  const clearAll = useClearSubtitleAll()
+  const queueMissing = useQueueMissingSubtitles()
 
   const { data, isLoading } = subtab === 'stuck' ? stuckQuery : failedQuery
   const items = data?.data ?? []
@@ -488,6 +494,29 @@ function SubtitleTab() {
               <RotateCcw className={`h-4 w-4 mr-2 ${retryAll.isPending ? 'animate-spin' : ''}`} />
               ลองใหม่ทั้งหมด
             </Button>
+            {subtab === 'stuck' && (
+              <>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => clearAll.mutate()}
+                  disabled={clearAll.isPending || items.length === 0}
+                  className="text-destructive hover:text-destructive"
+                >
+                  <Trash2 className={`h-4 w-4 mr-2 ${clearAll.isPending ? 'animate-pulse' : ''}`} />
+                  ล้างทั้งหมด
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => queueMissing.mutate()}
+                  disabled={queueMissing.isPending}
+                >
+                  <Plus className={`h-4 w-4 mr-2 ${queueMissing.isPending ? 'animate-pulse' : ''}`} />
+                  Queue ใหม่
+                </Button>
+              </>
+            )}
           </div>
         </div>
 
@@ -497,7 +526,7 @@ function SubtitleTab() {
             {subtab === 'stuck' ? (
               <>
                 <strong>"ค้าง" คืออะไร?</strong> งานที่รออยู่ในคิวนานเกินไป อาจเกิดจาก Worker หยุดทำงานกลางคัน
-                กด "ลองใหม่ทั้งหมด" เพื่อส่งงานเข้าคิวอีกครั้ง
+                กด "ล้างทั้งหมด" เพื่อล้าง NATS queue และลบ record ที่ค้าง แล้วกด "Queue ใหม่" เพื่อสแกนหา videos ที่ยังไม่มี subtitle แล้ว queue ใหม่ทั้งหมด
               </>
             ) : (
               <>
@@ -560,7 +589,7 @@ function SubtitleTab() {
                             </Link>
                           </Button>
                         </TooltipTrigger>
-                        <TooltipContent>ดูรายละเอียดวิดีโอ</TooltipContent>
+                        <TooltipContent className='text-foreground'>ดูรายละเอียดวิดีโอ</TooltipContent>
                       </Tooltip>
                     </TableCell>
                   </TableRow>
