@@ -379,11 +379,25 @@
    ArtPlayer Styles
    ======================================== */
 
+/* ArtPlayer Theme Variables (always dark theme for video player) */
+:root {
+  --art-bg: oklch(0 0 0);
+  --art-panel-bg: oklch(0.12 0 0 / 0.98);
+  --art-text: oklch(1 0 0);
+  --art-text-muted: oklch(1 0 0 / 0.7);
+  --art-hover: oklch(1 0 0 / 0.1);
+  --art-hover-strong: oklch(1 0 0 / 0.15);
+  --art-accent: oklch(0.55 0.25 25);
+  --art-accent-bg: oklch(0.55 0.25 25 / 0.15);
+  --art-shadow: oklch(0 0 0 / 0.5);
+  --art-subtitle-shadow: oklch(0 0 0 / 0.9);
+}
+
 /* Container */
 .artplayer-container {
   width: 100%;
   aspect-ratio: 16 / 9;
-  background: #000;
+  background: var(--art-bg);
   border-radius: var(--radius);
   overflow: hidden;
 }
@@ -415,28 +429,28 @@
 .art-setting *,
 .art-settings,
 .art-settings * {
-  color: #fff !important;
+  color: var(--art-text) !important;
 }
 
 /* Settings Panel Container */
 .art-setting-panel,
 .art-settings-panel {
-  background: rgba(28, 28, 28, 0.98) !important;
+  background: var(--art-panel-bg) !important;
   border-radius: 8px !important;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5) !important;
-  color: #fff !important;
+  box-shadow: 0 4px 20px var(--art-shadow) !important;
+  color: var(--art-text) !important;
 }
 
 /* Setting Items */
 .art-setting-item,
 .art-settings-item {
-  color: #fff !important;
+  color: var(--art-text) !important;
   background: transparent !important;
 }
 
 .art-setting-item:hover,
 .art-settings-item:hover {
-  background: rgba(255, 255, 255, 0.1) !important;
+  background: var(--art-hover) !important;
 }
 
 /* Setting Item Text */
@@ -447,48 +461,48 @@
 .art-setting-item-right-tooltip,
 [class*="art-setting"] span,
 [class*="art-setting"] div {
-  color: #fff !important;
+  color: var(--art-text) !important;
 }
 
 /* Icons */
 .art-setting-item .art-icon,
 .art-setting-item svg,
 [class*="art-setting"] svg {
-  color: #fff !important;
-  fill: #fff !important;
+  color: var(--art-text) !important;
+  fill: var(--art-text) !important;
 }
 
 /* Selector Panel (Quality/Subtitle dropdown) */
 .art-selector,
 .art-selector-list {
-  background: rgba(28, 28, 28, 0.98) !important;
+  background: var(--art-panel-bg) !important;
   border-radius: 6px !important;
-  color: #fff !important;
+  color: var(--art-text) !important;
 }
 
 .art-selector-item {
-  color: #fff !important;
+  color: var(--art-text) !important;
 }
 
 .art-selector-item:hover {
-  background: rgba(255, 255, 255, 0.15) !important;
+  background: var(--art-hover-strong) !important;
 }
 
 .art-selector-item.art-current {
-  color: #e50914 !important;
-  background: rgba(229, 9, 20, 0.15) !important;
+  color: var(--art-accent) !important;
+  background: var(--art-accent-bg) !important;
 }
 
 /* Switch toggle */
 .art-setting-item-right-icon svg {
-  color: #fff !important;
-  fill: #fff !important;
+  color: var(--art-text) !important;
+  fill: var(--art-text) !important;
 }
 
 /* ArtPlayer Tooltip only */
 .art-controls [class*="tooltip"],
 .art-control-progress [class*="tooltip"] {
-  color: rgba(255, 255, 255, 0.7) !important;
+  color: var(--art-text-muted) !important;
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -500,15 +514,15 @@
   /* Responsive font size: scales nicely from small to large screens */
   font-size: clamp(18px, calc(1.5vw + 1.5vh + 8px), 56px) !important;
   font-weight: 600 !important;
-  color: #fff !important;
+  color: var(--art-text) !important;
   /* Netflix-style text shadow for readability without background */
   text-shadow:
-    0 0 4px rgba(0,0,0,0.9),
-    0 0 8px rgba(0,0,0,0.7),
-    2px 2px 4px rgba(0,0,0,0.9),
-    -2px -2px 4px rgba(0,0,0,0.9),
-    2px -2px 4px rgba(0,0,0,0.9),
-    -2px 2px 4px rgba(0,0,0,0.9) !important;
+    0 0 4px var(--art-subtitle-shadow),
+    0 0 8px oklch(0 0 0 / 0.7),
+    2px 2px 4px var(--art-subtitle-shadow),
+    -2px -2px 4px var(--art-subtitle-shadow),
+    2px -2px 4px var(--art-subtitle-shadow),
+    -2px 2px 4px var(--art-subtitle-shadow) !important;
   background-color: transparent !important;
   padding: 0 !important;
   line-height: 1.4 !important;
@@ -574,9 +588,9 @@
 
 /* Quality selector dropdown */
 .artplayer-container .art-selector {
-  background: rgba(28, 28, 28, 0.95) !important;
+  background: var(--art-panel-bg) !important;
   border-radius: 8px !important;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5) !important;
+  box-shadow: 0 4px 20px var(--art-shadow) !important;
   overflow: hidden !important;
 }
 
@@ -587,12 +601,12 @@
 }
 
 .artplayer-container .art-selector-item:hover {
-  background: rgba(255, 255, 255, 0.1) !important;
+  background: var(--art-hover) !important;
 }
 
 .artplayer-container .art-selector-item.art-current {
-  color: #e50914 !important;
-  background: rgba(229, 9, 20, 0.1) !important;
+  color: var(--art-accent) !important;
+  background: oklch(0.55 0.25 25 / 0.1) !important;
 }
 
 /* Mobile optimizations */
