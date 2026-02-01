@@ -43,6 +43,7 @@ func (r *VideoRepositoryImpl) GetByCode(ctx context.Context, code string) (*mode
 	err := r.db.WithContext(ctx).
 		Preload("User").
 		Preload("Category").
+		Preload("Subtitles").
 		Where("code = ?", code).
 		First(&video).Error
 	if err != nil {

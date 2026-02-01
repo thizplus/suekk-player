@@ -54,9 +54,10 @@ type VideoResponse struct {
 	User         *UserBasicResponse `json:"user,omitempty"`
 
 	// Audio/Subtitle info
-	HasAudio         bool             `json:"hasAudio"`                   // มี audio ที่ตัดไว้หรือไม่
-	DetectedLanguage string           `json:"detectedLanguage,omitempty"` // ภาษาที่ตรวจพบ
-	SubtitleSummary  *SubtitleSummary `json:"subtitleSummary,omitempty"`  // สรุป subtitle
+	HasAudio         bool               `json:"hasAudio"`                   // มี audio ที่ตัดไว้หรือไม่
+	DetectedLanguage string             `json:"detectedLanguage,omitempty"` // ภาษาที่ตรวจพบ
+	SubtitleSummary  *SubtitleSummary   `json:"subtitleSummary,omitempty"`  // สรุป subtitle
+	Subtitles        []SubtitleResponse `json:"subtitles,omitempty"`        // Full subtitle list (สำหรับ embed/preview)
 
 	CreatedAt time.Time `json:"createdAt"`
 	UpdatedAt time.Time `json:"updatedAt"`
@@ -164,9 +165,10 @@ func VideoToVideoResponse(video *models.Video) *VideoResponse {
 		}
 	}
 
-	// Build subtitle summary if subtitles are loaded
+	// Build subtitle summary and full list if subtitles are loaded
 	if len(video.Subtitles) > 0 {
 		response.SubtitleSummary = buildSubtitleSummary(video.Subtitles)
+		response.Subtitles = SubtitlesToResponses(video.Subtitles)
 	}
 
 	return response
