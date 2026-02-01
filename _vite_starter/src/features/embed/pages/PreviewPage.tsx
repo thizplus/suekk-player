@@ -24,7 +24,7 @@ export function PreviewPage() {
   })
 
   // ดึง subtitles สำหรับวิดีโอ
-  const { data: subtitleData } = useSubtitlesByCode(code || '', {
+  const { data: subtitleData, isLoading: subtitleLoading } = useSubtitlesByCode(code || '', {
     enabled: !!code && !!video && video.status === 'ready',
   })
 
@@ -40,8 +40,8 @@ export function PreviewPage() {
   // Fetch subtitles ด้วย token แล้วสร้าง Blob URLs
   // ต้องรอให้เสร็จก่อนแสดง player เพื่อไม่ให้ player ถูก recreate
   useEffect(() => {
-    // รอจนกว่า streamAccess จะพร้อม
-    if (!streamAccess?.token) return
+    // รอจนกว่า streamAccess และ subtitle query จะพร้อม
+    if (!streamAccess?.token || subtitleLoading) return
 
     // ถ้าไม่มี subtitle data หรือไม่มี ready subtitles → พร้อมแสดง player เลย
     const readySubtitles = subtitleData?.subtitles?.filter(
@@ -81,7 +81,7 @@ export function PreviewPage() {
     return () => {
       Object.values(blobUrls).forEach(url => URL.revokeObjectURL(url))
     }
-  }, [subtitleData, streamAccess?.token])
+  }, [subtitleData, subtitleLoading, streamAccess?.token])
 
   // Fetch thumbnail ด้วย token
   useEffect(() => {
