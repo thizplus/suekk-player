@@ -54,6 +54,14 @@ type SubtitleService interface {
 	// เปลี่ยน status จาก queued → processing/translating และบันทึก processing_started_at
 	MarkJobStarted(ctx context.Context, subtitleID uuid.UUID, jobType string) error
 
+	// === Content Edit Operations ===
+
+	// GetSubtitleContent ดึง content ของ subtitle (SRT file)
+	GetSubtitleContent(ctx context.Context, subtitleID uuid.UUID) (*dto.SubtitleContentResponse, error)
+
+	// UpdateSubtitleContent อัปเดต content ของ subtitle (SRT file)
+	UpdateSubtitleContent(ctx context.Context, subtitleID uuid.UUID, content string) error
+
 	// === Utility ===
 
 	// CanTranslate ตรวจสอบว่าสามารถแปลจากภาษาต้นทางเป็นภาษาเป้าหมายได้หรือไม่

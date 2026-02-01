@@ -17,6 +17,10 @@ type UserService interface {
 	GenerateJWT(user *models.User) (string, error)
 	ValidateJWT(token string) (*models.User, error)
 
+	// Password Management
+	// SetPassword ตั้ง password สำหรับ Google users ที่ยังไม่มี password
+	SetPassword(ctx context.Context, userID uuid.UUID, req *dto.SetPasswordRequest) error
+
 	// Google OAuth
 	GetGoogleOAuthURL(state string) string
 	LoginOrRegisterWithGoogle(ctx context.Context, googleUser *dto.GoogleUserInfo) (string, *models.User, error)

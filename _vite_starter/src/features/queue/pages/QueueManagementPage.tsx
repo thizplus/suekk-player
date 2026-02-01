@@ -589,7 +589,7 @@ function SubtitleTab() {
                             </Link>
                           </Button>
                         </TooltipTrigger>
-                        <TooltipContent className='text-foreground'>ดูรายละเอียดวิดีโอ</TooltipContent>
+                        <TooltipContent>ดูรายละเอียดวิดีโอ</TooltipContent>
                       </Tooltip>
                     </TableCell>
                   </TableRow>

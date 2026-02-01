@@ -462,6 +462,7 @@ export function VideoDetailSheet({ videoId, open, onOpenChange }: VideoDetailShe
               <div className="pt-2 border-t">
                 <SubtitlePanel
                   videoId={video.id}
+                  videoCode={video.code}
                   videoStatus={video.status}
                 />
               </div>

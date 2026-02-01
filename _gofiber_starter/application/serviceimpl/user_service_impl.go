@@ -226,6 +226,44 @@ func (s *UserServiceImpl) ValidateJWT(tokenString string) (*models.User, error) 
 	return nil, errors.New("invalid token")
 }
 
+// SetPassword ตั้ง password สำหรับ Google users ที่ยังไม่มี password
+func (s *UserServiceImpl) SetPassword(ctx context.Context, userID uuid.UUID, req *dto.SetPasswordRequest) error {
+	user, err := s.userRepo.GetByID(ctx, userID)
+	if err != nil {
+		logger.WarnContext(ctx, "User not found for set password", "user_id", userID)
+		return errors.New("user not found")
+	}
+
+	// ตรวจสอบว่าเป็น Google user และยังไม่มี password
+	if !user.IsGoogleUser() {
+		logger.WarnContext(ctx, "Set password failed - not a Google user", "user_id", userID)
+		return errors.New("only Google users can set password without current password")
+	}
+
+	if user.Password != "" {
+		logger.WarnContext(ctx, "Set password failed - user already has password", "user_id", userID)
+		return errors.New("user already has a password, use change password instead")
+	}
+
+	// Hash password ใหม่
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(req.NewPassword), bcrypt.DefaultCost)
+	if err != nil {
+		logger.ErrorContext(ctx, "Failed to hash password", "user_id", userID, "error", err)
+		return errors.New("failed to set password")
+	}
+
+	user.Password = string(hashedPassword)
+	user.UpdatedAt = time.Now()
+
+	if err := s.userRepo.Update(ctx, userID, user); err != nil {
+		logger.ErrorContext(ctx, "Failed to update user password", "user_id", userID, "error", err)
+		return errors.New("failed to set password")
+	}
+
+	logger.InfoContext(ctx, "Password set successfully for Google user", "user_id", userID)
+	return nil
+}
+
 // GetGoogleOAuthURL สร้าง URL สำหรับ redirect ไป Google OAuth
 func (s *UserServiceImpl) GetGoogleOAuthURL(state string) string {
 	params := url.Values{}

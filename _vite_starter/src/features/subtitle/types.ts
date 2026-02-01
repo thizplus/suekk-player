@@ -85,3 +85,29 @@ export interface RetryStuckResponse {
   message: string
   errors?: string[]
 }
+
+// === Content Editing Types ===
+
+// Response จาก GET /api/v1/subtitles/:id/content
+export interface SubtitleContentResponse {
+  id: string
+  videoId: string
+  language: string
+  content: string
+  srtPath: string
+}
+
+// Request สำหรับ PUT /api/v1/subtitles/:id/content
+export interface UpdateSubtitleContentRequest {
+  content: string
+}
+
+// === SRT Parser Types ===
+
+// Subtitle segment (แต่ละบรรทัดใน SRT)
+export interface SubtitleSegment {
+  index: number
+  startTime: string  // "00:01:23,456"
+  endTime: string    // "00:01:25,789"
+  text: string       // อาจมีหลายบรรทัด
+}

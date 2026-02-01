@@ -405,8 +405,8 @@ func (c *Container) initServices() error {
 		logger.Warn("Failed to initialize default settings", "error", err)
 	}
 
-	// Subtitle Service with NATS job publisher
-	c.SubtitleService = serviceimpl.NewSubtitleService(c.VideoRepository, c.SubtitleRepository, c.NATSPublisher)
+	// Subtitle Service with NATS job publisher and storage
+	c.SubtitleService = serviceimpl.NewSubtitleService(c.VideoRepository, c.SubtitleRepository, c.NATSPublisher, c.Storage)
 	logger.Info("Subtitle service initialized", "has_publisher", c.NATSPublisher != nil)
 
 	// Queue Service (unified queue management)

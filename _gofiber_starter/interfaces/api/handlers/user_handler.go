@@ -183,3 +183,40 @@ func (h *UserHandler) ListUsers(c *fiber.Ctx) error {
 
 	return utils.PaginatedSuccessResponse(c, userResponses, total, page, limit)
 }
+
+// SetPassword ตั้ง password สำหรับ Google users ที่ยังไม่มี password
+// POST /api/v1/users/set-password
+func (h *UserHandler) SetPassword(c *fiber.Ctx) error {
+	ctx := c.UserContext()
+
+	user, err := utils.GetUserFromContext(c)
+	if err != nil {
+		logger.WarnContext(ctx, "Unauthorized access attempt")
+		return utils.UnauthorizedResponse(c, "")
+	}
+
+	var req dto.SetPasswordRequest
+	if err := c.BodyParser(&req); err != nil {
+		logger.WarnContext(ctx, "Invalid request body", "error", err)
+		return utils.BadRequestResponse(c, "Invalid request body")
+	}
+
+	if err := utils.ValidateStruct(&req); err != nil {
+		errors := utils.GetValidationErrors(err)
+		logger.WarnContext(ctx, "Validation failed", "errors", errors)
+		return utils.ValidationErrorResponse(c, errors)
+	}
+
+	logger.InfoContext(ctx, "Set password attempt", "user_id", user.ID)
+
+	if err := h.userService.SetPassword(ctx, user.ID, &req); err != nil {
+		logger.WarnContext(ctx, "Set password failed", "user_id", user.ID, "error", err)
+		return utils.BadRequestResponse(c, err.Error())
+	}
+
+	logger.InfoContext(ctx, "Password set successfully", "user_id", user.ID)
+
+	return utils.SuccessResponse(c, fiber.Map{
+		"message": "Password set successfully",
+	})
+}

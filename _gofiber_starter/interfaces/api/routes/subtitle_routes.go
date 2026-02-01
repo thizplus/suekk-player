@@ -41,7 +41,9 @@ func SetupSubtitleRoutes(api fiber.Router, h *handlers.Handlers) {
 
 	// === Subtitle Management Routes (Protected) ===
 	subtitlesProtected := subtitles.Group("", middleware.Protected())
-	subtitlesProtected.Delete("/:id", h.SubtitleHandler.DeleteSubtitle) // ลบ subtitle
+	subtitlesProtected.Delete("/:id", h.SubtitleHandler.DeleteSubtitle)              // ลบ subtitle
+	subtitlesProtected.Get("/:id/content", h.SubtitleHandler.GetSubtitleContent)     // ดึง content ของ subtitle (SRT)
+	subtitlesProtected.Put("/:id/content", h.SubtitleHandler.UpdateSubtitleContent)  // อัปเดต content ของ subtitle (SRT)
 
 	// === Admin Routes (Protected) ===
 	admin := api.Group("/admin", middleware.Protected())

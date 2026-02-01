@@ -19,6 +19,11 @@ const PreviewPage = lazyWithReload(() =>
   import('@/features/embed').then((m) => ({ default: m.PreviewPage }))
 )
 
+// Lazy load subtitle editor page (admin edit subtitles)
+const SubtitleEditorPage = lazyWithReload(() =>
+  import('@/features/subtitle').then((m) => ({ default: m.SubtitleEditorPage }))
+)
+
 // Lazy load dashboard pages
 const AdminDashboard = lazyWithReload(() =>
   import('@/features/dashboard').then((m) => ({ default: m.AdminDashboard }))
@@ -92,6 +97,16 @@ export default function AppRoutes() {
         element={
           <Suspense fallback={<div className="fixed inset-0 bg-black flex items-center justify-center"><div className="animate-spin h-8 w-8 border-2 border-white border-t-transparent rounded-full" /></div>}>
             <PreviewPage />
+          </Suspense>
+        }
+      />
+
+      {/* Subtitle Editor route - edit Thai subtitles with real-time preview */}
+      <Route
+        path="/preview/:code/edit"
+        element={
+          <Suspense fallback={<div className="fixed inset-0 bg-background flex items-center justify-center"><div className="animate-spin h-8 w-8 border-2 border-primary border-t-transparent rounded-full" /></div>}>
+            <SubtitleEditorPage />
           </Suspense>
         }
       />

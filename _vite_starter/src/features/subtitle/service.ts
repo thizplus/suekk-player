@@ -8,6 +8,8 @@ import type {
   TranslateJobResponse,
   TranslateRequest,
   RetryStuckResponse,
+  SubtitleContentResponse,
+  UpdateSubtitleContentRequest,
 } from './types'
 
 export const subtitleService = {
@@ -50,5 +52,18 @@ export const subtitleService = {
   // Retry stuck subtitles ทั้งหมด (status = queued ที่ค้างอยู่)
   async retryStuckSubtitles(): Promise<RetryStuckResponse> {
     return apiClient.post<RetryStuckResponse>(SUBTITLE_ROUTES.RETRY_STUCK)
+  },
+
+  // === Content Editing ===
+
+  // ดึง content ของ subtitle (SRT file)
+  async getContent(subtitleId: string): Promise<SubtitleContentResponse> {
+    return apiClient.get<SubtitleContentResponse>(SUBTITLE_ROUTES.CONTENT(subtitleId))
+  },
+
+  // อัปเดต content ของ subtitle (SRT file)
+  async updateContent(subtitleId: string, content: string): Promise<void> {
+    const payload: UpdateSubtitleContentRequest = { content }
+    return apiClient.put(SUBTITLE_ROUTES.CONTENT(subtitleId), payload)
   },
 }

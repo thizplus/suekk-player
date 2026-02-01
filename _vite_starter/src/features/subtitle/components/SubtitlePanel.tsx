@@ -11,6 +11,7 @@ import {
   Clock,
   Trash2,
   RefreshCw,
+  Pencil,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -46,7 +47,7 @@ interface SubtitlePanelProps {
   videoStatus: string
 }
 
-export function SubtitlePanel({ videoId, videoStatus }: SubtitlePanelProps) {
+export function SubtitlePanel({ videoId, videoCode, videoStatus }: SubtitlePanelProps) {
   const [targetLanguage, setTargetLanguage] = useState<string>('')
   const [isJobPending, setIsJobPending] = useState(false)
   const [pendingAutoTranslate, setPendingAutoTranslate] = useState(false)
@@ -294,11 +295,20 @@ export function SubtitlePanel({ videoId, videoStatus }: SubtitlePanelProps) {
             </div>
             {/* Download button - only when ready */}
             {originalSubtitle.status === 'ready' && originalSubtitle.srtPath && (
-              <Button size="icon" variant="ghost" className="size-8 shrink-0" asChild>
-                <a href={getSrtUrl(originalSubtitle)!} download title="ดาวน์โหลด SRT">
-                  <Download className="size-4" />
-                </a>
-              </Button>
+              <>
+                <Button size="icon" variant="ghost" className="size-8 shrink-0" asChild>
+                  <a href={getSrtUrl(originalSubtitle)!} download title="ดาวน์โหลด SRT">
+                    <Download className="size-4" />
+                  </a>
+                </Button>
+                {videoCode && (
+                  <Button size="icon" variant="ghost" className="size-8 shrink-0" asChild>
+                    <a href={`/preview/${videoCode}/edit`} target="_blank" rel="noopener noreferrer" title="แก้ไข Subtitle">
+                      <Pencil className="size-4" />
+                    </a>
+                  </Button>
+                )}
+              </>
             )}
             {/* Retry button - for queued, failed, ready */}
             {['queued', 'failed', 'ready'].includes(originalSubtitle.status) && (
@@ -382,11 +392,20 @@ export function SubtitlePanel({ videoId, videoStatus }: SubtitlePanelProps) {
             </div>
             {/* Download button - only when ready */}
             {sub.status === 'ready' && sub.srtPath && (
-              <Button size="icon" variant="ghost" className="size-8 shrink-0" asChild>
-                <a href={getSrtUrl(sub)!} download title="ดาวน์โหลด SRT">
-                  <Download className="size-4" />
-                </a>
-              </Button>
+              <>
+                <Button size="icon" variant="ghost" className="size-8 shrink-0" asChild>
+                  <a href={getSrtUrl(sub)!} download title="ดาวน์โหลด SRT">
+                    <Download className="size-4" />
+                  </a>
+                </Button>
+                {videoCode && (
+                  <Button size="icon" variant="ghost" className="size-8 shrink-0" asChild>
+                    <a href={`/preview/${videoCode}/edit`} target="_blank" rel="noopener noreferrer" title="แก้ไข Subtitle">
+                      <Pencil className="size-4" />
+                    </a>
+                  </Button>
+                )}
+              </>
             )}
             {/* Retry button - for queued, failed, ready */}
             {['queued', 'failed', 'ready'].includes(sub.status) && (

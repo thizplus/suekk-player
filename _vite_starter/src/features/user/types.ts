@@ -35,3 +35,9 @@ export interface UserListParams {
   role?: RoleType
   status?: StatusType
 }
+
+// Set password สำหรับ Google users
+export interface SetPasswordPayload {
+  newPassword: string
+  confirmPassword: string
+}

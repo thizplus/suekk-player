@@ -14,6 +14,7 @@ export const USER_ROUTES = {
   LIST: '/api/v1/users',
   BY_ID: (id: string) => `/api/v1/users/${id}`,
   PROFILE: '/api/v1/users/profile',
+  SET_PASSWORD: '/api/v1/users/set-password',
 }
 
 export const DASHBOARD_ROUTES = {
@@ -166,4 +167,6 @@ export const SUBTITLE_ROUTES = {
   DELETE: (subtitleId: string) => `/api/v1/subtitles/${subtitleId}`,
   // Admin: Retry stuck subtitles ทั้งหมด
   RETRY_STUCK: '/api/v1/admin/subtitles/retry-stuck',
+  // Content editing - GET/PUT subtitle content (SRT file)
+  CONTENT: (subtitleId: string) => `/api/v1/subtitles/${subtitleId}/content`,
 }

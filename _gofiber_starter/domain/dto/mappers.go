@@ -9,16 +9,18 @@ func UserToUserResponse(user *models.User) *UserResponse {
 		return nil
 	}
 	return &UserResponse{
-		ID:        user.ID,
-		Email:     user.Email,
-		Username:  user.Username,
-		FirstName: user.FirstName,
-		LastName:  user.LastName,
-		Avatar:    user.Avatar,
-		Role:      user.Role,
-		IsActive:  user.IsActive,
-		CreatedAt: user.CreatedAt,
-		UpdatedAt: user.UpdatedAt,
+		ID:           user.ID,
+		Email:        user.Email,
+		Username:     user.Username,
+		FirstName:    user.FirstName,
+		LastName:     user.LastName,
+		Avatar:       user.Avatar,
+		Role:         user.Role,
+		IsActive:     user.IsActive,
+		HasPassword:  user.Password != "",
+		IsGoogleUser: user.IsGoogleUser(),
+		CreatedAt:    user.CreatedAt,
+		UpdatedAt:    user.UpdatedAt,
 	}
 }
 

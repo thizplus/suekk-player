@@ -21,16 +21,18 @@ type UpdateUserRequest struct {
 }
 
 type UserResponse struct {
-	ID        uuid.UUID `json:"id"`
-	Email     string    `json:"email"`
-	Username  string    `json:"username"`
-	FirstName string    `json:"firstName"`
-	LastName  string    `json:"lastName"`
-	Avatar    string    `json:"avatar"`
-	Role      string    `json:"role"`
-	IsActive  bool      `json:"isActive"`
-	CreatedAt time.Time `json:"createdAt"`
-	UpdatedAt time.Time `json:"updatedAt"`
+	ID          uuid.UUID `json:"id"`
+	Email       string    `json:"email"`
+	Username    string    `json:"username"`
+	FirstName   string    `json:"firstName"`
+	LastName    string    `json:"lastName"`
+	Avatar      string    `json:"avatar"`
+	Role        string    `json:"role"`
+	IsActive    bool      `json:"isActive"`
+	HasPassword bool      `json:"hasPassword"` // true ถ้ามี password แล้ว
+	IsGoogleUser bool     `json:"isGoogleUser"` // true ถ้า login ด้วย Google
+	CreatedAt   time.Time `json:"createdAt"`
+	UpdatedAt   time.Time `json:"updatedAt"`
 }
 
 type UserListResponse struct {
@@ -40,6 +42,12 @@ type UserListResponse struct {
 
 type ChangePasswordRequest struct {
 	CurrentPassword string `json:"currentPassword" validate:"required"`
+	NewPassword     string `json:"newPassword" validate:"required,min=8,max=72"`
+	ConfirmPassword string `json:"confirmPassword" validate:"required,eqfield=NewPassword"`
+}
+
+// SetPasswordRequest สำหรับ Google users ที่ยังไม่มี password
+type SetPasswordRequest struct {
 	NewPassword     string `json:"newPassword" validate:"required,min=8,max=72"`
 	ConfirmPassword string `json:"confirmPassword" validate:"required,eqfield=NewPassword"`
 }

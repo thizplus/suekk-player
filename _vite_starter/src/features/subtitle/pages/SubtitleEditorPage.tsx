@@ -1,0 +1,367 @@
+/**
+ * SubtitleEditorPage - หน้าแก้ไข subtitle พร้อม real-time preview
+ * Route: /preview/:code/edit
+ */
+
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
+import { useParams, useNavigate, useBeforeUnload } from 'react-router-dom'
+import { useVideoByCode, VideoPlayer } from '@/features/video'
+import { useSubtitlesByCode, useSubtitleContent, useUpdateSubtitleContent } from '@/features/subtitle'
+import { SubtitleEditor } from '../components/SubtitleEditor'
+import { parseSRT, generateSRT } from '../utils/srt-parser'
+import type { SubtitleSegment, Subtitle } from '../types'
+import { Loader2, ArrowLeft, ExternalLink } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { APP_CONFIG } from '@/constants/app-config'
+import { LANGUAGE_LABELS } from '@/constants/enums'
+import { useStreamAccess } from '@/features/embed/hooks/useStreamAccess'
+
+// Simple debounced callback hook
+function useDebouncedCallback<T extends (...args: Parameters<T>) => ReturnType<T>>(
+  callback: T,
+  delay: number
+): T {
+  const timeoutRef = useRef<ReturnType<typeof setTimeout>>()
+  const callbackRef = useRef(callback)
+  callbackRef.current = callback
+
+  return useCallback(
+    ((...args: Parameters<T>) => {
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current)
+      }
+      timeoutRef.current = setTimeout(() => {
+        callbackRef.current(...args)
+      }, delay)
+    }) as T,
+    [delay]
+  )
+}
+
+export function SubtitleEditorPage() {
+  const { code } = useParams<{ code: string }>()
+  const navigate = useNavigate()
+
+  // === Data Fetching ===
+  const { data: video, isLoading: videoLoading, error: videoError } = useVideoByCode(code || '')
+  const { data: streamAccess, isLoading: streamLoading } = useStreamAccess(code || '', {
+    enabled: !!code && !!video && video.status === 'ready',
+  })
+  const { data: subtitleData, isLoading: subtitleLoading } = useSubtitlesByCode(code || '', {
+    enabled: !!code && !!video && video.status === 'ready',
+  })
+
+  // หา Thai subtitle ที่ ready
+  const thaiSubtitle = useMemo((): Subtitle | undefined => {
+    return subtitleData?.subtitles?.find(
+      (sub) => sub.language === 'th' && sub.status === 'ready' && sub.srtPath
+    )
+  }, [subtitleData])
+
+  // ดึง content ของ Thai subtitle
+  const {
+    data: subtitleContent,
+    isLoading: contentLoading,
+  } = useSubtitleContent(thaiSubtitle?.id || '', {
+    enabled: !!thaiSubtitle?.id,
+  })
+
+  // Mutation สำหรับ save
+  const updateSubtitleMutation = useUpdateSubtitleContent()
+
+  // === State ===
+  const [segments, setSegments] = useState<SubtitleSegment[]>([])
+  const [originalContent, setOriginalContent] = useState<string>('')
+  const [currentTime, setCurrentTime] = useState(0)
+  const [subtitleBlobUrl, setSubtitleBlobUrl] = useState<string>('')
+  const [thumbnailBlobUrl, setThumbnailBlobUrl] = useState<string | undefined>()
+
+  // Track if content has changed
+  const isDirty = useMemo(() => {
+    const currentContent = generateSRT(segments)
+    return currentContent !== originalContent && segments.length > 0
+  }, [segments, originalContent])
+
+  // Warn before leaving with unsaved changes
+  useBeforeUnload(
+    useCallback(
+      (e) => {
+        if (isDirty) {
+          e.preventDefault()
+          e.returnValue = ''
+        }
+      },
+      [isDirty]
+    )
+  )
+
+  // === Initialize segments from fetched content ===
+  useEffect(() => {
+    if (subtitleContent?.content) {
+      const parsed = parseSRT(subtitleContent.content)
+      setSegments(parsed)
+      setOriginalContent(subtitleContent.content)
+    }
+  }, [subtitleContent?.content])
+
+  // === Create initial subtitle Blob URL ===
+  useEffect(() => {
+    if (!streamAccess?.token || !thaiSubtitle?.srtPath) return
+
+    let blobUrl: string | undefined
+
+    const fetchSubtitle = async () => {
+      try {
+        const url = `${APP_CONFIG.cdnUrl}/${thaiSubtitle.srtPath}`
+        const response = await fetch(url, {
+          headers: { 'X-Stream-Token': streamAccess.token },
+        })
+
+        if (!response.ok) return
+
+        const blob = await response.blob()
+        blobUrl = URL.createObjectURL(blob)
+        setSubtitleBlobUrl(blobUrl)
+      } catch {
+        // Ignore errors
+      }
+    }
+
+    fetchSubtitle()
+
+    return () => {
+      if (blobUrl) URL.revokeObjectURL(blobUrl)
+    }
+  }, [streamAccess?.token, thaiSubtitle?.srtPath])
+
+  // === Fetch thumbnail ===
+  useEffect(() => {
+    if (!video?.code || !streamAccess?.token) return
+
+    let blobUrl: string | undefined
+
+    const fetchThumbnail = async () => {
+      try {
+        const url = `${APP_CONFIG.streamUrl}/${video.code}/thumb.jpg`
+        const response = await fetch(url, {
+          headers: { 'X-Stream-Token': streamAccess.token },
+        })
+
+        if (!response.ok) return
+
+        const blob = await response.blob()
+        blobUrl = URL.createObjectURL(blob)
+        setThumbnailBlobUrl(blobUrl)
+      } catch {
+        // Ignore errors
+      }
+    }
+
+    fetchThumbnail()
+
+    return () => {
+      if (blobUrl) URL.revokeObjectURL(blobUrl)
+    }
+  }, [video?.code, streamAccess?.token])
+
+  // === Real-time Preview: Regenerate Blob URL when segments change ===
+  const previousBlobUrlRef = useRef<string>('')
+
+  const debouncedUpdatePreview = useDebouncedCallback((newSegments: SubtitleSegment[]) => {
+    // Generate new SRT content
+    const srtContent = generateSRT(newSegments)
+
+    // Create new Blob URL
+    const blob = new Blob([srtContent], { type: 'text/plain; charset=utf-8' })
+    const newUrl = URL.createObjectURL(blob)
+
+    // Cleanup previous Blob URL
+    if (previousBlobUrlRef.current) {
+      URL.revokeObjectURL(previousBlobUrlRef.current)
+    }
+    previousBlobUrlRef.current = newUrl
+
+    // Update state to trigger player refresh
+    setSubtitleBlobUrl(newUrl)
+  }, 300)
+
+  // === Handlers ===
+  const handleSegmentChange = useCallback(
+    (index: number, text: string) => {
+      setSegments((prev) => {
+        const newSegments = [...prev]
+        newSegments[index] = { ...newSegments[index], text }
+
+        // Trigger real-time preview
+        debouncedUpdatePreview(newSegments)
+
+        return newSegments
+      })
+    },
+    [debouncedUpdatePreview]
+  )
+
+  const handleSeek = useCallback((seconds: number) => {
+    // Find video element and seek
+    const videoEl = document.querySelector('.artplayer-container video') as HTMLVideoElement
+    if (videoEl) {
+      videoEl.currentTime = seconds
+    }
+  }, [])
+
+  const handleSave = useCallback(async () => {
+    if (!thaiSubtitle?.id) return
+
+    const content = generateSRT(segments)
+    await updateSubtitleMutation.mutateAsync({
+      subtitleId: thaiSubtitle.id,
+      content,
+    })
+
+    // Update original content to mark as saved
+    setOriginalContent(content)
+  }, [thaiSubtitle?.id, segments, updateSubtitleMutation])
+
+  const handleReset = useCallback(() => {
+    if (subtitleContent?.content) {
+      const parsed = parseSRT(subtitleContent.content)
+      setSegments(parsed)
+
+      // Regenerate Blob URL with original content
+      const blob = new Blob([subtitleContent.content], { type: 'text/plain; charset=utf-8' })
+      const newUrl = URL.createObjectURL(blob)
+
+      if (previousBlobUrlRef.current) {
+        URL.revokeObjectURL(previousBlobUrlRef.current)
+      }
+      previousBlobUrlRef.current = newUrl
+      setSubtitleBlobUrl(newUrl)
+    }
+  }, [subtitleContent?.content])
+
+  const handleTimeUpdate = useCallback((time: number) => {
+    setCurrentTime(time)
+  }, [])
+
+  // === Build subtitle options for player ===
+  const subtitleOptions = useMemo(() => {
+    if (!subtitleBlobUrl) return []
+    return [
+      {
+        url: subtitleBlobUrl,
+        name: LANGUAGE_LABELS['th'] || 'ไทย',
+        language: 'th',
+        default: true,
+      },
+    ]
+  }, [subtitleBlobUrl])
+
+  // === Loading states ===
+  const isLoading = videoLoading || streamLoading || subtitleLoading
+
+  if (isLoading) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-background">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    )
+  }
+
+  if (videoError || !video) {
+    return (
+      <div className="flex h-screen flex-col items-center justify-center gap-4 bg-background">
+        <p className="text-lg text-muted-foreground">Video not found</p>
+        <Button variant="outline" onClick={() => navigate(-1)}>
+          <ArrowLeft className="mr-2 h-4 w-4" />
+          กลับ
+        </Button>
+      </div>
+    )
+  }
+
+  if (video.status !== 'ready') {
+    return (
+      <div className="flex h-screen flex-col items-center justify-center gap-4 bg-background">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        <p className="text-lg text-muted-foreground">Video is being processed...</p>
+      </div>
+    )
+  }
+
+  if (!thaiSubtitle) {
+    return (
+      <div className="flex h-screen flex-col items-center justify-center gap-4 bg-background">
+        <p className="text-lg text-muted-foreground">ไม่พบ Thai subtitle สำหรับวิดีโอนี้</p>
+        <Button variant="outline" onClick={() => navigate(-1)}>
+          <ArrowLeft className="mr-2 h-4 w-4" />
+          กลับ
+        </Button>
+      </div>
+    )
+  }
+
+  if (!streamAccess?.token) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-background">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    )
+  }
+
+  const hlsUrl = `${APP_CONFIG.streamUrl}/${video.code}/master.m3u8`
+
+  return (
+    <div className="flex h-screen flex-col bg-background">
+      {/* Header */}
+      <header className="flex items-center justify-between border-b px-4 py-2">
+        <div className="flex items-center gap-3">
+          <Button variant="ghost" size="sm" onClick={() => navigate(-1)}>
+            <ArrowLeft className="h-4 w-4" />
+          </Button>
+          <div>
+            <h1 className="text-sm font-semibold">{video.title}</h1>
+            <p className="text-xs text-muted-foreground">{video.code}</p>
+          </div>
+        </div>
+        <Button variant="outline" size="sm" asChild>
+          <a href={`/preview/${code}`} target="_blank" rel="noopener noreferrer">
+            <ExternalLink className="mr-1.5 h-4 w-4" />
+            Preview
+          </a>
+        </Button>
+      </header>
+
+      {/* Main content */}
+      <div className="flex flex-1 overflow-hidden">
+        {/* Video Player (60%) */}
+        <div className="flex w-[60%] flex-col border-r">
+          <div className="relative flex-1 bg-black">
+            <VideoPlayer
+              src={hlsUrl}
+              poster={thumbnailBlobUrl}
+              streamToken={streamAccess.token}
+              subtitles={subtitleOptions}
+              onTimeUpdate={handleTimeUpdate}
+            />
+          </div>
+        </div>
+
+        {/* Subtitle Editor (40%) */}
+        <div className="flex w-[40%] flex-col">
+          <SubtitleEditor
+            segments={segments}
+            currentTime={currentTime}
+            onSegmentChange={handleSegmentChange}
+            onSeek={handleSeek}
+            onSave={handleSave}
+            onReset={handleReset}
+            isDirty={isDirty}
+            isSaving={updateSubtitleMutation.isPending}
+            isLoading={contentLoading}
+            language="th"
+          />
+        </div>
+      </div>
+    </div>
+  )
+}

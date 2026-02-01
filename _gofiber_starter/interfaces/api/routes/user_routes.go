@@ -12,5 +12,6 @@ func SetupUserRoutes(api fiber.Router, h *handlers.Handlers) {
 	users.Get("/profile", h.UserHandler.GetProfile)
 	users.Put("/profile", h.UserHandler.UpdateProfile)
 	users.Delete("/profile", h.UserHandler.DeleteUser)
+	users.Post("/set-password", h.UserHandler.SetPassword) // ตั้ง password สำหรับ Google users
 	users.Get("/", middleware.AdminOnly(), h.UserHandler.ListUsers)
 }

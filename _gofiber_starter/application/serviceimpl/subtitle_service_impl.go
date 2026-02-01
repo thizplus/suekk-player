@@ -1,14 +1,17 @@
 package serviceimpl
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"time"
 
 	"github.com/google/uuid"
 	"gofiber-template/domain/dto"
 	"gofiber-template/domain/models"
+	"gofiber-template/domain/ports"
 	"gofiber-template/domain/repositories"
 	"gofiber-template/domain/services"
 	"gofiber-template/pkg/logger"
@@ -28,17 +31,20 @@ type SubtitleServiceImpl struct {
 	videoRepo    repositories.VideoRepository
 	subtitleRepo repositories.SubtitleRepository
 	jobPublisher services.SubtitleJobPublisher
+	storage      ports.StoragePort
 }
 
 func NewSubtitleService(
 	videoRepo repositories.VideoRepository,
 	subtitleRepo repositories.SubtitleRepository,
 	jobPublisher services.SubtitleJobPublisher,
+	storage ports.StoragePort,
 ) services.SubtitleService {
 	return &SubtitleServiceImpl{
 		videoRepo:    videoRepo,
 		subtitleRepo: subtitleRepo,
 		jobPublisher: jobPublisher,
+		storage:      storage,
 	}
 }
 
@@ -518,6 +524,114 @@ func (s *SubtitleServiceImpl) MarkJobStarted(ctx context.Context, subtitleID uui
 		"new_status", newStatus,
 		"processing_started_at", now,
 	)
+	return nil
+}
+
+// === Content Edit Operations ===
+
+// GetSubtitleContent ดึง content ของ subtitle (SRT file)
+func (s *SubtitleServiceImpl) GetSubtitleContent(ctx context.Context, subtitleID uuid.UUID) (*dto.SubtitleContentResponse, error) {
+	logger.InfoContext(ctx, "Getting subtitle content", "subtitle_id", subtitleID)
+
+	// 1. ดึง subtitle record
+	subtitle, err := s.subtitleRepo.GetByID(ctx, subtitleID)
+	if err != nil {
+		logger.ErrorContext(ctx, "Failed to get subtitle", "subtitle_id", subtitleID, "error", err)
+		return nil, err
+	}
+	if subtitle == nil {
+		return nil, errors.New("subtitle not found")
+	}
+
+	// 2. ตรวจสอบว่ามี SRT path หรือไม่
+	if subtitle.SRTPath == "" {
+		return nil, errors.New("subtitle has no SRT file")
+	}
+
+	// 3. อ่านไฟล์จาก storage
+	reader, _, err := s.storage.GetFileContent(subtitle.SRTPath)
+	if err != nil {
+		logger.ErrorContext(ctx, "Failed to read SRT file from storage",
+			"subtitle_id", subtitleID,
+			"srt_path", subtitle.SRTPath,
+			"error", err,
+		)
+		return nil, fmt.Errorf("failed to read SRT file: %w", err)
+	}
+	defer reader.Close()
+
+	// 4. อ่าน content ทั้งหมด
+	content, err := io.ReadAll(reader)
+	if err != nil {
+		logger.ErrorContext(ctx, "Failed to read SRT content", "subtitle_id", subtitleID, "error", err)
+		return nil, fmt.Errorf("failed to read SRT content: %w", err)
+	}
+
+	logger.InfoContext(ctx, "Subtitle content retrieved",
+		"subtitle_id", subtitleID,
+		"content_length", len(content),
+	)
+
+	return &dto.SubtitleContentResponse{
+		ID:       subtitle.ID,
+		VideoID:  subtitle.VideoID,
+		Language: subtitle.Language,
+		Content:  string(content),
+		SRTPath:  subtitle.SRTPath,
+	}, nil
+}
+
+// UpdateSubtitleContent อัปเดต content ของ subtitle (SRT file)
+func (s *SubtitleServiceImpl) UpdateSubtitleContent(ctx context.Context, subtitleID uuid.UUID, content string) error {
+	logger.InfoContext(ctx, "Updating subtitle content",
+		"subtitle_id", subtitleID,
+		"content_length", len(content),
+	)
+
+	// 1. ดึง subtitle record
+	subtitle, err := s.subtitleRepo.GetByID(ctx, subtitleID)
+	if err != nil {
+		logger.ErrorContext(ctx, "Failed to get subtitle", "subtitle_id", subtitleID, "error", err)
+		return err
+	}
+	if subtitle == nil {
+		return errors.New("subtitle not found")
+	}
+
+	// 2. ตรวจสอบว่ามี SRT path หรือไม่
+	if subtitle.SRTPath == "" {
+		return errors.New("subtitle has no SRT file")
+	}
+
+	// 3. ตรวจสอบว่า subtitle ready หรือไม่ (ไม่ควรแก้ไขขณะกำลังประมวลผล)
+	if subtitle.Status != models.SubtitleStatusReady {
+		return fmt.Errorf("cannot edit subtitle with status '%s'", subtitle.Status)
+	}
+
+	// 4. อัปโหลดไฟล์ใหม่ไปยัง storage (overwrite)
+	reader := bytes.NewReader([]byte(content))
+	_, err = s.storage.UploadFile(reader, subtitle.SRTPath, "text/plain; charset=utf-8")
+	if err != nil {
+		logger.ErrorContext(ctx, "Failed to upload SRT file to storage",
+			"subtitle_id", subtitleID,
+			"srt_path", subtitle.SRTPath,
+			"error", err,
+		)
+		return fmt.Errorf("failed to save SRT file: %w", err)
+	}
+
+	// 5. อัปเดต timestamp ของ subtitle record
+	subtitle.UpdatedAt = time.Now()
+	if err := s.subtitleRepo.Update(ctx, subtitle); err != nil {
+		logger.WarnContext(ctx, "Failed to update subtitle timestamp", "subtitle_id", subtitleID, "error", err)
+		// ไม่ return error เพราะไฟล์ save สำเร็จแล้ว
+	}
+
+	logger.InfoContext(ctx, "Subtitle content updated successfully",
+		"subtitle_id", subtitleID,
+		"srt_path", subtitle.SRTPath,
+	)
+
 	return nil
 }
 

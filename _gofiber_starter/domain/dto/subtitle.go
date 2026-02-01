@@ -49,6 +49,24 @@ type JobStartedRequest struct {
 	WorkerID   string `json:"worker_id"`
 }
 
+// === Content Edit Requests ===
+
+// SubtitleContentRequest request สำหรับอัปเดต subtitle content
+type SubtitleContentRequest struct {
+	Content string `json:"content" validate:"required"`
+}
+
+// === Content Edit Responses ===
+
+// SubtitleContentResponse response ที่มี subtitle content
+type SubtitleContentResponse struct {
+	ID       uuid.UUID `json:"id"`
+	VideoID  uuid.UUID `json:"videoId"`
+	Language string    `json:"language"`
+	Content  string    `json:"content"`
+	SRTPath  string    `json:"srtPath"`
+}
+
 // === Responses ===
 
 // SubtitleResponse ข้อมูล subtitle แต่ละ record

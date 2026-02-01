@@ -453,3 +453,69 @@ func (h *SubtitleHandler) RetryStuckSubtitles(c *fiber.Ctx) error {
 
 	return utils.SuccessResponse(c, response)
 }
+
+// === Content Edit Operations ===
+
+// GetSubtitleContent ดึง content ของ subtitle (SRT file)
+// GET /api/v1/subtitles/:id/content
+func (h *SubtitleHandler) GetSubtitleContent(c *fiber.Ctx) error {
+	ctx := c.UserContext()
+
+	subtitleIDStr := c.Params("id")
+	subtitleID, err := uuid.Parse(subtitleIDStr)
+	if err != nil {
+		logger.WarnContext(ctx, "Invalid subtitle ID", "subtitle_id", subtitleIDStr)
+		return utils.BadRequestResponse(c, "Invalid subtitle ID")
+	}
+
+	logger.InfoContext(ctx, "Get subtitle content request", "subtitle_id", subtitleID)
+
+	response, err := h.subtitleService.GetSubtitleContent(ctx, subtitleID)
+	if err != nil {
+		logger.WarnContext(ctx, "Failed to get subtitle content", "subtitle_id", subtitleID, "error", err)
+		return utils.BadRequestResponse(c, err.Error())
+	}
+
+	return utils.SuccessResponse(c, response)
+}
+
+// UpdateSubtitleContent อัปเดต content ของ subtitle (SRT file)
+// PUT /api/v1/subtitles/:id/content
+func (h *SubtitleHandler) UpdateSubtitleContent(c *fiber.Ctx) error {
+	ctx := c.UserContext()
+
+	subtitleIDStr := c.Params("id")
+	subtitleID, err := uuid.Parse(subtitleIDStr)
+	if err != nil {
+		logger.WarnContext(ctx, "Invalid subtitle ID", "subtitle_id", subtitleIDStr)
+		return utils.BadRequestResponse(c, "Invalid subtitle ID")
+	}
+
+	var req dto.SubtitleContentRequest
+	if err := c.BodyParser(&req); err != nil {
+		logger.WarnContext(ctx, "Invalid request body", "error", err)
+		return utils.BadRequestResponse(c, "Invalid request body")
+	}
+
+	if err := utils.ValidateStruct(&req); err != nil {
+		errors := utils.GetValidationErrors(err)
+		logger.WarnContext(ctx, "Validation failed", "errors", errors)
+		return utils.ValidationErrorResponse(c, errors)
+	}
+
+	logger.InfoContext(ctx, "Update subtitle content request",
+		"subtitle_id", subtitleID,
+		"content_length", len(req.Content),
+	)
+
+	if err := h.subtitleService.UpdateSubtitleContent(ctx, subtitleID, req.Content); err != nil {
+		logger.WarnContext(ctx, "Failed to update subtitle content", "subtitle_id", subtitleID, "error", err)
+		return utils.BadRequestResponse(c, err.Error())
+	}
+
+	logger.InfoContext(ctx, "Subtitle content updated", "subtitle_id", subtitleID)
+
+	return utils.SuccessResponse(c, fiber.Map{
+		"message": "Subtitle content updated successfully",
+	})
+}

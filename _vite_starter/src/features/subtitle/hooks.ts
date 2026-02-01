@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { subtitleService } from './service'
 import { toast } from 'sonner'
-import type { SubtitlesResponse } from './types'
+import type { SubtitlesResponse, SubtitleContentResponse } from './types'
 import { videoKeys } from '@/features/video/hooks'
 
 // Query key factory
@@ -10,6 +10,7 @@ export const subtitleKeys = {
   languages: () => [...subtitleKeys.all, 'languages'] as const,
   byVideo: (videoId: string) => [...subtitleKeys.all, 'video', videoId] as const,
   byCode: (code: string) => [...subtitleKeys.all, 'code', code] as const,
+  content: (subtitleId: string) => [...subtitleKeys.all, 'content', subtitleId] as const,
 }
 
 // ดึงรายการภาษาที่รองรับ
@@ -149,6 +150,35 @@ export function useRetryStuckSubtitles() {
     },
     onError: (error: Error) => {
       toast.error(error.message || 'ไม่สามารถ retry stuck subtitles ได้')
+    },
+  })
+}
+
+// === Content Editing Hooks ===
+
+// ดึง content ของ subtitle (SRT file)
+export function useSubtitleContent(subtitleId: string, options?: { enabled?: boolean }) {
+  return useQuery({
+    queryKey: subtitleKeys.content(subtitleId),
+    queryFn: () => subtitleService.getContent(subtitleId),
+    enabled: options?.enabled ?? !!subtitleId,
+  })
+}
+
+// อัปเดต content ของ subtitle (SRT file)
+export function useUpdateSubtitleContent() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: ({ subtitleId, content }: { subtitleId: string; content: string }) =>
+      subtitleService.updateContent(subtitleId, content),
+    onSuccess: async (_data, { subtitleId }) => {
+      // Invalidate content cache
+      await queryClient.invalidateQueries({ queryKey: subtitleKeys.content(subtitleId) })
+      toast.success('บันทึก Subtitle สำเร็จ')
+    },
+    onError: (error: Error) => {
+      toast.error(error.message || 'ไม่สามารถบันทึก Subtitle ได้')
     },
   })
 }

@@ -7,6 +7,8 @@ export interface User {
   avatar?: string
   role: string
   isActive: boolean
+  hasPassword?: boolean   // true ถ้ามี password แล้ว
+  isGoogleUser?: boolean  // true ถ้า login ด้วย Google
   createdAt: string
   updatedAt: string
 }
