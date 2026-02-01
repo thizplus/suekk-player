@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { subtitleService } from './service'
 import { toast } from 'sonner'
-import type { SubtitlesResponse, SubtitleContentResponse } from './types'
+import type { SubtitlesResponse } from './types'
 import { videoKeys } from '@/features/video/hooks'
 
 // Query key factory

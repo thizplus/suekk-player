@@ -21,7 +21,7 @@ function useDebouncedCallback<T extends (...args: Parameters<T>) => ReturnType<T
   callback: T,
   delay: number
 ): T {
-  const timeoutRef = useRef<ReturnType<typeof setTimeout>>()
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   const callbackRef = useRef(callback)
   callbackRef.current = callback
 
