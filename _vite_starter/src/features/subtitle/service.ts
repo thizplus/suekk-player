@@ -7,6 +7,7 @@ import type {
   TranscribeResponse,
   TranslateJobResponse,
   TranslateRequest,
+  RetryStuckResponse,
 } from './types'
 
 export const subtitleService = {
@@ -44,5 +45,10 @@ export const subtitleService = {
   // Delete subtitle
   async deleteSubtitle(subtitleId: string): Promise<void> {
     return apiClient.delete(SUBTITLE_ROUTES.DELETE(subtitleId))
+  },
+
+  // Retry stuck subtitles ทั้งหมด (status = queued ที่ค้างอยู่)
+  async retryStuckSubtitles(): Promise<RetryStuckResponse> {
+    return apiClient.post<RetryStuckResponse>(SUBTITLE_ROUTES.RETRY_STUCK)
   },
 }

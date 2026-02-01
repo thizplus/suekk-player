@@ -46,7 +46,7 @@ import { VIDEO_STATUS_LABELS, VIDEO_STATUS_STYLES, LANGUAGE_LABELS, LANGUAGE_FLA
 import type { VideoFilterParams, SubtitleSummary } from '../types'
 import { useVideoProgress } from '@/lib/websocket-provider'
 import { toast } from 'sonner'
-import { useTranscribe, useTranslate, useSupportedLanguages } from '@/features/subtitle/hooks'
+import { useTranscribe, useTranslate, useSupportedLanguages, useRetryStuckSubtitles } from '@/features/subtitle/hooks'
 
 interface DeleteTarget {
   id: string
@@ -74,6 +74,7 @@ export function VideoListPage() {
   const transcribe = useTranscribe()
   const translate = useTranslate()
   const { data: supportedLanguages } = useSupportedLanguages()
+  const retryStuck = useRetryStuckSubtitles()
 
   const page = filters.page ?? 1
   const totalPages = data?.meta.totalPages ?? 1
@@ -219,6 +220,20 @@ export function VideoListPage() {
           </p>
         </div>
         <div className="flex gap-2">
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => retryStuck.mutate()}
+            disabled={retryStuck.isPending}
+            title="Retry subtitles ที่ค้างอยู่ใน queue"
+          >
+            {retryStuck.isPending ? (
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+            ) : (
+              <RefreshCw className="h-4 w-4 mr-2" />
+            )}
+            Retry Stuck
+          </Button>
           <Button size="sm" variant="outline" onClick={() => setBatchUploadDialogOpen(true)}>
             <Files className="h-4 w-4 mr-2" />
             อัปโหลดหลายไฟล์

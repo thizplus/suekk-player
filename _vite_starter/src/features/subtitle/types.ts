@@ -76,3 +76,12 @@ export interface TranslateJobResponse {
   targetLanguages: string[]
   message: string
 }
+
+// Response หลัง retry stuck subtitles
+export interface RetryStuckResponse {
+  totalFound: number
+  totalRetried: number
+  skipped: number
+  message: string
+  errors?: string[]
+}

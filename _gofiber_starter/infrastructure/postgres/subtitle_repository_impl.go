@@ -115,6 +115,18 @@ func (r *subtitleRepository) GetReadyByVideoID(ctx context.Context, videoID uuid
 
 // === Stuck Detection Methods ===
 
+// GetByStatus ดึง subtitles ตาม status
+func (r *subtitleRepository) GetByStatus(ctx context.Context, status models.SubtitleStatus) ([]*models.Subtitle, error) {
+	var subtitles []*models.Subtitle
+	if err := r.db.WithContext(ctx).
+		Where("status = ?", status).
+		Preload("Video").
+		Find(&subtitles).Error; err != nil {
+		return nil, err
+	}
+	return subtitles, nil
+}
+
 // GetStuckProcessing หา subtitles ที่ processing/translating/detecting นานเกินไป (worker crash)
 func (r *subtitleRepository) GetStuckProcessing(ctx context.Context, threshold time.Time) ([]*models.Subtitle, error) {
 	var subtitles []*models.Subtitle

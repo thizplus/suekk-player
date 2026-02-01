@@ -105,6 +105,15 @@ type SupportedLanguagesResponse struct {
 	TranslationPairs map[string][]string `json:"translationPairs"`
 }
 
+// RetryStuckResponse response หลัง retry stuck subtitles
+type RetryStuckResponse struct {
+	TotalFound   int      `json:"totalFound"`   // จำนวนที่พบ (status = queued)
+	TotalRetried int      `json:"totalRetried"` // จำนวนที่ retry สำเร็จ
+	Skipped      int      `json:"skipped"`      // จำนวนที่ skip (เช่น video ไม่พร้อม)
+	Message      string   `json:"message"`
+	Errors       []string `json:"errors,omitempty"` // error messages ถ้ามี
+}
+
 // LanguageInfo ข้อมูลภาษา
 type LanguageInfo struct {
 	Code string `json:"code"`

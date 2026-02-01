@@ -143,4 +143,6 @@ export const SUBTITLE_ROUTES = {
   TRANSLATE: (videoId: string) => `/api/v1/videos/${videoId}/subtitle/translate`,
   // Delete subtitle
   DELETE: (subtitleId: string) => `/api/v1/subtitles/${subtitleId}`,
+  // Admin: Retry stuck subtitles ทั้งหมด
+  RETRY_STUCK: '/api/v1/admin/subtitles/retry-stuck',
 }

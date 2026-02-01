@@ -64,6 +64,9 @@ type SubtitleService interface {
 
 	// DeleteAllSubtitlesByVideo ลบ subtitles ทั้งหมดของ video
 	DeleteAllSubtitlesByVideo(ctx context.Context, videoID uuid.UUID) error
+
+	// RetryStuckSubtitles retry subtitles ที่ค้างอยู่ใน queue (status = queued)
+	RetryStuckSubtitles(ctx context.Context) (*dto.RetryStuckResponse, error)
 }
 
 // SubtitleJobPublisher interface สำหรับส่ง subtitle jobs ไปยัง NATS

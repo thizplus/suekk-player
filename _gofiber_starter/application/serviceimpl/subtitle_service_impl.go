@@ -555,3 +555,120 @@ func (s *SubtitleServiceImpl) DeleteAllSubtitlesByVideo(ctx context.Context, vid
 	// TODO: ลบไฟล์ SRT จาก S3 ก่อนลบ records
 	return s.subtitleRepo.DeleteByVideoID(ctx, videoID)
 }
+
+// RetryStuckSubtitles retry subtitles ที่ค้างอยู่ใน queue (status = queued)
+// สำหรับกรณีที่ worker ตายและ NATS job หายไป
+func (s *SubtitleServiceImpl) RetryStuckSubtitles(ctx context.Context) (*dto.RetryStuckResponse, error) {
+	logger.InfoContext(ctx, "Starting retry stuck subtitles")
+
+	// 1. ดึง subtitles ที่ status = queued
+	stuckSubtitles, err := s.subtitleRepo.GetByStatus(ctx, models.SubtitleStatusQueued)
+	if err != nil {
+		logger.ErrorContext(ctx, "Failed to get stuck subtitles", "error", err)
+		return nil, err
+	}
+
+	response := &dto.RetryStuckResponse{
+		TotalFound: len(stuckSubtitles),
+	}
+
+	if len(stuckSubtitles) == 0 {
+		response.Message = "No stuck subtitles found"
+		logger.InfoContext(ctx, "No stuck subtitles found")
+		return response, nil
+	}
+
+	logger.InfoContext(ctx, "Found stuck subtitles", "count", len(stuckSubtitles))
+
+	var retryErrors []string
+
+	for _, subtitle := range stuckSubtitles {
+		// 2. ดึง video ของ subtitle นี้
+		video, err := s.videoRepo.GetByID(ctx, subtitle.VideoID)
+		if err != nil || video == nil {
+			retryErrors = append(retryErrors, fmt.Sprintf("subtitle %s: video not found", subtitle.ID))
+			response.Skipped++
+			continue
+		}
+
+		// 3. ตรวจสอบว่า video พร้อมหรือไม่
+		if video.AudioPath == "" {
+			retryErrors = append(retryErrors, fmt.Sprintf("subtitle %s: video has no audio", subtitle.ID))
+			response.Skipped++
+			continue
+		}
+
+		// 4. Republish job ตาม type
+		var publishErr error
+
+		if subtitle.Type == models.SubtitleTypeOriginal {
+			// Transcribe job
+			language := subtitle.Language
+			if language == "" {
+				language = "auto"
+			}
+			outputPath := fmt.Sprintf("subtitles/%s/%s.srt", video.Code, language)
+
+			job := &services.TranscribeJob{
+				SubtitleID:    subtitle.ID.String(),
+				VideoID:       video.ID.String(),
+				VideoCode:     video.Code,
+				AudioPath:     video.AudioPath,
+				Language:      language,
+				OutputPath:    outputPath,
+				RefineWithLLM: true,
+			}
+			publishErr = s.jobPublisher.PublishTranscribeJob(ctx, job)
+
+			logger.InfoContext(ctx, "Republished transcribe job",
+				"subtitle_id", subtitle.ID,
+				"video_code", video.Code,
+			)
+
+		} else if subtitle.Type == models.SubtitleTypeTranslated {
+			// Translate job - ต้องหา original subtitle ก่อน
+			original, err := s.subtitleRepo.GetOriginalByVideoID(ctx, subtitle.VideoID)
+			if err != nil || original == nil || original.Status != models.SubtitleStatusReady {
+				retryErrors = append(retryErrors, fmt.Sprintf("subtitle %s: original not ready", subtitle.ID))
+				response.Skipped++
+				continue
+			}
+
+			job := &services.TranslateJob{
+				SubtitleIDs:     []string{subtitle.ID.String()},
+				VideoID:         video.ID.String(),
+				VideoCode:       video.Code,
+				SourceSRTPath:   original.SRTPath,
+				SourceLanguage:  original.Language,
+				TargetLanguages: []string{subtitle.Language},
+				OutputPath:      fmt.Sprintf("subtitles/%s", video.Code),
+			}
+			publishErr = s.jobPublisher.PublishTranslateJob(ctx, job)
+
+			logger.InfoContext(ctx, "Republished translate job",
+				"subtitle_id", subtitle.ID,
+				"video_code", video.Code,
+				"target_language", subtitle.Language,
+			)
+		}
+
+		if publishErr != nil {
+			retryErrors = append(retryErrors, fmt.Sprintf("subtitle %s: publish failed: %v", subtitle.ID, publishErr))
+			response.Skipped++
+			continue
+		}
+
+		response.TotalRetried++
+	}
+
+	response.Errors = retryErrors
+	response.Message = fmt.Sprintf("Retried %d/%d stuck subtitles", response.TotalRetried, response.TotalFound)
+
+	logger.InfoContext(ctx, "Retry stuck subtitles completed",
+		"total_found", response.TotalFound,
+		"total_retried", response.TotalRetried,
+		"skipped", response.Skipped,
+	)
+
+	return response, nil
+}

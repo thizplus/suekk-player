@@ -13,6 +13,8 @@ export {
   useDetectLanguage,
   useTranscribe,
   useTranslate,
+  useDeleteSubtitle,
+  useRetryStuckSubtitles,
 } from './hooks'
 
 // Components

@@ -42,4 +42,8 @@ func SetupSubtitleRoutes(api fiber.Router, h *handlers.Handlers) {
 	// === Subtitle Management Routes (Protected) ===
 	subtitlesProtected := subtitles.Group("", middleware.Protected())
 	subtitlesProtected.Delete("/:id", h.SubtitleHandler.DeleteSubtitle) // ลบ subtitle
+
+	// === Admin Routes (Protected) ===
+	admin := api.Group("/admin", middleware.Protected())
+	admin.Post("/subtitles/retry-stuck", h.SubtitleHandler.RetryStuckSubtitles) // retry stuck subtitles ทั้งหมด
 }

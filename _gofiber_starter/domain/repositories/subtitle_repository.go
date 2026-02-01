@@ -48,6 +48,9 @@ type SubtitleRepository interface {
 
 	// === Stuck Detection Methods ===
 
+	// GetByStatus ดึง subtitles ตาม status
+	GetByStatus(ctx context.Context, status models.SubtitleStatus) ([]*models.Subtitle, error)
+
 	// GetStuckProcessing หา subtitles ที่ processing นานเกินไป (worker crash)
 	GetStuckProcessing(ctx context.Context, threshold time.Time) ([]*models.Subtitle, error)
 

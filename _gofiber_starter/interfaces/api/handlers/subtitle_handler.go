@@ -432,3 +432,24 @@ func (h *SubtitleHandler) DeleteSubtitle(c *fiber.Ctx) error {
 		"message": "Subtitle deleted successfully",
 	})
 }
+
+// RetryStuckSubtitles retry subtitles ที่ค้างอยู่ใน queue (status = queued)
+// POST /api/v1/admin/subtitles/retry-stuck
+func (h *SubtitleHandler) RetryStuckSubtitles(c *fiber.Ctx) error {
+	ctx := c.UserContext()
+
+	logger.InfoContext(ctx, "Retry stuck subtitles request")
+
+	response, err := h.subtitleService.RetryStuckSubtitles(ctx)
+	if err != nil {
+		logger.ErrorContext(ctx, "Failed to retry stuck subtitles", "error", err)
+		return utils.InternalServerErrorResponse(c)
+	}
+
+	logger.InfoContext(ctx, "Retry stuck subtitles completed",
+		"total_found", response.TotalFound,
+		"total_retried", response.TotalRetried,
+	)
+
+	return utils.SuccessResponse(c, response)
+}

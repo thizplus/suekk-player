@@ -128,3 +128,27 @@ export function useDeleteSubtitle() {
     },
   })
 }
+
+// Retry stuck subtitles ทั้งหมด (admin action)
+export function useRetryStuckSubtitles() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: () => subtitleService.retryStuckSubtitles(),
+    onSuccess: async (data) => {
+      if (data.totalRetried > 0) {
+        toast.success(data.message)
+      } else if (data.totalFound === 0) {
+        toast.info('ไม่พบ Subtitle ที่ค้างอยู่')
+      } else {
+        toast.warning(`ไม่สามารถ retry ได้ (${data.skipped} skipped)`)
+      }
+      // Invalidate all subtitle and video queries
+      await queryClient.invalidateQueries({ queryKey: subtitleKeys.all })
+      await queryClient.invalidateQueries({ queryKey: videoKeys.all })
+    },
+    onError: (error: Error) => {
+      toast.error(error.message || 'ไม่สามารถ retry stuck subtitles ได้')
+    },
+  })
+}
