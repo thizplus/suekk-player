@@ -202,7 +202,7 @@ export function QueueManagementPage() {
           <TabsTrigger value="transcode" className="gap-2">
             <Monitor className="h-4 w-4" />
             Transcode
-            {stats?.transcode.failed ? (
+            {stats?.transcode?.failed ? (
               <Badge variant="destructive" className="ml-1 h-5 px-1.5">
                 {stats.transcode.failed}
               </Badge>
@@ -211,16 +211,16 @@ export function QueueManagementPage() {
           <TabsTrigger value="subtitle" className="gap-2">
             <Languages className="h-4 w-4" />
             Subtitle
-            {(stats?.subtitle.queued || 0) + (stats?.subtitle.failed || 0) > 0 ? (
+            {(stats?.subtitle?.queued || 0) + (stats?.subtitle?.failed || 0) > 0 ? (
               <Badge variant="destructive" className="ml-1 h-5 px-1.5">
-                {(stats?.subtitle.queued || 0) + (stats?.subtitle.failed || 0)}
+                {(stats?.subtitle?.queued || 0) + (stats?.subtitle?.failed || 0)}
               </Badge>
             ) : null}
           </TabsTrigger>
           <TabsTrigger value="warmcache" className="gap-2">
             <Database className="h-4 w-4" />
             Warm Cache
-            {stats?.warm_cache.not_cached ? (
+            {stats?.warm_cache?.not_cached ? (
               <Badge variant="secondary" className="ml-1 h-5 px-1.5">
                 {stats.warm_cache.not_cached}
               </Badge>
