@@ -485,8 +485,9 @@
   fill: #fff !important;
 }
 
-/* Tooltip */
-[class*="tooltip"] {
+/* ArtPlayer Tooltip only */
+.art-controls [class*="tooltip"],
+.art-control-progress [class*="tooltip"] {
   color: rgba(255, 255, 255, 0.7) !important;
 }
 
