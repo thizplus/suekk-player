@@ -5,7 +5,7 @@
 
 import { useRef, useEffect, useCallback } from 'react'
 import { Button } from '@/components/ui/button'
-import { Textarea } from '@/components/ui/textarea'
+import { Input } from '@/components/ui/input'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Skeleton } from '@/components/ui/skeleton'
 import {
@@ -20,7 +20,7 @@ import {
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
-import { Save, RotateCcw, Clock, Play } from 'lucide-react'
+import { Save, RotateCcw } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { SubtitleSegment } from '../types'
 import { timestampToSeconds } from '../utils/srt-parser'
@@ -195,8 +195,8 @@ export function SubtitleEditor({
       </div>
 
       {/* Segments list */}
-      <ScrollArea ref={scrollAreaRef} className="flex-1">
-        <div className="space-y-2 p-4">
+      <ScrollArea ref={scrollAreaRef} className="flex-1 overflow-auto">
+        <div className="divide-y">
           {segments.length === 0 ? (
             <div className="py-8 text-center text-muted-foreground">ไม่มี subtitle</div>
           ) : (
@@ -209,38 +209,28 @@ export function SubtitleEditor({
                   key={segment.index}
                   ref={isActive ? activeRowRef : null}
                   className={cn(
-                    'rounded-lg border p-3 transition-all',
-                    isActive
-                      ? 'border-primary bg-primary/5 ring-1 ring-primary/20'
-                      : 'border-border hover:border-muted-foreground/30'
+                    'flex items-center gap-2 px-3 py-1.5 transition-colors',
+                    isActive ? 'bg-primary/10' : 'hover:bg-muted/50'
                   )}
                 >
-                  {/* Timestamp row */}
-                  <div className="mb-2 flex items-center justify-between">
-                    <button
-                      onClick={() => onSeek(startSeconds)}
-                      className="flex items-center gap-1.5 rounded px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                      title="คลิกเพื่อข้ามไปยังเวลานี้"
-                    >
-                      <Play className="h-3 w-3" />
-                      {segment.startTime}
-                    </button>
-                    <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                      <Clock className="h-3 w-3" />
-                      {segment.endTime}
-                    </div>
-                  </div>
+                  {/* Timestamp */}
+                  <button
+                    onClick={() => onSeek(startSeconds)}
+                    className="shrink-0 font-mono text-[10px] text-muted-foreground hover:text-primary"
+                    title="ข้ามไป"
+                  >
+                    {segment.startTime.slice(0, 8)}
+                  </button>
 
-                  {/* Text input */}
-                  <Textarea
-                    value={segment.text}
+                  {/* Text input - border bottom only */}
+                  <Input
+                    value={segment.text.replace(/\n/g, ' ')}
                     onChange={(e) => onSegmentChange(index, e.target.value)}
                     className={cn(
-                      'min-h-[60px] resize-none border-0 bg-transparent p-0 text-sm focus-visible:ring-0',
-                      isActive && 'font-medium'
+                      'h-7 flex-1 rounded-none border-0 border-b bg-transparent px-1 text-sm shadow-none focus-visible:ring-0 focus-visible:border-primary',
+                      isActive && 'border-primary font-medium'
                     )}
                     placeholder="(ว่าง)"
-                    rows={Math.max(2, segment.text.split('\n').length)}
                   />
                 </div>
               )
