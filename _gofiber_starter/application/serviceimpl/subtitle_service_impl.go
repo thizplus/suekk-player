@@ -598,7 +598,39 @@ func (s *SubtitleServiceImpl) RetryStuckSubtitles(ctx context.Context) (*dto.Ret
 			continue
 		}
 
-		// 4. Republish job ตาม type
+		// 4. ตรวจสอบว่ามี subtitle ที่ ready อยู่แล้วหรือไม่ (ป้องกันการทำซ้ำ)
+		if subtitle.Type == models.SubtitleTypeOriginal {
+			// เช็คว่ามี original subtitle ที่ ready อยู่แล้วหรือไม่
+			existingReady, _ := s.subtitleRepo.GetOriginalByVideoID(ctx, subtitle.VideoID)
+			if existingReady != nil && existingReady.ID != subtitle.ID && existingReady.Status == models.SubtitleStatusReady {
+				// มี original ที่ ready อยู่แล้ว → ลบ stuck record นี้ทิ้ง
+				logger.InfoContext(ctx, "Deleting duplicate stuck original subtitle",
+					"stuck_id", subtitle.ID,
+					"ready_id", existingReady.ID,
+					"video_code", video.Code,
+				)
+				s.subtitleRepo.Delete(ctx, subtitle.ID)
+				response.Skipped++
+				continue
+			}
+		} else if subtitle.Type == models.SubtitleTypeTranslated {
+			// เช็คว่ามี translated subtitle ภาษานั้นที่ ready อยู่แล้วหรือไม่
+			existingReady, _ := s.subtitleRepo.GetByVideoIDAndLanguage(ctx, subtitle.VideoID, subtitle.Language)
+			if existingReady != nil && existingReady.ID != subtitle.ID && existingReady.Status == models.SubtitleStatusReady {
+				// มี translation ที่ ready อยู่แล้ว → ลบ stuck record นี้ทิ้ง
+				logger.InfoContext(ctx, "Deleting duplicate stuck translated subtitle",
+					"stuck_id", subtitle.ID,
+					"ready_id", existingReady.ID,
+					"video_code", video.Code,
+					"language", subtitle.Language,
+				)
+				s.subtitleRepo.Delete(ctx, subtitle.ID)
+				response.Skipped++
+				continue
+			}
+		}
+
+		// 5. Republish job ตาม type
 		var publishErr error
 
 		if subtitle.Type == models.SubtitleTypeOriginal {
