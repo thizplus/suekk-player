@@ -52,6 +52,13 @@ export function EmbedPage() {
   // Fetch subtitles ด้วย token แล้วสร้าง Blob URLs
   // ต้องรอให้เสร็จก่อนแสดง player เพื่อไม่ให้ player ถูก recreate
   useEffect(() => {
+    // ถ้า video ยังไม่ ready → ไม่ต้องรอ subtitles
+    if (video && video.status !== 'ready') {
+      console.log('[Subtitle] Video not ready, skipping subtitle fetch')
+      setSubtitlesReady(true)
+      return
+    }
+
     // รอจนกว่า video และ streamAccess จะพร้อม
     if (!video || !streamAccess?.token) return
 
@@ -258,8 +265,8 @@ export function EmbedPage() {
       <div className="embed-container embed-center">
         <div className="text-center">
           <Loader2 className="h-8 w-8 animate-spin text-white mx-auto mb-4" />
-          <p className="text-white text-lg">Video is being processed...</p>
-          <p className="text-gray-400 text-sm mt-2">Please check back later</p>
+          <p className="text-white text-lg">กำลังประมวลผลวิดีโอ...</p>
+          <p className="text-gray-500 text-xs mt-2">Video is being processed</p>
         </div>
       </div>
     )
