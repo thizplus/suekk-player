@@ -47,12 +47,14 @@ const OUTPUT_FORMAT_OPTIONS: { value: OutputFormat; label: string; aspectClass: 
 ]
 
 // Video fit - how the source video fills the output frame
-type VideoFit = 'fill' | 'fit' | 'crop-1:1'
+type VideoFit = 'fill' | 'fit' | 'crop-1:1' | 'crop-4:3' | 'crop-4:5'
 
-const VIDEO_FIT_OPTIONS: { value: VideoFit; label: string; description: string }[] = [
-  { value: 'fill', label: 'Crop เต็มกรอบ', description: 'ตัดส่วนเกินออก' },
-  { value: 'fit', label: 'แสดงเต็ม', description: 'มีขอบดำ' },
-  { value: 'crop-1:1', label: 'Crop 1:1', description: 'ตัดเป็นสี่เหลี่ยม' },
+const VIDEO_FIT_OPTIONS: { value: VideoFit; label: string; description: string; aspectRatio?: string }[] = [
+  { value: 'fill', label: 'เต็มกรอบ', description: 'Crop ให้เต็ม' },
+  { value: 'fit', label: 'พอดี', description: 'มีขอบดำ' },
+  { value: 'crop-1:1', label: '1:1', description: 'สี่เหลี่ยม', aspectRatio: '1/1' },
+  { value: 'crop-4:3', label: '4:3', description: 'จอเก่า', aspectRatio: '4/3' },
+  { value: 'crop-4:5', label: '4:5', description: 'IG', aspectRatio: '4/5' },
 ]
 
 export function ReelGeneratorPage() {
@@ -91,7 +93,9 @@ export function ReelGeneratorPage() {
   const [cropY, setCropY] = useState(50) // 0-100, 50 = center
 
   // Check if crop position adjustment is needed
-  const needsCropPosition = videoFit === 'fill' || videoFit === 'crop-1:1'
+  const needsCropPosition = videoFit !== 'fit'
+  // Get crop aspect ratio for intermediate crop modes
+  const cropAspectRatio = VIDEO_FIT_OPTIONS.find(o => o.value === videoFit)?.aspectRatio
   const [showTitle, setShowTitle] = useState(true)
   const [showDescription, setShowDescription] = useState(true)
   const [showGradient, setShowGradient] = useState(true)
@@ -473,14 +477,36 @@ export function ReelGeneratorPage() {
                   {/* Video Preview */}
                   {selectedVideo && streamAccess?.token && hlsUrl ? (
                     <>
-                      <video
-                        ref={videoRef}
-                        className="absolute inset-0 w-full h-full"
-                        style={getVideoStyle()}
-                        muted
-                        playsInline
-                        onClick={togglePlayback}
-                      />
+                      {/* Crop ratio modes - wrap video in aspect container first */}
+                      {cropAspectRatio ? (
+                        <div className="absolute inset-0 flex items-center justify-center">
+                          <div
+                            className="max-h-full max-w-full overflow-hidden"
+                            style={{ aspectRatio: cropAspectRatio }}
+                          >
+                            <video
+                              ref={videoRef}
+                              className="w-full h-full"
+                              style={{
+                                objectFit: 'cover',
+                                objectPosition: `${cropX}% ${cropY}%`,
+                              }}
+                              muted
+                              playsInline
+                              onClick={togglePlayback}
+                            />
+                          </div>
+                        </div>
+                      ) : (
+                        <video
+                          ref={videoRef}
+                          className="absolute inset-0 w-full h-full"
+                          style={getVideoStyle()}
+                          muted
+                          playsInline
+                          onClick={togglePlayback}
+                        />
+                      )}
                       {/* Play/Pause Overlay */}
                       <div
                         className="absolute inset-0 flex items-center justify-center cursor-pointer bg-black/20 opacity-0 hover:opacity-100 transition-opacity"
@@ -498,12 +524,33 @@ export function ReelGeneratorPage() {
                       <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
                     </div>
                   ) : selectedVideo?.thumbnailUrl ? (
-                    <img
-                      src={selectedVideo.thumbnailUrl}
-                      alt="Preview"
-                      className="absolute inset-0 w-full h-full"
-                      style={getVideoStyle()}
-                    />
+                    <>
+                      {cropAspectRatio ? (
+                        <div className="absolute inset-0 flex items-center justify-center">
+                          <div
+                            className="max-h-full max-w-full overflow-hidden"
+                            style={{ aspectRatio: cropAspectRatio }}
+                          >
+                            <img
+                              src={selectedVideo.thumbnailUrl}
+                              alt="Preview"
+                              className="w-full h-full"
+                              style={{
+                                objectFit: 'cover',
+                                objectPosition: `${cropX}% ${cropY}%`,
+                              }}
+                            />
+                          </div>
+                        </div>
+                      ) : (
+                        <img
+                          src={selectedVideo.thumbnailUrl}
+                          alt="Preview"
+                          className="absolute inset-0 w-full h-full"
+                          style={getVideoStyle()}
+                        />
+                      )}
+                    </>
                   ) : (
                     <div className="absolute inset-0 flex items-center justify-center">
                       <Film className="h-16 w-16 text-muted-foreground/30" />
@@ -698,18 +745,18 @@ export function ReelGeneratorPage() {
 
                   {/* Video Fit Selection */}
                   <div className="space-y-2">
-                    <Label className="text-xs text-muted-foreground">2. Video ในกรอบ</Label>
-                    <div className="grid grid-cols-3 gap-1">
+                    <Label className="text-xs text-muted-foreground">2. Video ในกรอบ (Crop จาก 16:9)</Label>
+                    <div className="grid grid-cols-5 gap-1">
                       {VIDEO_FIT_OPTIONS.map((opt) => (
                         <Button
                           key={opt.value}
                           variant={videoFit === opt.value ? 'default' : 'outline'}
                           size="sm"
-                          className="h-auto py-2 text-xs px-2 flex flex-col"
+                          className="h-auto py-1.5 text-xs px-1 flex flex-col"
                           onClick={() => setVideoFit(opt.value)}
                         >
-                          <span className="font-bold">{opt.label}</span>
-                          <span className="text-[10px] opacity-70">{opt.description}</span>
+                          <span className="font-bold text-[11px]">{opt.label}</span>
+                          <span className="text-[9px] opacity-70">{opt.description}</span>
                         </Button>
                       ))}
                     </div>
