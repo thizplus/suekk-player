@@ -267,6 +267,8 @@ export function ReelGeneratorPage() {
             line1={line1}
             line2={line2}
             showLogo={showLogo}
+            cropX={cropX}
+            cropY={cropY}
             seekToTime={seekRequest?.time}
             seekRequestId={seekRequest?.id}
             onTimeUpdate={handleTimeUpdate}

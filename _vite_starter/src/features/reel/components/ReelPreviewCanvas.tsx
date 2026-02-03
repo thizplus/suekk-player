@@ -17,6 +17,8 @@ interface ReelPreviewCanvasProps {
   line1: string
   line2: string
   showLogo: boolean
+  cropX: number  // 0-100 crop position X
+  cropY: number  // 0-100 crop position Y
   seekToTime?: number
   seekRequestId?: number
   onTimeUpdate: (time: number) => void
@@ -90,6 +92,8 @@ export function ReelPreviewCanvas({
   line1,
   line2,
   showLogo,
+  cropX,
+  cropY,
   seekToTime,
   seekRequestId,
   onTimeUpdate,
@@ -105,6 +109,15 @@ export function ReelPreviewCanvas({
   const [isVideoReady, setIsVideoReady] = useState(false)
 
   const layout = STYLE_LAYOUTS[style]
+
+  // Compute video style with crop position for square/fullcover
+  const computedVideoStyle: React.CSSProperties = {
+    ...layout.videoStyle,
+    // Add object-position for crop preview (only affects square/fullcover which use object-fit: cover)
+    ...(style === 'square' || style === 'fullcover'
+      ? { objectPosition: `${cropX}% ${style === 'square' ? cropY : 50}%` }
+      : {}),
+  }
 
   // Stream access for video preview
   const { data: streamAccess, isLoading: isStreamLoading } = useStreamAccess(
@@ -242,7 +255,7 @@ export function ReelPreviewCanvas({
           <video
             ref={videoRef}
             className="max-w-full max-h-full"
-            style={layout.videoStyle}
+            style={computedVideoStyle}
             muted
             playsInline
             onClick={togglePlayback}
@@ -263,7 +276,7 @@ export function ReelPreviewCanvas({
               src={selectedVideo.thumbnailUrl}
               alt="Preview"
               className="max-w-full max-h-full"
-              style={layout.videoStyle}
+              style={computedVideoStyle}
             />
           </div>
         )}
