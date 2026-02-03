@@ -128,8 +128,10 @@ export function ReelGeneratorPage() {
 
   // Handle template selection
   const handleTemplateSelect = (templateId: string) => {
-    setSelectedTemplateId(templateId)
-    const template = templates?.find((t) => t.id === templateId)
+    // "none" means no template selected
+    const actualId = templateId === 'none' ? '' : templateId
+    setSelectedTemplateId(actualId)
+    const template = templates?.find((t) => t.id === actualId)
     if (template?.defaultLayers) {
       setLayers(template.defaultLayers)
     }
@@ -413,12 +415,12 @@ export function ReelGeneratorPage() {
                   {/* Template Selection */}
                   <div className="space-y-2">
                     <Label>Template (Optional)</Label>
-                    <Select value={selectedTemplateId} onValueChange={handleTemplateSelect}>
+                    <Select value={selectedTemplateId || 'none'} onValueChange={handleTemplateSelect}>
                       <SelectTrigger>
                         <SelectValue placeholder="เลือก template..." />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="">ไม่ใช้ template</SelectItem>
+                        <SelectItem value="none">ไม่ใช้ template</SelectItem>
                         {templates?.map((template) => (
                           <SelectItem key={template.id} value={template.id}>
                             {template.name}
