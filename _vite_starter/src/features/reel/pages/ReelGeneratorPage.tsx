@@ -479,14 +479,18 @@ export function ReelGeneratorPage() {
                     <>
                       {/* Crop ratio modes - wrap video in aspect container first */}
                       {cropAspectRatio ? (
-                        <div className="absolute inset-0 flex items-center justify-center">
+                        <div className="absolute inset-0 flex items-center justify-center p-1">
                           <div
-                            className="max-h-full max-w-full overflow-hidden"
-                            style={{ aspectRatio: cropAspectRatio }}
+                            className="relative overflow-hidden"
+                            style={{
+                              aspectRatio: cropAspectRatio,
+                              height: '100%',
+                              maxWidth: '100%',
+                            }}
                           >
                             <video
                               ref={videoRef}
-                              className="w-full h-full"
+                              className="absolute inset-0 w-full h-full"
                               style={{
                                 objectFit: 'cover',
                                 objectPosition: `${cropX}% ${cropY}%`,
@@ -526,15 +530,19 @@ export function ReelGeneratorPage() {
                   ) : selectedVideo?.thumbnailUrl ? (
                     <>
                       {cropAspectRatio ? (
-                        <div className="absolute inset-0 flex items-center justify-center">
+                        <div className="absolute inset-0 flex items-center justify-center p-1">
                           <div
-                            className="max-h-full max-w-full overflow-hidden"
-                            style={{ aspectRatio: cropAspectRatio }}
+                            className="relative overflow-hidden"
+                            style={{
+                              aspectRatio: cropAspectRatio,
+                              height: '100%',
+                              maxWidth: '100%',
+                            }}
                           >
                             <img
                               src={selectedVideo.thumbnailUrl}
                               alt="Preview"
-                              className="w-full h-full"
+                              className="absolute inset-0 w-full h-full"
                               style={{
                                 objectFit: 'cover',
                                 objectPosition: `${cropX}% ${cropY}%`,
