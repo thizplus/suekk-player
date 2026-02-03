@@ -226,7 +226,8 @@ export function ReelGeneratorPage() {
         </div>
 
         <div className="flex items-center gap-2">
-          {isEditing && (existingReel?.status === 'draft' || existingReel?.status === 'failed') && (
+          {/* Export button - แสดงเมื่อไม่ได้กำลัง export อยู่ (อนุญาตให้ re-export ได้) */}
+          {isEditing && existingReel?.status !== 'exporting' && (
             <Button
               variant="outline"
               onClick={handleExport}
@@ -237,7 +238,7 @@ export function ReelGeneratorPage() {
               ) : (
                 <Download className="h-4 w-4 mr-2" />
               )}
-              Export
+              {existingReel?.status === 'ready' ? 'Re-Export' : 'Export'}
             </Button>
           )}
           <Button

@@ -140,11 +140,12 @@ type ReelLayerResponse struct {
 
 // VideoBasicResponse ข้อมูล video แบบย่อ
 type VideoBasicResponse struct {
-	ID           uuid.UUID `json:"id"`
-	Code         string    `json:"code"`
-	Title        string    `json:"title"`
-	Duration     int       `json:"duration"`
-	ThumbnailURL string    `json:"thumbnailUrl,omitempty"`
+	ID           uuid.UUID           `json:"id"`
+	Code         string              `json:"code"`
+	Title        string              `json:"title"`
+	Duration     int                 `json:"duration"`
+	Status       models.VideoStatus  `json:"status"`
+	ThumbnailURL string              `json:"thumbnailUrl,omitempty"`
 }
 
 // ReelTemplateResponse template response
@@ -230,6 +231,7 @@ func ReelToResponse(reel *models.Reel) *ReelResponse {
 			Code:         reel.Video.Code,
 			Title:        reel.Video.Title,
 			Duration:     reel.Video.Duration,
+			Status:       reel.Video.Status,
 			ThumbnailURL: reel.Video.ThumbnailURL,
 		}
 	}

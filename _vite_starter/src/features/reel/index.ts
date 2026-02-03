@@ -1,6 +1,7 @@
 // Reel Generator feature barrel exports
 export * from './types'
-export * from './hooks'
+export * from './hooks'           // React Query hooks
+export * from './hooks/index'     // Utility hooks (useThumbnailBlob, etc.)
 export { reelService } from './service'
 
 // Pages

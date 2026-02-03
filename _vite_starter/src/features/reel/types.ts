@@ -61,6 +61,7 @@ export interface VideoBasic {
   code: string
   title: string
   duration: number
+  status: 'pending' | 'queued' | 'processing' | 'ready' | 'failed'
   thumbnailUrl?: string
 }
 

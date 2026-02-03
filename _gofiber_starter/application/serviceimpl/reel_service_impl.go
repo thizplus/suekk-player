@@ -195,9 +195,9 @@ func (s *ReelServiceImpl) Update(ctx context.Context, id, userID uuid.UUID, req 
 		return nil, errors.New("access denied")
 	}
 
-	// 2. ตรวจสอบว่ายังอยู่ใน draft mode
-	if reel.Status != models.ReelStatusDraft && reel.Status != models.ReelStatusFailed {
-		return nil, errors.New("cannot update reel that is being exported or already exported")
+	// 2. ตรวจสอบว่าไม่ได้กำลัง export อยู่
+	if reel.Status == models.ReelStatusExporting {
+		return nil, errors.New("cannot update reel that is being exported")
 	}
 
 	// 3. อัปเดตฟิลด์ทั่วไป
@@ -363,13 +363,11 @@ func (s *ReelServiceImpl) Export(ctx context.Context, id, userID uuid.UUID) erro
 		return errors.New("access denied")
 	}
 
-	// 2. ตรวจสอบ status
+	// 2. ตรวจสอบ status (อนุญาตให้ re-export ได้ถ้าไม่ได้กำลัง export อยู่)
 	if reel.Status == models.ReelStatusExporting {
 		return errors.New("reel is already being exported")
 	}
-	if reel.Status == models.ReelStatusReady {
-		return errors.New("reel is already exported")
-	}
+	// NOTE: อนุญาตให้ re-export reel ที่ ready แล้วได้ (เพื่อ update style/settings)
 
 	// 3. ตรวจสอบว่ามี video
 	if reel.Video == nil || reel.Video.HLSPath == "" {

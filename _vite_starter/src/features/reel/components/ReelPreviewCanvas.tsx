@@ -2,7 +2,8 @@ import { useEffect, useRef, useCallback, useState } from 'react'
 import Hls from 'hls.js'
 import { Play, Pause, SkipBack, SkipForward, Scissors, Flag, Film, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { useStreamAccess } from '@/features/embed/hooks/useStreamAccess'
+import { useStreamAccess } from '@/features/embed/hooks'
+import { useThumbnailBlob } from '../hooks/useThumbnailBlob'
 import { APP_CONFIG } from '@/constants/app-config'
 import type { Video } from '@/features/video/types'
 import type { ReelStyle } from '../types'
@@ -120,10 +121,17 @@ export function ReelPreviewCanvas({
   }
 
   // Stream access for video preview
+  // Note: ถ้า status ไม่มี (API เก่า) ให้ assume ว่า ready
   const { data: streamAccess, isLoading: isStreamLoading } = useStreamAccess(
     selectedVideo?.code || '',
-    { enabled: !!selectedVideo?.code && selectedVideo?.status === 'ready' }
+    { enabled: !!selectedVideo?.code && (selectedVideo?.status === 'ready' || !selectedVideo?.status) }
   )
+
+  // Thumbnail blob URL (fetch ด้วย stream token)
+  const { thumbnailBlobUrl } = useThumbnailBlob({
+    videoCode: selectedVideo?.code,
+    streamToken: streamAccess?.token,
+  })
 
   // HLS URL
   const hlsUrl = selectedVideo?.code ? `${APP_CONFIG.streamUrl}/${selectedVideo.code}/master.m3u8` : ''
@@ -269,11 +277,11 @@ export function ReelPreviewCanvas({
           </div>
         )}
 
-        {/* Thumbnail fallback */}
-        {selectedVideo?.thumbnailUrl && !streamAccess?.token && !isStreamLoading && (
+        {/* Thumbnail fallback - แสดงขณะรอ HLS โหลด */}
+        {thumbnailBlobUrl && !isVideoReady && (
           <div className={`absolute inset-0 flex overflow-hidden ${layout.containerClass}`}>
             <img
-              src={selectedVideo.thumbnailUrl}
+              src={thumbnailBlobUrl}
               alt="Preview"
               className="max-w-full max-h-full"
               style={computedVideoStyle}
