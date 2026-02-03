@@ -30,12 +30,24 @@ func (p *NATSReelPublisher) PublishReelExportJob(ctx context.Context, job *servi
 		VideoQuality: job.VideoQuality,
 		SegmentStart: job.SegmentStart,
 		SegmentEnd:   job.SegmentEnd,
-		OutputFormat: job.OutputFormat,
-		VideoFit:     job.VideoFit,
+
+		// NEW: Style-based fields
+		Style:        job.Style,
+		Title:        job.Title,
+		Line1:        job.Line1,
+		Line2:        job.Line2,
+		ShowLogo:     job.ShowLogo,
+		LogoPath:     job.LogoPath,
+		GradientPath: job.GradientPath,
 		CropX:        job.CropX,
 		CropY:        job.CropY,
+
+		// LEGACY: Layer-based fields
+		OutputFormat: job.OutputFormat,
+		VideoFit:     job.VideoFit,
 		Layers:       convertLayersToNATSFormat(job.Layers),
-		OutputPath:   job.OutputPath,
+
+		OutputPath: job.OutputPath,
 	}
 
 	return p.publisher.PublishReelExportJob(ctx, natsJob)
