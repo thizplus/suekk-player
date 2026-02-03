@@ -301,7 +301,7 @@ export function ReelGeneratorPage() {
         </div>
 
         <div className="flex items-center gap-2">
-          {isEditing && existingReel?.status === 'draft' && (
+          {isEditing && (existingReel?.status === 'draft' || existingReel?.status === 'failed') && (
             <Button
               variant="outline"
               onClick={handleExport}
