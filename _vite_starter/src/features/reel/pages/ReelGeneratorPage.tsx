@@ -78,7 +78,7 @@ export function ReelGeneratorPage() {
   useEffect(() => {
     if (existingReel) {
       setSelectedVideoId(existingReel.video?.id || '')
-      setSelectedVideo(existingReel.video)
+      setSelectedVideo(existingReel.video as Video | undefined)
       setTitle(existingReel.title || '')
       setDescription(existingReel.description || '')
       setSegmentStart(existingReel.segmentStart)
