@@ -23,6 +23,9 @@ interface ReelPreviewCanvasProps {
   showDescription: boolean
   showGradient: boolean
   titlePosition: TitlePosition
+  // Seek control from parent (time + id to allow repeated seeks to same time)
+  seekToTime?: number
+  seekRequestId?: number
   // Callbacks
   onTimeUpdate: (time: number) => void
   onDurationChange: (duration: number) => void
@@ -45,6 +48,8 @@ export function ReelPreviewCanvas({
   showDescription,
   showGradient,
   titlePosition,
+  seekToTime,
+  seekRequestId,
   onTimeUpdate,
   onDurationChange,
   onVideoReady,
@@ -142,6 +147,16 @@ export function ReelPreviewCanvas({
     video.addEventListener('timeupdate', handleTimeUpdate)
     return () => video.removeEventListener('timeupdate', handleTimeUpdate)
   }, [segmentStart, segmentEnd, isPlaying, onTimeUpdate])
+
+  // Handle seek from parent (triggered by seekRequestId change)
+  useEffect(() => {
+    const video = videoRef.current
+    if (!video || !isVideoReady || seekToTime === undefined || !seekRequestId) return
+
+    video.currentTime = seekToTime
+    setCurrentTime(seekToTime)
+    onTimeUpdate(seekToTime)
+  }, [seekRequestId]) // Only depend on seekRequestId to allow repeated seeks
 
   // Toggle play/pause
   const togglePlayback = useCallback(() => {

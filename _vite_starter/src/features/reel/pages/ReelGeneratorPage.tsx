@@ -61,6 +61,8 @@ export function ReelGeneratorPage() {
   const [actualDuration, setActualDuration] = useState(0)
   const [currentTime, setCurrentTime] = useState(0)
   const [isVideoReady, setIsVideoReady] = useState(false)
+  // Seek request - use counter to ensure seek triggers even for same time
+  const [seekRequest, setSeekRequest] = useState<{ time: number; id: number } | null>(null)
 
   // === Derived State ===
   const selectedVideo = videosData?.data.find((v) => v.id === selectedVideoId) || videoByCode
@@ -116,13 +118,20 @@ export function ReelGeneratorPage() {
     setSegmentEnd(Math.min(time, videoDuration))
   }, [videoDuration])
 
-  const handleSeekTo = useCallback((time: number) => {
+  // Trigger seek in video player
+  const triggerSeek = useCallback((time: number) => {
+    setSeekRequest(prev => ({ time, id: (prev?.id || 0) + 1 }))
+  }, [])
+
+  // Handle time update from video player (just update display)
+  const handleTimeUpdate = useCallback((time: number) => {
     setCurrentTime(time)
   }, [])
 
+  // Preview segment from start
   const handlePreviewSegment = useCallback(() => {
-    // Preview segment will be handled by ReelPreviewCanvas
-  }, [])
+    triggerSeek(segmentStart)
+  }, [segmentStart, triggerSeek])
 
   // === Build layers ===
   const buildLayers = (): ReelLayer[] => {
@@ -311,7 +320,9 @@ export function ReelGeneratorPage() {
             showDescription={showDescription}
             showGradient={showGradient}
             titlePosition={titlePosition}
-            onTimeUpdate={handleSeekTo}
+            seekToTime={seekRequest?.time}
+            seekRequestId={seekRequest?.id}
+            onTimeUpdate={handleTimeUpdate}
             onDurationChange={handleDurationChange}
             onVideoReady={setIsVideoReady}
             onSegmentStartChange={handleSegmentStartChange}
@@ -348,7 +359,7 @@ export function ReelGeneratorPage() {
               isVideoReady={isVideoReady}
               onSegmentStartChange={handleSegmentStartChange}
               onSegmentEndChange={handleSegmentEndChange}
-              onSeekTo={handleSeekTo}
+              onSeekTo={triggerSeek}
               onPreviewSegment={handlePreviewSegment}
             />
           )}
