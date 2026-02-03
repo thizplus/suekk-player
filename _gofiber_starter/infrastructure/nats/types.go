@@ -136,20 +136,32 @@ func NewWarmCacheJob(videoID, videoCode, hlsPath string, segmentCounts map[strin
 // ⚠️ โครงสร้างนี้ต้องตรงกับ _reel_worker
 // ═══════════════════════════════════════════════════════════════════════════════
 type ReelExportJob struct {
-	ReelID       string         `json:"reel_id"`
-	VideoID      string         `json:"video_id"`
-	VideoCode    string         `json:"video_code"`
-	HLSPath      string         `json:"hls_path"`       // S3 path: hls/{code}/master.m3u8
-	VideoQuality string         `json:"video_quality"`  // Best available quality: 1080p, 720p, etc.
-	SegmentStart float64        `json:"segment_start"`  // Start time in seconds
-	SegmentEnd   float64        `json:"segment_end"`    // End time in seconds
-	OutputFormat string         `json:"output_format"`  // 9:16, 1:1, 4:5, 16:9
-	VideoFit     string         `json:"video_fit"`      // fill, fit, crop-1:1, crop-4:3, crop-4:5
-	CropX        float64        `json:"crop_x"`         // 0-100 crop position X
-	CropY        float64        `json:"crop_y"`         // 0-100 crop position Y
-	Layers       []ReelLayerJob `json:"layers"`         // Composition layers
-	OutputPath   string         `json:"output_path"`    // S3 path: reels/{reel_id}/output.mp4
-	CreatedAt    int64          `json:"created_at"`
+	ReelID       string  `json:"reel_id"`
+	VideoID      string  `json:"video_id"`
+	VideoCode    string  `json:"video_code"`
+	HLSPath      string  `json:"hls_path"`       // S3 path: hls/{code}/master.m3u8
+	VideoQuality string  `json:"video_quality"`  // Best available quality: 1080p, 720p, etc.
+	SegmentStart float64 `json:"segment_start"`  // Start time in seconds
+	SegmentEnd   float64 `json:"segment_end"`    // End time in seconds
+
+	// ═══ NEW: Style-based composition (simplified) ═══
+	Style        string  `json:"style"`         // letterbox, square, fullcover
+	Title        string  `json:"title"`         // Main title text
+	Line1        string  `json:"line1"`         // Secondary line 1
+	Line2        string  `json:"line2"`         // Secondary line 2
+	ShowLogo     bool    `json:"show_logo"`     // Show logo overlay
+	LogoPath     string  `json:"logo_path"`     // S3 path to logo PNG (optional)
+	GradientPath string  `json:"gradient_path"` // S3 path to gradient PNG (for fullcover)
+	CropX        float64 `json:"crop_x"`        // 0-100 crop position X (for square/fullcover)
+	CropY        float64 `json:"crop_y"`        // 0-100 crop position Y (for square)
+
+	// ═══ LEGACY: Layer-based composition (deprecated) ═══
+	OutputFormat string         `json:"output_format"` // 9:16, 1:1, 4:5, 16:9
+	VideoFit     string         `json:"video_fit"`     // fill, fit, crop-1:1, crop-4:3, crop-4:5
+	Layers       []ReelLayerJob `json:"layers"`        // Composition layers
+
+	OutputPath string `json:"output_path"` // S3 path: reels/{reel_id}/output.mp4
+	CreatedAt  int64  `json:"created_at"`
 }
 
 // ReelLayerJob layer ใน export job
