@@ -1,13 +1,8 @@
+import { useState, useRef, useEffect } from 'react'
+import { Search, X } from 'lucide-react'
 import { Label } from '@/components/ui/label'
 import { Button } from '@/components/ui/button'
 import { Slider } from '@/components/ui/slider'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
 import type { Video } from '@/features/video/types'
 import type { OutputFormat, VideoFit } from '../types'
 import { OUTPUT_FORMAT_OPTIONS, VIDEO_FIT_OPTIONS, formatTime } from './constants'
@@ -44,24 +39,119 @@ export function ReelVideoSelector({
   const needsCropPosition = videoFit !== 'fit'
   const hasVideo = !!selectedVideoId
 
+  const [search, setSearch] = useState('')
+  const [isOpen, setIsOpen] = useState(false)
+  const inputRef = useRef<HTMLInputElement>(null)
+  const dropdownRef = useRef<HTMLDivElement>(null)
+
+  // Get selected video info
+  const selectedVideo = videos.find(v => v.id === selectedVideoId)
+
+  // Filter videos by search (title or code)
+  const filteredVideos = videos.filter(video => {
+    if (!search) return true
+    const searchLower = search.toLowerCase()
+    return (
+      video.title.toLowerCase().includes(searchLower) ||
+      video.code.toLowerCase().includes(searchLower)
+    )
+  })
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (
+        dropdownRef.current &&
+        !dropdownRef.current.contains(e.target as Node) &&
+        inputRef.current &&
+        !inputRef.current.contains(e.target as Node)
+      ) {
+        setIsOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
+
+  // Handle video selection
+  const handleSelect = (videoId: string) => {
+    onVideoSelect(videoId)
+    setSearch('')
+    setIsOpen(false)
+  }
+
+  // Clear selection
+  const handleClear = () => {
+    onVideoSelect('')
+    setSearch('')
+  }
+
   return (
     <div className="space-y-4">
-      <Select
-        value={selectedVideoId}
-        onValueChange={onVideoSelect}
-        disabled={isEditing}
-      >
-        <SelectTrigger>
-          <SelectValue placeholder="เลือกวิดีโอ..." />
-        </SelectTrigger>
-        <SelectContent>
-          {videos.map((video) => (
-            <SelectItem key={video.id} value={video.id}>
-              {video.code} - {video.title} ({formatTime(video.duration)})
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
+      {/* Video Search Input */}
+      <div className="relative">
+        <div className="relative">
+          <Search className="absolute left-0 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <input
+            ref={inputRef}
+            type="text"
+            value={selectedVideo && !isOpen ? `${selectedVideo.code} - ${selectedVideo.title}` : search}
+            onChange={(e) => {
+              setSearch(e.target.value)
+              setIsOpen(true)
+            }}
+            onFocus={() => {
+              if (!isEditing) {
+                setIsOpen(true)
+                if (selectedVideo) setSearch('')
+              }
+            }}
+            placeholder="ค้นหาวิดีโอ (code หรือ title)..."
+            disabled={isEditing}
+            className="w-full pl-6 pr-8 py-2 bg-transparent border-0 border-b border-input focus:border-primary focus:outline-none transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          />
+          {selectedVideo && !isEditing && (
+            <button
+              onClick={handleClear}
+              className="absolute right-0 top-1/2 -translate-y-1/2 p-1 hover:bg-muted rounded"
+            >
+              <X className="h-4 w-4 text-muted-foreground" />
+            </button>
+          )}
+        </div>
+
+        {/* Dropdown */}
+        {isOpen && !isEditing && (
+          <div
+            ref={dropdownRef}
+            className="absolute z-50 w-full mt-1 bg-popover border rounded-md shadow-lg max-h-60 overflow-auto"
+          >
+            {filteredVideos.length === 0 ? (
+              <div className="p-3 text-sm text-muted-foreground text-center">
+                ไม่พบวิดีโอ
+              </div>
+            ) : (
+              filteredVideos.map((video) => (
+                <button
+                  key={video.id}
+                  onClick={() => handleSelect(video.id)}
+                  className={`w-full px-3 py-2 text-left hover:bg-muted transition-colors flex items-center justify-between ${
+                    video.id === selectedVideoId ? 'bg-muted' : ''
+                  }`}
+                >
+                  <div className="flex-1 min-w-0">
+                    <div className="font-medium truncate">{video.title}</div>
+                    <div className="text-sm text-muted-foreground">{video.code}</div>
+                  </div>
+                  <div className="text-sm text-muted-foreground ml-2">
+                    {formatTime(video.duration)}
+                  </div>
+                </button>
+              ))
+            )}
+          </div>
+        )}
+      </div>
 
       {hasVideo && (
         <div className="space-y-4">
