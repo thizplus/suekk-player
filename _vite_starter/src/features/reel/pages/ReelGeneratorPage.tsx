@@ -1,4 +1,5 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
+import Hls from 'hls.js'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import {
   ArrowLeft,
@@ -13,6 +14,8 @@ import {
   Trash2,
   ChevronUp,
   ChevronDown,
+  Play,
+  Pause,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -32,7 +35,6 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { useReel, useCreateReel, useUpdateReel, useExportReel, useReelTemplates } from '../hooks'
 import { useVideoByCode, useVideos } from '@/features/video/hooks'
 import { useStreamAccess } from '@/features/embed/hooks/useStreamAccess'
-import { VideoPlayer } from '@/features/video/components/VideoPlayer'
 import { APP_CONFIG } from '@/constants/app-config'
 import type { ReelLayer, ReelLayerType, CreateReelRequest, UpdateReelRequest } from '../types'
 import { toast } from 'sonner'
@@ -121,6 +123,83 @@ export function ReelGeneratorPage() {
 
   // HLS URL for video player
   const hlsUrl = selectedVideo?.code ? `${APP_CONFIG.streamUrl}/${selectedVideo.code}/master.m3u8` : ''
+
+  // Video player ref and state
+  const videoRef = useRef<HTMLVideoElement>(null)
+  const hlsRef = useRef<Hls | null>(null)
+  const [isPlaying, setIsPlaying] = useState(false)
+
+  // Initialize HLS.js for video preview
+  useEffect(() => {
+    const video = videoRef.current
+    if (!video || !hlsUrl || !streamAccess?.token) return
+
+    // Destroy previous instance
+    if (hlsRef.current) {
+      hlsRef.current.destroy()
+      hlsRef.current = null
+    }
+
+    if (Hls.isSupported()) {
+      const hls = new Hls({
+        xhrSetup: (xhr) => {
+          xhr.setRequestHeader('X-Stream-Token', streamAccess.token)
+        },
+      })
+      hls.loadSource(hlsUrl)
+      hls.attachMedia(video)
+      hlsRef.current = hls
+
+      hls.on(Hls.Events.MANIFEST_PARSED, () => {
+        // Seek to segment start
+        video.currentTime = segmentStart
+      })
+    } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+      // Safari native HLS support
+      video.src = hlsUrl
+      video.currentTime = segmentStart
+    }
+
+    return () => {
+      if (hlsRef.current) {
+        hlsRef.current.destroy()
+        hlsRef.current = null
+      }
+    }
+  }, [hlsUrl, streamAccess?.token])
+
+  // Sync video time with segment
+  useEffect(() => {
+    const video = videoRef.current
+    if (!video) return
+
+    const handleTimeUpdate = () => {
+      if (video.currentTime >= segmentEnd) {
+        video.currentTime = segmentStart
+        if (isPlaying) {
+          video.play()
+        }
+      }
+    }
+
+    video.addEventListener('timeupdate', handleTimeUpdate)
+    return () => video.removeEventListener('timeupdate', handleTimeUpdate)
+  }, [segmentStart, segmentEnd, isPlaying])
+
+  // Toggle play/pause
+  const togglePlayback = useCallback(() => {
+    const video = videoRef.current
+    if (!video) return
+
+    if (video.paused) {
+      video.currentTime = segmentStart
+      video.play()
+      setIsPlaying(true)
+    } else {
+      video.pause()
+      setIsPlaying(false)
+    }
+  }, [segmentStart])
 
   // Initialize form when data loads
   useEffect(() => {
@@ -326,15 +405,28 @@ export function ReelGeneratorPage() {
             </CardHeader>
             <CardContent>
               <div className="relative aspect-[9/16] bg-black rounded-lg overflow-hidden">
-                {/* Video Player or Placeholder */}
+                {/* Video Preview - Vertical 9:16 */}
                 {selectedVideo && streamAccess?.token && hlsUrl ? (
-                  <div className="absolute inset-0 [&_.art-video-player]:!h-full">
-                    <VideoPlayer
-                      src={hlsUrl}
-                      streamToken={streamAccess.token}
-                      autoPlay={false}
+                  <>
+                    <video
+                      ref={videoRef}
+                      className="absolute inset-0 w-full h-full object-cover"
+                      muted
+                      playsInline
+                      onClick={togglePlayback}
                     />
-                  </div>
+                    {/* Play/Pause Overlay */}
+                    <div
+                      className="absolute inset-0 flex items-center justify-center cursor-pointer bg-black/20 opacity-0 hover:opacity-100 transition-opacity"
+                      onClick={togglePlayback}
+                    >
+                      {isPlaying ? (
+                        <Pause className="h-12 w-12 text-white drop-shadow-lg" />
+                      ) : (
+                        <Play className="h-12 w-12 text-white drop-shadow-lg" />
+                      )}
+                    </div>
+                  </>
                 ) : selectedVideo && isStreamLoading ? (
                   <div className="absolute inset-0 flex items-center justify-center">
                     <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
@@ -343,8 +435,7 @@ export function ReelGeneratorPage() {
                   <img
                     src={selectedVideo.thumbnailUrl}
                     alt="Preview"
-                    className="absolute inset-0 w-full h-full object-contain"
-                    style={{ top: '50%', transform: 'translateY(-50%)' }}
+                    className="absolute inset-0 w-full h-full object-cover"
                   />
                 ) : (
                   <div className="absolute inset-0 flex items-center justify-center">
