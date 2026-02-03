@@ -142,6 +142,10 @@ type ReelExportJob struct {
 	HLSPath      string         `json:"hls_path"`      // S3 path: hls/{code}/master.m3u8
 	SegmentStart float64        `json:"segment_start"` // Start time in seconds
 	SegmentEnd   float64        `json:"segment_end"`   // End time in seconds
+	OutputFormat string         `json:"output_format"` // 9:16, 1:1, 4:5, 16:9
+	VideoFit     string         `json:"video_fit"`     // fill, fit, crop-1:1, crop-4:3, crop-4:5
+	CropX        float64        `json:"crop_x"`        // 0-100 crop position X
+	CropY        float64        `json:"crop_y"`        // 0-100 crop position Y
 	Layers       []ReelLayerJob `json:"layers"`        // Composition layers
 	OutputPath   string         `json:"output_path"`   // S3 path: reels/{reel_id}/output.mp4
 	CreatedAt    int64          `json:"created_at"`

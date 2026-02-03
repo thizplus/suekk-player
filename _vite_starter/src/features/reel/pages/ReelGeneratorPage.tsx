@@ -7,7 +7,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { toast } from 'sonner'
 
 import { useReel, useCreateReel, useUpdateReel, useExportReel } from '../hooks'
-import { useVideoByCode, useVideos } from '@/features/video/hooks'
+import { useVideoByCode } from '@/features/video/hooks'
+import type { Video } from '@/features/video/types'
 import type { ReelLayer, CreateReelRequest, UpdateReelRequest, OutputFormat, VideoFit, TitlePosition } from '../types'
 import {
   ReelPreviewCanvas,
@@ -31,9 +32,6 @@ export function ReelGeneratorPage() {
   // Fetch video if creating from video code
   const { data: videoByCode, isLoading: isLoadingVideo } = useVideoByCode(videoCode || '')
 
-  // Fetch videos for selection
-  const { data: videosData } = useVideos({ status: 'ready', limit: 50 })
-
   // Mutations
   const createReel = useCreateReel()
   const updateReel = useUpdateReel()
@@ -41,6 +39,7 @@ export function ReelGeneratorPage() {
 
   // === Form State ===
   const [selectedVideoId, setSelectedVideoId] = useState<string>('')
+  const [selectedVideo, setSelectedVideo] = useState<Video | undefined>(undefined)
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
   const [segmentStart, setSegmentStart] = useState(0)
@@ -57,6 +56,8 @@ export function ReelGeneratorPage() {
   const [showDescription, setShowDescription] = useState(true)
   const [showGradient, setShowGradient] = useState(true)
   const [titlePosition, setTitlePosition] = useState<TitlePosition>('top')
+  const [titleFontSize, setTitleFontSize] = useState(72)
+  const [descriptionFontSize, setDescriptionFontSize] = useState(36)
 
   // Video state (from preview canvas)
   const [actualDuration, setActualDuration] = useState(0)
@@ -69,19 +70,25 @@ export function ReelGeneratorPage() {
   const [activeTab, setActiveTab] = useState('video')
 
   // === Derived State ===
-  const selectedVideo = videosData?.data.find((v) => v.id === selectedVideoId) || videoByCode
-  const rawDuration = actualDuration || selectedVideo?.duration || 0
+  const activeVideo = selectedVideo || videoByCode
+  const rawDuration = actualDuration || activeVideo?.duration || 0
   const videoDuration = Math.min(rawDuration, MAX_REEL_DURATION)
 
   // === Initialize form when data loads ===
   useEffect(() => {
     if (existingReel) {
       setSelectedVideoId(existingReel.video?.id || '')
+      setSelectedVideo(existingReel.video)
       setTitle(existingReel.title || '')
       setDescription(existingReel.description || '')
       setSegmentStart(existingReel.segmentStart)
       setSegmentEnd(existingReel.segmentEnd)
-      // Parse layers to restore display options
+      // Restore display options
+      if (existingReel.outputFormat) setOutputFormat(existingReel.outputFormat)
+      if (existingReel.videoFit) setVideoFit(existingReel.videoFit)
+      if (existingReel.cropX !== undefined) setCropX(existingReel.cropX)
+      if (existingReel.cropY !== undefined) setCropY(existingReel.cropY)
+      // Parse layers to restore text options
       const titleLayer = existingReel.layers?.find((l: ReelLayer) => l.type === 'text' && l.y < 30)
       const descLayer = existingReel.layers?.find((l: ReelLayer) => l.type === 'text' && l.y > 70)
       const bgLayer = existingReel.layers?.find((l: ReelLayer) => l.type === 'background')
@@ -90,6 +97,7 @@ export function ReelGeneratorPage() {
       setShowGradient(!!bgLayer)
     } else if (videoByCode) {
       setSelectedVideoId(videoByCode.id)
+      setSelectedVideo(videoByCode)
       setSegmentEnd(Math.min(60, videoByCode.duration))
     }
   }, [existingReel, videoByCode])
@@ -102,14 +110,14 @@ export function ReelGeneratorPage() {
   }, [selectedVideoId, activeTab])
 
   // === Callbacks for child components ===
-  const handleVideoSelect = useCallback((videoId: string) => {
+  const handleVideoSelect = useCallback((videoId: string, video?: Video) => {
     setSelectedVideoId(videoId)
-    const video = videosData?.data.find((v) => v.id === videoId)
+    setSelectedVideo(video)
     if (video) {
       setSegmentEnd(Math.min(60, video.duration))
       setSegmentStart(0)
     }
-  }, [videosData?.data])
+  }, [])
 
   const handleDurationChange = useCallback((duration: number) => {
     setActualDuration(duration)
@@ -167,7 +175,7 @@ export function ReelGeneratorPage() {
         type: 'text',
         content: title,
         fontFamily: 'Google Sans',
-        fontSize: 48,
+        fontSize: titleFontSize,
         fontColor: '#ffffff',
         fontWeight: 'bold',
         x: 50,
@@ -183,7 +191,7 @@ export function ReelGeneratorPage() {
         type: 'text',
         content: description,
         fontFamily: 'Google Sans',
-        fontSize: 24,
+        fontSize: descriptionFontSize,
         fontColor: '#ffffff',
         fontWeight: 'normal',
         x: 50,
@@ -217,6 +225,10 @@ export function ReelGeneratorPage() {
           description,
           segmentStart,
           segmentEnd,
+          outputFormat,
+          videoFit,
+          cropX,
+          cropY,
           layers,
         }
         await updateReel.mutateAsync({ id, data })
@@ -228,6 +240,10 @@ export function ReelGeneratorPage() {
           description,
           segmentStart,
           segmentEnd,
+          outputFormat,
+          videoFit,
+          cropX,
+          cropY,
           layers,
         }
         const newReel = await createReel.mutateAsync(data)
@@ -318,7 +334,7 @@ export function ReelGeneratorPage() {
         {/* Preview Canvas */}
         <div className="flex justify-center">
           <ReelPreviewCanvas
-            selectedVideo={selectedVideo}
+            selectedVideo={activeVideo}
             outputFormat={outputFormat}
             videoFit={videoFit}
             cropX={cropX}
@@ -331,6 +347,8 @@ export function ReelGeneratorPage() {
             showDescription={showDescription}
             showGradient={showGradient}
             titlePosition={titlePosition}
+            titleFontSize={titleFontSize}
+            descriptionFontSize={descriptionFontSize}
             seekToTime={seekRequest?.time}
             seekRequestId={seekRequest?.id}
             onTimeUpdate={handleTimeUpdate}
@@ -349,11 +367,11 @@ export function ReelGeneratorPage() {
                 <Film className="h-4 w-4" />
                 วิดีโอ
               </TabsTrigger>
-              <TabsTrigger value="timecode" className="gap-2" disabled={!selectedVideo}>
+              <TabsTrigger value="timecode" className="gap-2" disabled={!activeVideo}>
                 <Clock className="h-4 w-4" />
                 ช่วงเวลา
               </TabsTrigger>
-              <TabsTrigger value="text" className="gap-2" disabled={!selectedVideo}>
+              <TabsTrigger value="text" className="gap-2" disabled={!activeVideo}>
                 <Type className="h-4 w-4" />
                 ข้อความ
               </TabsTrigger>
@@ -361,8 +379,8 @@ export function ReelGeneratorPage() {
 
             <TabsContent value="video" className="mt-4">
               <ReelVideoSelector
-                videos={videosData?.data || []}
                 selectedVideoId={selectedVideoId}
+                selectedVideo={activeVideo}
                 outputFormat={outputFormat}
                 videoFit={videoFit}
                 cropX={cropX}
@@ -377,7 +395,7 @@ export function ReelGeneratorPage() {
             </TabsContent>
 
             <TabsContent value="timecode" className="mt-4">
-              {selectedVideo && (
+              {activeVideo && (
                 <ReelTimecodeSelector
                   videoDuration={videoDuration}
                   rawDuration={rawDuration}
@@ -394,7 +412,7 @@ export function ReelGeneratorPage() {
             </TabsContent>
 
             <TabsContent value="text" className="mt-4">
-              {selectedVideo && (
+              {activeVideo && (
                 <ReelTextOverlay
                   title={title}
                   description={description}
@@ -402,12 +420,16 @@ export function ReelGeneratorPage() {
                   showDescription={showDescription}
                   showGradient={showGradient}
                   titlePosition={titlePosition}
+                  titleFontSize={titleFontSize}
+                  descriptionFontSize={descriptionFontSize}
                   onTitleChange={setTitle}
                   onDescriptionChange={setDescription}
                   onShowTitleChange={setShowTitle}
                   onShowDescriptionChange={setShowDescription}
                   onShowGradientChange={setShowGradient}
                   onTitlePositionChange={setTitlePosition}
+                  onTitleFontSizeChange={setTitleFontSize}
+                  onDescriptionFontSizeChange={setDescriptionFontSize}
                 />
               )}
             </TabsContent>

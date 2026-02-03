@@ -67,6 +67,10 @@ export interface Reel {
   segmentStart: number
   segmentEnd: number
   duration: number
+  outputFormat: OutputFormat
+  videoFit: VideoFit
+  cropX: number
+  cropY: number
   status: ReelStatus
   outputUrl?: string
   thumbnailUrl?: string
@@ -104,6 +108,10 @@ export interface CreateReelRequest {
   description?: string
   segmentStart: number
   segmentEnd: number
+  outputFormat?: OutputFormat
+  videoFit?: VideoFit
+  cropX?: number
+  cropY?: number
   templateId?: string
   layers?: ReelLayer[]
 }
@@ -113,6 +121,10 @@ export interface UpdateReelRequest {
   description?: string
   segmentStart?: number
   segmentEnd?: number
+  outputFormat?: OutputFormat
+  videoFit?: VideoFit
+  cropX?: number
+  cropY?: number
   templateId?: string
   layers?: ReelLayer[]
 }

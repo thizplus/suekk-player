@@ -28,6 +28,27 @@ const (
 	ReelLayerTypeBackground ReelLayerType = "background"
 )
 
+// OutputFormat รูปแบบ output (aspect ratio)
+type OutputFormat string
+
+const (
+	OutputFormat9x16 OutputFormat = "9:16"  // Reels/TikTok
+	OutputFormat1x1  OutputFormat = "1:1"   // Square
+	OutputFormat4x5  OutputFormat = "4:5"   // Instagram
+	OutputFormat16x9 OutputFormat = "16:9"  // YouTube
+)
+
+// VideoFit วิธีการ fit video ในกรอบ
+type VideoFit string
+
+const (
+	VideoFitFill    VideoFit = "fill"      // Crop ให้เต็มกรอบ
+	VideoFitFit     VideoFit = "fit"       // มี letterbox
+	VideoFitCrop1x1 VideoFit = "crop-1:1"  // Crop เป็น 1:1
+	VideoFitCrop4x3 VideoFit = "crop-4:3"  // Crop เป็น 4:3
+	VideoFitCrop4x5 VideoFit = "crop-4:5"  // Crop เป็น 4:5
+)
+
 // ReelLayer แต่ละ layer ใน reel composition
 type ReelLayer struct {
 	Type       ReelLayerType `json:"type"`                 // text, image, shape, background
@@ -84,6 +105,12 @@ type Reel struct {
 	// Video Segment
 	SegmentStart float64 `gorm:"default:0"`  // start time (seconds)
 	SegmentEnd   float64 `gorm:"default:60"` // end time (seconds)
+
+	// Display Options
+	OutputFormat OutputFormat `gorm:"size:10;default:'9:16'"` // output aspect ratio
+	VideoFit     VideoFit     `gorm:"size:20;default:'fill'"` // how video fits in frame
+	CropX        float64      `gorm:"default:50"`             // crop position X (0-100%)
+	CropY        float64      `gorm:"default:50"`             // crop position Y (0-100%)
 
 	// Template (optional)
 	TemplateID *uuid.UUID `gorm:"type:uuid"` // null = custom

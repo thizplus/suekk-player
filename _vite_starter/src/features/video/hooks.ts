@@ -19,10 +19,11 @@ export const videoKeys = {
 }
 
 // ดึงรายการวิดีโอ
-export function useVideos(params?: VideoFilterParams) {
+export function useVideos(params?: VideoFilterParams, options?: { enabled?: boolean }) {
   return useQuery({
     queryKey: videoKeys.list(params),
     queryFn: () => videoService.getList(params),
+    enabled: options?.enabled ?? true,
   })
 }
 

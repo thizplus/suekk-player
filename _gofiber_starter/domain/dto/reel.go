@@ -16,6 +16,10 @@ type CreateReelRequest struct {
 	Description  string              `json:"description" validate:"omitempty,max=1000"`
 	SegmentStart float64             `json:"segmentStart" validate:"min=0"`
 	SegmentEnd   float64             `json:"segmentEnd" validate:"required,gtfield=SegmentStart"`
+	OutputFormat string              `json:"outputFormat" validate:"omitempty,oneof=9:16 1:1 4:5 16:9"`
+	VideoFit     string              `json:"videoFit" validate:"omitempty,oneof=fill fit crop-1:1 crop-4:3 crop-4:5"`
+	CropX        float64             `json:"cropX" validate:"min=0,max=100"`
+	CropY        float64             `json:"cropY" validate:"min=0,max=100"`
 	TemplateID   *uuid.UUID          `json:"templateId" validate:"omitempty,uuid"`
 	Layers       []ReelLayerRequest  `json:"layers" validate:"dive"`
 }
@@ -26,6 +30,10 @@ type UpdateReelRequest struct {
 	Description  *string             `json:"description" validate:"omitempty,max=1000"`
 	SegmentStart *float64            `json:"segmentStart" validate:"omitempty,min=0"`
 	SegmentEnd   *float64            `json:"segmentEnd" validate:"omitempty"`
+	OutputFormat *string             `json:"outputFormat" validate:"omitempty,oneof=9:16 1:1 4:5 16:9"`
+	VideoFit     *string             `json:"videoFit" validate:"omitempty,oneof=fill fit crop-1:1 crop-4:3 crop-4:5"`
+	CropX        *float64            `json:"cropX" validate:"omitempty,min=0,max=100"`
+	CropY        *float64            `json:"cropY" validate:"omitempty,min=0,max=100"`
 	TemplateID   *uuid.UUID          `json:"templateId" validate:"omitempty,uuid"`
 	Layers       *[]ReelLayerRequest `json:"layers" validate:"omitempty,dive"`
 }
@@ -68,6 +76,10 @@ type ReelResponse struct {
 	SegmentStart float64             `json:"segmentStart"`
 	SegmentEnd   float64             `json:"segmentEnd"`
 	Duration     int                 `json:"duration"`
+	OutputFormat string              `json:"outputFormat"`
+	VideoFit     string              `json:"videoFit"`
+	CropX        float64             `json:"cropX"`
+	CropY        float64             `json:"cropY"`
 	Status       models.ReelStatus   `json:"status"`
 	OutputURL    string              `json:"outputUrl,omitempty"`
 	ThumbnailURL string              `json:"thumbnailUrl,omitempty"`
@@ -157,6 +169,10 @@ func ReelToResponse(reel *models.Reel) *ReelResponse {
 		SegmentStart: reel.SegmentStart,
 		SegmentEnd:   reel.SegmentEnd,
 		Duration:     reel.Duration,
+		OutputFormat: string(reel.OutputFormat),
+		VideoFit:     string(reel.VideoFit),
+		CropX:        reel.CropX,
+		CropY:        reel.CropY,
 		Status:       reel.Status,
 		OutputURL:    reel.OutputPath,
 		ThumbnailURL: reel.ThumbnailURL,

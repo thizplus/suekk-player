@@ -1,21 +1,39 @@
-import { useState, useRef, useEffect } from 'react'
-import { Search, X } from 'lucide-react'
+import { useState, useRef, useEffect, useMemo } from 'react'
+import { Search, X, Loader2 } from 'lucide-react'
 import { Label } from '@/components/ui/label'
 import { Button } from '@/components/ui/button'
 import { Slider } from '@/components/ui/slider'
+import { useVideos } from '@/features/video/hooks'
 import type { Video } from '@/features/video/types'
 import type { OutputFormat, VideoFit } from '../types'
 import { OUTPUT_FORMAT_OPTIONS, VIDEO_FIT_OPTIONS, formatTime } from './constants'
 
+// Custom hook สำหรับ debounce
+function useDebounce<T>(value: T, delay: number): T {
+  const [debouncedValue, setDebouncedValue] = useState<T>(value)
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedValue(value)
+    }, delay)
+
+    return () => {
+      clearTimeout(timer)
+    }
+  }, [value, delay])
+
+  return debouncedValue
+}
+
 interface ReelVideoSelectorProps {
-  videos: Video[]
   selectedVideoId: string
+  selectedVideo: Video | undefined
   outputFormat: OutputFormat
   videoFit: VideoFit
   cropX: number
   cropY: number
   isEditing: boolean
-  onVideoSelect: (videoId: string) => void
+  onVideoSelect: (videoId: string, video?: Video) => void
   onOutputFormatChange: (format: OutputFormat) => void
   onVideoFitChange: (fit: VideoFit) => void
   onCropXChange: (x: number) => void
@@ -23,8 +41,8 @@ interface ReelVideoSelectorProps {
 }
 
 export function ReelVideoSelector({
-  videos,
   selectedVideoId,
+  selectedVideo,
   outputFormat,
   videoFit,
   cropX,
@@ -44,18 +62,23 @@ export function ReelVideoSelector({
   const inputRef = useRef<HTMLInputElement>(null)
   const dropdownRef = useRef<HTMLDivElement>(null)
 
-  // Get selected video info
-  const selectedVideo = videos.find(v => v.id === selectedVideoId)
+  // Debounce search term (300ms)
+  const debouncedSearch = useDebounce(search, 300)
 
-  // Filter videos by search (title or code)
-  const filteredVideos = videos.filter(video => {
-    if (!search) return true
-    const searchLower = search.toLowerCase()
-    return (
-      video.title.toLowerCase().includes(searchLower) ||
-      video.code.toLowerCase().includes(searchLower)
-    )
-  })
+  // Fetch videos from API with search (only when dropdown is open)
+  const { data: videosData, isLoading: isSearching } = useVideos(
+    {
+      status: 'ready',
+      search: debouncedSearch || undefined,
+      limit: 20,
+    },
+    { enabled: isOpen }
+  )
+
+  // Get filtered videos
+  const filteredVideos = useMemo(() => {
+    return videosData?.data || []
+  }, [videosData?.data])
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -74,15 +97,15 @@ export function ReelVideoSelector({
   }, [])
 
   // Handle video selection
-  const handleSelect = (videoId: string) => {
-    onVideoSelect(videoId)
+  const handleSelect = (video: Video) => {
+    onVideoSelect(video.id, video)
     setSearch('')
     setIsOpen(false)
   }
 
   // Clear selection
   const handleClear = () => {
-    onVideoSelect('')
+    onVideoSelect('', undefined)
     setSearch('')
   }
 
@@ -126,15 +149,20 @@ export function ReelVideoSelector({
             ref={dropdownRef}
             className="absolute z-50 w-full mt-1 bg-popover border rounded-md shadow-lg max-h-60 overflow-auto"
           >
-            {filteredVideos.length === 0 ? (
+            {isSearching ? (
+              <div className="p-3 flex items-center justify-center text-muted-foreground">
+                <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                <span className="text-sm">กำลังค้นหา...</span>
+              </div>
+            ) : filteredVideos.length === 0 ? (
               <div className="p-3 text-sm text-muted-foreground text-center">
-                ไม่พบวิดีโอ
+                {debouncedSearch ? 'ไม่พบวิดีโอ' : 'พิมพ์เพื่อค้นหาวิดีโอ'}
               </div>
             ) : (
               filteredVideos.map((video) => (
                 <button
                   key={video.id}
-                  onClick={() => handleSelect(video.id)}
+                  onClick={() => handleSelect(video)}
                   className={`w-full px-3 py-2 text-left hover:bg-muted transition-colors flex items-center justify-between ${
                     video.id === selectedVideoId ? 'bg-muted' : ''
                   }`}

@@ -19,7 +19,7 @@ export const VIDEO_FIT_OPTIONS: VideoFitOption[] = [
 export const MAX_REEL_DURATION = 600
 
 // Quick duration presets (seconds)
-export const QUICK_DURATIONS = [15, 30, 60, 90]
+export const QUICK_DURATIONS = [15, 30, 45, 60, 90]
 
 // Helper functions
 export const getAspectClass = (format: OutputFormat): string => {

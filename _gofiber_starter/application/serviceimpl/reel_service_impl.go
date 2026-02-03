@@ -76,7 +76,24 @@ func (s *ReelServiceImpl) Create(ctx context.Context, userID uuid.UUID, req *dto
 		layers = template.DefaultLayers
 	}
 
-	// 6. สร้าง reel record
+	// 6. สร้าง reel record with display options
+	outputFormat := models.OutputFormat9x16 // default
+	if req.OutputFormat != "" {
+		outputFormat = models.OutputFormat(req.OutputFormat)
+	}
+	videoFit := models.VideoFitFill // default
+	if req.VideoFit != "" {
+		videoFit = models.VideoFit(req.VideoFit)
+	}
+	cropX := 50.0 // default center
+	if req.CropX > 0 {
+		cropX = req.CropX
+	}
+	cropY := 50.0 // default center
+	if req.CropY > 0 {
+		cropY = req.CropY
+	}
+
 	reel := &models.Reel{
 		UserID:       userID,
 		VideoID:      req.VideoID,
@@ -84,6 +101,10 @@ func (s *ReelServiceImpl) Create(ctx context.Context, userID uuid.UUID, req *dto
 		Description:  req.Description,
 		SegmentStart: req.SegmentStart,
 		SegmentEnd:   req.SegmentEnd,
+		OutputFormat: outputFormat,
+		VideoFit:     videoFit,
+		CropX:        cropX,
+		CropY:        cropY,
 		TemplateID:   req.TemplateID,
 		Layers:       layers,
 		Status:       models.ReelStatusDraft,
@@ -166,6 +187,18 @@ func (s *ReelServiceImpl) Update(ctx context.Context, id, userID uuid.UUID, req 
 			return nil, fmt.Errorf("segment end (%v) exceeds video duration (%v)", *req.SegmentEnd, reel.Video.Duration)
 		}
 		reel.SegmentEnd = *req.SegmentEnd
+	}
+	if req.OutputFormat != nil {
+		reel.OutputFormat = models.OutputFormat(*req.OutputFormat)
+	}
+	if req.VideoFit != nil {
+		reel.VideoFit = models.VideoFit(*req.VideoFit)
+	}
+	if req.CropX != nil {
+		reel.CropX = *req.CropX
+	}
+	if req.CropY != nil {
+		reel.CropY = *req.CropY
 	}
 	if req.TemplateID != nil {
 		reel.TemplateID = req.TemplateID
@@ -313,6 +346,10 @@ func (s *ReelServiceImpl) Export(ctx context.Context, id, userID uuid.UUID) erro
 			HLSPath:      reel.Video.HLSPath,
 			SegmentStart: reel.SegmentStart,
 			SegmentEnd:   reel.SegmentEnd,
+			OutputFormat: string(reel.OutputFormat),
+			VideoFit:     string(reel.VideoFit),
+			CropX:        reel.CropX,
+			CropY:        reel.CropY,
 			Layers:       convertLayersToJobFormat(reel.Layers),
 			OutputPath:   fmt.Sprintf("reels/%s/%s.mp4", reel.Video.Code, reel.ID.String()),
 		}

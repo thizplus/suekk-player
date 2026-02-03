@@ -29,6 +29,10 @@ func (p *NATSReelPublisher) PublishReelExportJob(ctx context.Context, job *servi
 		HLSPath:      job.HLSPath,
 		SegmentStart: job.SegmentStart,
 		SegmentEnd:   job.SegmentEnd,
+		OutputFormat: job.OutputFormat,
+		VideoFit:     job.VideoFit,
+		CropX:        job.CropX,
+		CropY:        job.CropY,
 		Layers:       convertLayersToNATSFormat(job.Layers),
 		OutputPath:   job.OutputPath,
 	}

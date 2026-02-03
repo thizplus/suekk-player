@@ -22,6 +22,8 @@ interface ReelPreviewCanvasProps {
   showDescription: boolean
   showGradient: boolean
   titlePosition: TitlePosition
+  titleFontSize: number
+  descriptionFontSize: number
   // Seek control from parent (time + id to allow repeated seeks to same time)
   seekToTime?: number
   seekRequestId?: number
@@ -47,6 +49,8 @@ export function ReelPreviewCanvas({
   showDescription,
   showGradient,
   titlePosition,
+  titleFontSize,
+  descriptionFontSize,
   seekToTime,
   seekRequestId,
   onTimeUpdate,
@@ -296,7 +300,7 @@ export function ReelPreviewCanvas({
                 className="absolute left-0 right-0 text-center pointer-events-none px-4"
                 style={{ top: getTitleY(), transform: 'translateY(-50%)' }}
               >
-                <span className="text-white font-bold drop-shadow-lg" style={{ fontSize: '14px' }}>
+                <span className="text-white font-bold drop-shadow-lg" style={{ fontSize: `${titleFontSize * 0.5}px` }}>
                   {title}
                 </span>
               </div>
@@ -311,7 +315,13 @@ export function ReelPreviewCanvas({
                   transform: 'translateY(-50%)'
                 }}
               >
-                <span className="text-white/90 drop-shadow-lg" style={{ fontSize: '10px' }}>
+                <span
+                  className="text-white/90 drop-shadow-lg"
+                  style={{
+                    fontSize: `${descriptionFontSize * 0.6}px`,
+                    whiteSpace: 'pre-line'
+                  }}
+                >
                   {description}
                 </span>
               </div>
@@ -321,7 +331,7 @@ export function ReelPreviewCanvas({
             {selectedVideo && (
               <div className="absolute bottom-2 left-2 right-2">
                 <div className="bg-black/60 rounded px-2 py-1 text-sm text-white text-center">
-                  {formatTime(currentTime)} / {formatTime(segmentEnd - segmentStart)}
+                  {formatTime(currentTime)} ({formatTime(segmentStart)} - {formatTime(segmentEnd)})
                 </div>
               </div>
             )}
