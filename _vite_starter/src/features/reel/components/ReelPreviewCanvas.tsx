@@ -26,44 +26,56 @@ interface ReelPreviewCanvasProps {
   onSegmentEndChange: (time: number) => void
 }
 
-// Style-specific layout configurations
+// Style-specific layout configurations matching FFmpeg output exactly
+// Output: 1080x1920, Preview: 320px wide (scale factor ~0.296)
+// Title: 120px → ~35px, Lines: 70px → ~21px
 const STYLE_LAYOUTS: Record<ReelStyle, {
   videoStyle: React.CSSProperties
   containerClass: string
-  titleY: string
+  titleY: string      // FFmpeg y position as percentage
   line1Y: string
   line2Y: string
-  logoPos: { top?: string; left: string }
+  logoPos: { top: string; left: string }
+  gradientStart: string  // Where gradient begins (percentage from top)
   hasGradient: boolean
   hasTextShadow: boolean
 }> = {
+  // Letterbox: 16:9 video (1080x608) centered in 1080x1920
+  // Video spans 34.2% - 65.8% vertically
   letterbox: {
     videoStyle: { width: '100%', height: 'auto', objectFit: 'contain' },
     containerClass: 'items-center justify-center',
-    titleY: '20%',  // In top black bar
-    line1Y: '71%',  // In bottom black bar
-    line2Y: '76%',
-    logoPos: { top: '35%', left: '5%' }, // Inside video frame
+    titleY: '19.8%',   // FFmpeg y=380 → 380/1920
+    line1Y: '71.4%',   // FFmpeg y=h-550 → 1370/1920
+    line2Y: '76%',     // FFmpeg y=h-460 → 1460/1920
+    logoPos: { top: '35.2%', left: '1.85%' }, // FFmpeg x=20, y=676
+    gradientStart: '100%',
     hasGradient: false,
     hasTextShadow: false,
   },
+  // Square: 1:1 video (1080x1080) centered in 1080x1920
+  // Video spans 21.9% - 78.1% vertically
   square: {
-    videoStyle: { width: '100%', height: '56.25%', objectFit: 'cover' }, // 1:1 in center
+    videoStyle: { width: '100%', height: '56.25%', objectFit: 'cover' },
     containerClass: 'items-center justify-center',
-    titleY: '10%',  // In top black bar
-    line1Y: '80%',  // In bottom black bar
-    line2Y: '85%',
-    logoPos: { top: '23%', left: '5%' }, // Inside video frame
+    titleY: '10.4%',   // FFmpeg y=200 → 200/1920
+    line1Y: '80.2%',   // FFmpeg y=h-380 → 1540/1920
+    line2Y: '84.9%',   // FFmpeg y=h-290 → 1630/1920
+    logoPos: { top: '22.9%', left: '1.85%' }, // FFmpeg x=20, y=440
+    gradientStart: '100%',
     hasGradient: false,
     hasTextShadow: false,
   },
+  // Fullcover: Video fills entire 1080x1920 frame
+  // Gradient PNG overlay at y=1320 (bottom 600px = 31.25%)
   fullcover: {
     videoStyle: { width: '100%', height: '100%', objectFit: 'cover' },
     containerClass: 'items-center justify-center',
-    titleY: '82%',  // Over gradient
-    line1Y: '88%',
-    line2Y: '93%',
-    logoPos: { top: '2%', left: '2%' }, // Top left
+    titleY: '81.8%',   // FFmpeg y=h-350 → 1570/1920
+    line1Y: '88.5%',   // FFmpeg y=h-220 → 1700/1920
+    line2Y: '93.2%',   // FFmpeg y=h-130 → 1790/1920
+    logoPos: { top: '1%', left: '1.85%' }, // FFmpeg x=20, y=20
+    gradientStart: '68.75%', // FFmpeg y=1320 → 1320/1920
     hasGradient: true,
     hasTextShadow: true,
   },
@@ -210,8 +222,9 @@ export function ReelPreviewCanvas({
     onTimeUpdate(time)
   }, [isVideoReady, onTimeUpdate])
 
+  // FFmpeg: shadowcolor=black@0.5:shadowx=2:shadowy=2
   const textShadowStyle = layout.hasTextShadow
-    ? { textShadow: '2px 2px 4px rgba(0,0,0,0.5)' }
+    ? { textShadow: '2px 2px 4px rgba(0,0,0,0.7)' }
     : {}
 
   return (
@@ -272,12 +285,13 @@ export function ReelPreviewCanvas({
           </div>
         )}
 
-        {/* Gradient Overlay (for fullcover style) */}
+        {/* Gradient Overlay (for fullcover style) - matches FFmpeg gradient at y=1320 */}
         {layout.hasGradient && (
           <div
-            className="absolute inset-0 pointer-events-none"
+            className="absolute left-0 right-0 bottom-0 pointer-events-none"
             style={{
-              background: 'linear-gradient(to top, rgba(0,0,0,0.8) 0%, rgba(0,0,0,0.4) 30%, transparent 60%)',
+              top: layout.gradientStart,
+              background: 'linear-gradient(to top, rgba(0,0,0,0.85) 0%, rgba(0,0,0,0.6) 40%, rgba(0,0,0,0.3) 70%, transparent 100%)',
             }}
           />
         )}
@@ -294,60 +308,69 @@ export function ReelPreviewCanvas({
           </div>
         )}
 
-        {/* Title Preview */}
+        {/* Title Preview - FFmpeg: fontsize=120 → preview ~35px (320/1080 scale) */}
         {title && (
           <div
-            className="absolute left-0 right-0 text-center pointer-events-none px-4"
+            className="absolute left-0 right-0 text-center pointer-events-none px-2"
             style={{ top: layout.titleY, ...textShadowStyle }}
           >
-            <span className="text-white font-bold drop-shadow-lg text-lg">
+            <span
+              className="text-white font-bold"
+              style={{ fontSize: '35px', lineHeight: 1.1 }}
+            >
               {title}
             </span>
           </div>
         )}
 
-        {/* Line1 Preview */}
+        {/* Line1 Preview - FFmpeg: fontsize=70 → preview ~21px */}
         {line1 && (
           <div
-            className="absolute left-0 right-0 text-center pointer-events-none px-4"
+            className="absolute left-0 right-0 text-center pointer-events-none px-2"
             style={{ top: layout.line1Y, ...textShadowStyle }}
           >
-            <span className="text-white/90 drop-shadow-lg text-sm">
+            <span
+              className="text-white"
+              style={{ fontSize: '21px', lineHeight: 1.2 }}
+            >
               {line1}
             </span>
           </div>
         )}
 
-        {/* Line2 Preview */}
+        {/* Line2 Preview - FFmpeg: fontsize=70 → preview ~21px */}
         {line2 && (
           <div
-            className="absolute left-0 right-0 text-center pointer-events-none px-4"
+            className="absolute left-0 right-0 text-center pointer-events-none px-2"
             style={{ top: layout.line2Y, ...textShadowStyle }}
           >
-            <span className="text-white/90 drop-shadow-lg text-sm">
+            <span
+              className="text-white"
+              style={{ fontSize: '21px', lineHeight: 1.2 }}
+            >
               {line2}
             </span>
           </div>
         )}
 
-        {/* Current Time Indicator */}
-        {selectedVideo && (
-          <div className="absolute bottom-2 left-2 right-2">
-            <div className="bg-black/60 rounded px-2 py-1 text-xs text-white text-center">
-              {formatTime(currentTime)} ({formatTime(segmentStart)} - {formatTime(segmentEnd)})
-            </div>
-          </div>
-        )}
       </div>
 
-      {/* Playback Controls */}
+      {/* Controls below preview */}
       {selectedVideo && streamAccess?.token && (
-        <div className="space-y-2">
-          <div className="flex items-center justify-center gap-2">
+        <div className="space-y-3">
+          {/* Time indicator */}
+          <div className="text-center text-sm font-mono text-muted-foreground">
+            <span className="text-foreground font-semibold">{formatTime(currentTime)}</span>
+            <span className="mx-2">|</span>
+            <span>{formatTime(segmentStart)} - {formatTime(segmentEnd)}</span>
+          </div>
+
+          {/* Playback controls */}
+          <div className="flex items-center justify-center gap-1">
             <Button
               variant="outline"
               size="icon"
-              className="h-8 w-8"
+              className="h-9 w-9"
               onClick={() => seekTo(segmentStart)}
               disabled={!isVideoReady}
               title="ไปจุดเริ่มต้น"
@@ -357,7 +380,7 @@ export function ReelPreviewCanvas({
             <Button
               variant="outline"
               size="icon"
-              className="h-8 w-8"
+              className="h-9 w-9"
               onClick={togglePlayback}
               disabled={!isVideoReady}
             >
@@ -366,19 +389,18 @@ export function ReelPreviewCanvas({
             <Button
               variant="outline"
               size="icon"
-              className="h-8 w-8"
+              className="h-9 w-9"
               onClick={() => seekTo(Math.max(0, segmentEnd - 1))}
               disabled={!isVideoReady}
               title="ไปจุดสิ้นสุด"
             >
               <SkipForward className="h-4 w-4" />
             </Button>
-          </div>
-
-          <div className="flex items-center justify-center gap-2">
+            <div className="w-px h-6 bg-border mx-1" />
             <Button
               variant="secondary"
               size="sm"
+              className="h-9 px-3"
               onClick={() => {
                 onSegmentStartChange(currentTime)
                 if (currentTime >= segmentEnd) {
@@ -387,12 +409,13 @@ export function ReelPreviewCanvas({
               }}
               disabled={!isVideoReady}
             >
-              <Flag className="h-3 w-3 mr-1" />
-              จุดเริ่ม
+              <Flag className="h-3.5 w-3.5 mr-1.5" />
+              เริ่ม
             </Button>
             <Button
               variant="secondary"
               size="sm"
+              className="h-9 px-3"
               onClick={() => {
                 if (currentTime > segmentStart) {
                   onSegmentEndChange(currentTime)
@@ -400,8 +423,8 @@ export function ReelPreviewCanvas({
               }}
               disabled={!isVideoReady || currentTime <= segmentStart}
             >
-              <Scissors className="h-3 w-3 mr-1" />
-              จุดจบ
+              <Scissors className="h-3.5 w-3.5 mr-1.5" />
+              จบ
             </Button>
           </div>
         </div>
