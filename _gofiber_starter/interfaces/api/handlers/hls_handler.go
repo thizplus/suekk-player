@@ -355,6 +355,96 @@ func (h *HLSHandler) ServeSubtitle(c *fiber.Ctx) error {
 	return nil
 }
 
+// ServeReel serves reel output files from storage (IDrive/S3)
+// Route: /stream/reels/:code/*filepath
+func (h *HLSHandler) ServeReel(c *fiber.Ctx) error {
+	ctx := c.UserContext()
+	code := c.Params("code")
+	filePath := c.Params("*")
+
+	if code == "" || filePath == "" {
+		return c.Status(fiber.StatusBadRequest).SendString("Invalid path")
+	}
+
+	// Validate X-Stream-Token header
+	tokenString := c.Get("X-Stream-Token")
+	if tokenString == "" {
+		// Fallback to query param for compatibility
+		tokenString = c.Query("token")
+	}
+
+	if tokenString == "" {
+		logger.WarnContext(ctx, "Missing reel token", "code", code, "path", filePath)
+		return c.Status(fiber.StatusUnauthorized).SendString("Unauthorized")
+	}
+
+	// Parse and validate JWT
+	claims := &HLSAccessClaims{}
+	token, err := jwt.ParseWithClaims(tokenString, claims, func(token *jwt.Token) (interface{}, error) {
+		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
+		}
+		return []byte(h.jwtSecret), nil
+	})
+
+	if err != nil || !token.Valid {
+		logger.WarnContext(ctx, "Invalid reel token", "code", code, "error", err)
+		return c.Status(fiber.StatusUnauthorized).SendString("Invalid token")
+	}
+
+	// Verify video code matches token
+	if claims.VideoCode != code {
+		logger.WarnContext(ctx, "Token video code mismatch", "token_code", claims.VideoCode, "request_code", code)
+		return c.Status(fiber.StatusForbidden).SendString("Forbidden")
+	}
+
+	// Construct storage path: reels/{code}/{filepath}
+	storagePath := fmt.Sprintf("reels/%s/%s", code, filePath)
+
+	// Set content type based on file extension
+	ext := strings.ToLower(filepath.Ext(filePath))
+	contentType := "application/octet-stream"
+	switch ext {
+	case ".mp4":
+		contentType = "video/mp4"
+	case ".jpg", ".jpeg":
+		contentType = "image/jpeg"
+	case ".png":
+		contentType = "image/png"
+	case ".webp":
+		contentType = "image/webp"
+	}
+
+	// Set headers
+	c.Set("Content-Type", contentType)
+	c.Set("Cache-Control", "public, max-age=86400") // Cache 1 day
+	c.Set("Accept-Ranges", "bytes")
+
+	// Check for Range header (for video seeking)
+	rangeHeader := c.Get("Range")
+	if ext == ".mp4" && rangeHeader != "" {
+		return h.serveRangeRequest(c, storagePath, rangeHeader)
+	}
+
+	// Get file from storage
+	reader, _, err := h.storage.GetFileContent(storagePath)
+	if err != nil {
+		logger.WarnContext(ctx, "Reel file not found", "path", storagePath, "error", err)
+		return c.Status(fiber.StatusNotFound).SendString("File not found")
+	}
+	defer reader.Close()
+
+	// Stream the file
+	_, err = io.Copy(c.Response().BodyWriter(), reader)
+	if err != nil {
+		logger.ErrorContext(ctx, "Failed to stream reel file", "path", storagePath, "error", err)
+		return c.Status(fiber.StatusInternalServerError).SendString("Stream error")
+	}
+
+	logger.InfoContext(ctx, "Reel served", "code", code, "path", filePath)
+	return nil
+}
+
 // serveRangeRequest handles HTTP Range requests for byte-range HLS
 func (h *HLSHandler) serveRangeRequest(c *fiber.Ctx, storagePath, rangeHeader string) error {
 	ctx := c.UserContext()

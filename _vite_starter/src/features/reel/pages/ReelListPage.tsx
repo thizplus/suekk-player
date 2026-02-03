@@ -6,10 +6,10 @@ import {
   MoreVertical,
   Loader2,
   Film,
-  Clock,
   Download,
   Eye,
   Pencil,
+  ExternalLink,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -39,12 +39,18 @@ import {
   PaginationPrevious,
 } from '@/components/ui/pagination'
 import {
-  Card,
-  CardContent,
-} from '@/components/ui/card'
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table'
+import { Card } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useReels, useDeleteReel, useExportReel } from '../hooks'
 import type { Reel, ReelFilterParams, ReelStatus } from '../types'
+import { downloadReel, openReel } from '../utils/reelDownload'
 import { toast } from 'sonner'
 
 // Status styles
@@ -62,6 +68,13 @@ const REEL_STATUS_STYLES: Record<ReelStatus, string> = {
   failed: 'status-danger',
 }
 
+// Style labels
+const REEL_STYLE_LABELS: Record<string, string> = {
+  letterbox: 'Letterbox',
+  square: 'Square',
+  fullcover: 'Full Cover',
+}
+
 interface DeleteTarget {
   id: string
   title: string
@@ -71,7 +84,7 @@ export function ReelListPage() {
   const navigate = useNavigate()
   const [filters, setFilters] = useState<ReelFilterParams>({
     page: 1,
-    limit: 12,
+    limit: 20,
     sortBy: 'created_at',
     sortOrder: 'desc',
   })
@@ -126,6 +139,17 @@ export function ReelListPage() {
     return `${mb.toFixed(1)} MB`
   }
 
+  const formatDate = (dateString?: string) => {
+    if (!dateString) return '-'
+    return new Date(dateString).toLocaleDateString('th-TH', {
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    })
+  }
+
   if (error) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -152,17 +176,34 @@ export function ReelListPage() {
 
       {/* Content */}
       {isLoading ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-          {Array.from({ length: 8 }).map((_, i) => (
-            <Card key={i}>
-              <Skeleton className="aspect-[9/16] w-full" />
-              <CardContent className="p-4 space-y-2">
-                <Skeleton className="h-4 w-3/4" />
-                <Skeleton className="h-3 w-1/2" />
-              </CardContent>
-            </Card>
-          ))}
-        </div>
+        <Card>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>วิดีโอ</TableHead>
+                <TableHead>รูปแบบ</TableHead>
+                <TableHead>ช่วงเวลา</TableHead>
+                <TableHead>สถานะ</TableHead>
+                <TableHead>ขนาดไฟล์</TableHead>
+                <TableHead>สร้างเมื่อ</TableHead>
+                <TableHead className="w-[100px]"></TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {Array.from({ length: 5 }).map((_, i) => (
+                <TableRow key={i}>
+                  <TableCell><Skeleton className="h-4 w-48" /></TableCell>
+                  <TableCell><Skeleton className="h-4 w-20" /></TableCell>
+                  <TableCell><Skeleton className="h-4 w-24" /></TableCell>
+                  <TableCell><Skeleton className="h-5 w-16" /></TableCell>
+                  <TableCell><Skeleton className="h-4 w-16" /></TableCell>
+                  <TableCell><Skeleton className="h-4 w-32" /></TableCell>
+                  <TableCell><Skeleton className="h-8 w-8" /></TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </Card>
       ) : reels.length === 0 ? (
         <Card className="p-12">
           <div className="flex flex-col items-center justify-center text-center space-y-4">
@@ -181,155 +222,170 @@ export function ReelListPage() {
         </Card>
       ) : (
         <>
-          {/* Reel Grid */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-            {reels.map((reel) => (
-              <Card
-                key={reel.id}
-                className="group overflow-hidden hover:ring-2 hover:ring-primary/20 transition-all cursor-pointer"
-                onClick={() => navigate(`/reels/${reel.id}/edit`)}
-              >
-                {/* Thumbnail */}
-                <div className="relative aspect-[9/16] bg-muted">
-                  {reel.thumbnailUrl ? (
-                    <img
-                      src={reel.thumbnailUrl}
-                      alt={reel.title}
-                      className="w-full h-full object-cover"
-                    />
-                  ) : reel.video?.thumbnailUrl ? (
-                    <img
-                      src={reel.video.thumbnailUrl}
-                      alt={reel.title}
-                      className="w-full h-full object-cover opacity-50"
-                    />
-                  ) : (
-                    <div className="w-full h-full flex items-center justify-center">
-                      <Film className="h-12 w-12 text-muted-foreground/30" />
-                    </div>
-                  )}
+          {/* Reel Table */}
+          <Card>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>วิดีโอ</TableHead>
+                  <TableHead>รูปแบบ</TableHead>
+                  <TableHead>ช่วงเวลา</TableHead>
+                  <TableHead>สถานะ</TableHead>
+                  <TableHead>ขนาดไฟล์</TableHead>
+                  <TableHead>สร้างเมื่อ</TableHead>
+                  <TableHead className="w-[100px]"></TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {reels.map((reel) => (
+                  <TableRow
+                    key={reel.id}
+                    className="cursor-pointer hover:bg-muted/50"
+                    onClick={() => navigate(`/reels/${reel.id}/edit`)}
+                  >
+                    {/* Video Info */}
+                    <TableCell>
+                      <div className="flex items-center gap-3">
+                        <div className="w-12 h-12 rounded bg-muted flex items-center justify-center shrink-0 overflow-hidden">
+                          {reel.thumbnailUrl ? (
+                            <img
+                              src={reel.thumbnailUrl}
+                              alt=""
+                              className="w-full h-full object-cover"
+                            />
+                          ) : reel.video?.thumbnailUrl ? (
+                            <img
+                              src={reel.video.thumbnailUrl}
+                              alt=""
+                              className="w-full h-full object-cover opacity-60"
+                            />
+                          ) : (
+                            <Film className="h-5 w-5 text-muted-foreground/50" />
+                          )}
+                        </div>
+                        <div className="min-w-0">
+                          <p className="font-medium truncate max-w-[200px]">
+                            {reel.title || 'Untitled'}
+                          </p>
+                          <p className="text-xs text-muted-foreground truncate max-w-[200px]">
+                            {reel.video?.title || reel.video?.code}
+                          </p>
+                        </div>
+                      </div>
+                    </TableCell>
 
-                  {/* Status Badge */}
-                  <div className="absolute top-2 left-2">
-                    <Badge className={REEL_STATUS_STYLES[reel.status]}>
-                      {REEL_STATUS_LABELS[reel.status]}
-                    </Badge>
-                  </div>
+                    {/* Style */}
+                    <TableCell>
+                      <span className="text-sm">
+                        {REEL_STYLE_LABELS[reel.style || ''] || '-'}
+                      </span>
+                    </TableCell>
 
-                  {/* Duration */}
-                  <div className="absolute bottom-2 right-2 bg-black/70 text-white text-xs px-2 py-1 rounded">
-                    <Clock className="h-3 w-3 inline mr-1" />
-                    {formatDuration(reel.segmentEnd - reel.segmentStart)}
-                  </div>
+                    {/* Duration */}
+                    <TableCell>
+                      <span className="text-sm font-mono">
+                        {formatDuration(reel.segmentEnd - reel.segmentStart)}
+                      </span>
+                    </TableCell>
 
-                  {/* Hover Overlay */}
-                  <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
-                    <Button
-                      size="sm"
-                      variant="secondary"
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        navigate(`/reels/${reel.id}/edit`)
-                      }}
-                    >
-                      <Pencil className="h-4 w-4" />
-                    </Button>
-                    {reel.status === 'ready' && reel.outputUrl && (
-                      <Button
-                        size="sm"
-                        variant="secondary"
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          window.open(reel.outputUrl, '_blank')
-                        }}
-                      >
-                        <Download className="h-4 w-4" />
-                      </Button>
-                    )}
-                  </div>
-                </div>
+                    {/* Status */}
+                    <TableCell>
+                      <Badge className={REEL_STATUS_STYLES[reel.status]}>
+                        {REEL_STATUS_LABELS[reel.status]}
+                      </Badge>
+                    </TableCell>
 
-                {/* Info */}
-                <CardContent className="p-3">
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="min-w-0 flex-1">
-                      <h3 className="font-medium truncate">
-                        {reel.title || reel.video?.code || 'Untitled'}
-                      </h3>
-                      <p className="text-xs text-muted-foreground truncate">
-                        {reel.video?.title}
-                      </p>
-                      {reel.status === 'ready' && reel.fileSize && (
-                        <p className="text-xs text-muted-foreground mt-1">
-                          {formatFileSize(reel.fileSize)}
-                        </p>
-                      )}
-                    </div>
+                    {/* File Size */}
+                    <TableCell>
+                      <span className="text-sm text-muted-foreground">
+                        {formatFileSize(reel.fileSize)}
+                      </span>
+                    </TableCell>
+
+                    {/* Created At */}
+                    <TableCell>
+                      <span className="text-sm text-muted-foreground">
+                        {formatDate(reel.createdAt)}
+                      </span>
+                    </TableCell>
 
                     {/* Actions */}
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
-                        <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0">
-                          <MoreVertical className="h-4 w-4" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            navigate(`/reels/${reel.id}/edit`)
-                          }}
-                        >
-                          <Pencil className="h-4 w-4 mr-2" />
-                          แก้ไข
-                        </DropdownMenuItem>
-
-                        {reel.status === 'draft' && (
+                    <TableCell>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
+                          <Button variant="ghost" size="icon" className="h-8 w-8">
+                            <MoreVertical className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
                           <DropdownMenuItem
                             onClick={(e) => {
                               e.stopPropagation()
-                              handleExport(reel)
+                              navigate(`/reels/${reel.id}/edit`)
                             }}
                           >
-                            <Download className="h-4 w-4 mr-2" />
-                            Export
+                            <Pencil className="h-4 w-4 mr-2" />
+                            แก้ไข
                           </DropdownMenuItem>
-                        )}
 
-                        {reel.status === 'ready' && reel.outputUrl && (
+                          {(reel.status === 'draft' || reel.status === 'ready' || reel.status === 'failed') && (
+                            <DropdownMenuItem
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                handleExport(reel)
+                              }}
+                            >
+                              <Download className="h-4 w-4 mr-2" />
+                              {reel.status === 'ready' ? 'Re-Export' : 'Export'}
+                            </DropdownMenuItem>
+                          )}
+
+                          {reel.status === 'ready' && reel.video?.code && (
+                            <>
+                              <DropdownMenuItem
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  openReel(reel.video!.code, reel.id)
+                                }}
+                              >
+                                <Eye className="h-4 w-4 mr-2" />
+                                ดูผลลัพธ์
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  downloadReel(reel.video!.code, reel.id, reel.title)
+                                }}
+                              >
+                                <ExternalLink className="h-4 w-4 mr-2" />
+                                ดาวน์โหลด
+                              </DropdownMenuItem>
+                            </>
+                          )}
+
+                          <DropdownMenuSeparator />
+
                           <DropdownMenuItem
+                            className="text-destructive"
                             onClick={(e) => {
                               e.stopPropagation()
-                              window.open(reel.outputUrl, '_blank')
+                              setDeleteTarget({
+                                id: reel.id,
+                                title: reel.title || reel.video?.code || 'Untitled',
+                              })
                             }}
                           >
-                            <Eye className="h-4 w-4 mr-2" />
-                            ดูผลลัพธ์
+                            <Trash2 className="h-4 w-4 mr-2" />
+                            ลบ
                           </DropdownMenuItem>
-                        )}
-
-                        <DropdownMenuSeparator />
-
-                        <DropdownMenuItem
-                          className="text-destructive"
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            setDeleteTarget({
-                              id: reel.id,
-                              title: reel.title || reel.video?.code || 'Untitled',
-                            })
-                          }}
-                        >
-                          <Trash2 className="h-4 w-4 mr-2" />
-                          ลบ
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </Card>
 
           {/* Pagination */}
           {totalPages > 1 && (
