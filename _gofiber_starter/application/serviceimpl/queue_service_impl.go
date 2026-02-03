@@ -26,6 +26,7 @@ type SubtitleStreamPurger interface {
 type QueueServiceImpl struct {
 	videoRepo            repositories.VideoRepository
 	subtitleRepo         repositories.SubtitleRepository
+	reelRepo             repositories.ReelRepository
 	transcodingService   services.TranscodingService
 	subtitleService      services.SubtitleService
 	warmCachePublisher   WarmCachePublisher
@@ -35,6 +36,7 @@ type QueueServiceImpl struct {
 func NewQueueService(
 	videoRepo repositories.VideoRepository,
 	subtitleRepo repositories.SubtitleRepository,
+	reelRepo repositories.ReelRepository,
 	transcodingService services.TranscodingService,
 	subtitleService services.SubtitleService,
 	warmCachePublisher WarmCachePublisher,
@@ -43,6 +45,7 @@ func NewQueueService(
 	return &QueueServiceImpl{
 		videoRepo:            videoRepo,
 		subtitleRepo:         subtitleRepo,
+		reelRepo:             reelRepo,
 		transcodingService:   transcodingService,
 		subtitleService:      subtitleService,
 		warmCachePublisher:   warmCachePublisher,
@@ -70,6 +73,9 @@ func (s *QueueServiceImpl) GetQueueStats(ctx context.Context) (*dto.QueueStatsRe
 	// Warm cache stats
 	notCached, warming, cached, warmFailed := s.countCacheStats(ctx)
 
+	// Reel stats
+	reelDraft, reelExporting, reelReady, reelFailed := s.countReelStats(ctx)
+
 	return &dto.QueueStatsResponse{
 		Transcode: dto.TranscodeStats{
 			Pending:    pending,
@@ -88,6 +94,12 @@ func (s *QueueServiceImpl) GetQueueStats(ctx context.Context) (*dto.QueueStatsRe
 			Warming:   warming,
 			Cached:    cached,
 			Failed:    warmFailed,
+		},
+		Reel: dto.ReelStats{
+			Draft:     reelDraft,
+			Exporting: reelExporting,
+			Ready:     reelReady,
+			Failed:    reelFailed,
 		},
 	}, nil
 }
@@ -131,6 +143,27 @@ func (s *QueueServiceImpl) countCacheStats(ctx context.Context) (notCached, warm
 			notCached++
 		}
 	}
+	return
+}
+
+func (s *QueueServiceImpl) countReelStats(ctx context.Context) (draft, exporting, ready, failed int64) {
+	if s.reelRepo == nil {
+		return 0, 0, 0, 0
+	}
+
+	// Count by each status
+	draftReels, _ := s.reelRepo.GetByStatus(ctx, models.ReelStatusDraft, 0, 10000)
+	draft = int64(len(draftReels))
+
+	exportingReels, _ := s.reelRepo.GetByStatus(ctx, models.ReelStatusExporting, 0, 10000)
+	exporting = int64(len(exportingReels))
+
+	readyReels, _ := s.reelRepo.GetByStatus(ctx, models.ReelStatusReady, 0, 10000)
+	ready = int64(len(readyReels))
+
+	failedReels, _ := s.reelRepo.GetByStatus(ctx, models.ReelStatusFailed, 0, 10000)
+	failed = int64(len(failedReels))
+
 	return
 }
 

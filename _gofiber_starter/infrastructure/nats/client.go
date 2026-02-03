@@ -16,6 +16,7 @@ type Client struct {
 	js             jetstream.JetStream
 	stream         jetstream.Stream  // Transcode jobs stream
 	subtitleStream jetstream.Stream  // Subtitle jobs stream
+	reelStream     jetstream.Stream  // Reel export jobs stream
 
 	// KV Buckets
 	workerKV jetstream.KeyValue // Worker status (from heartbeat)
@@ -114,6 +115,24 @@ func (c *Client) setupStream(ctx context.Context) error {
 	}
 	c.subtitleStream = subtitleStream
 	logger.Info("JetStream stream ready", "name", SubtitleStreamName)
+
+	// Reel export jobs stream
+	reelCfg := jetstream.StreamConfig{
+		Name:        ReelStreamName,
+		Subjects:    []string{SubjectReelExport},
+		Storage:     jetstream.FileStorage,
+		Retention:   jetstream.WorkQueuePolicy,
+		MaxAge:      24 * time.Hour,
+		Replicas:    1,
+		Description: "Reel export job queue (MP4 for social media)",
+	}
+
+	reelStream, err := c.js.CreateOrUpdateStream(ctx, reelCfg)
+	if err != nil {
+		return fmt.Errorf("failed to create/update reel stream: %w", err)
+	}
+	c.reelStream = reelStream
+	logger.Info("JetStream stream ready", "name", ReelStreamName)
 
 	return nil
 }

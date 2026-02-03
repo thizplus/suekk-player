@@ -28,6 +28,7 @@ func SetupRoutes(app *fiber.App, h *handlers.Handlers) {
 	SetupSubtitleRoutes(api, h)       // Subtitle management
 	SetupQueueRoutes(api, h)          // Queue management (transcode/subtitle/warmcache)
 	SetupDirectUploadRoutes(api, h)   // Direct Upload via Presigned URL
+	SetupReelRoutes(api, h)           // Reel Generator
 
 	// Setup Monitoring routes (needs app for /api/v1/monitoring)
 	SetupMonitoringRoutes(app, h)

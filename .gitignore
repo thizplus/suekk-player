@@ -82,5 +82,8 @@ docs/
 # Warm cache service (separate repo/deploy)
 _warm_cache/
 
+# Reel export worker (separate Docker image)
+_reel_worker/
+
 # Nginx config (local only)
 nginx-*.conf

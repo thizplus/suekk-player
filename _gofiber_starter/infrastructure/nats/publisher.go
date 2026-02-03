@@ -340,3 +340,38 @@ func (p *Publisher) PublishWarmCacheJob(ctx context.Context, job *WarmCacheJob) 
 
 	return nil
 }
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Reel Export Job Publishing (implements services.ReelJobPublisher)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// PublishReelExportJob ส่ง reel export job ไปยัง NATS
+func (p *Publisher) PublishReelExportJob(ctx context.Context, job *ReelExportJob) error {
+	data, err := json.Marshal(job)
+	if err != nil {
+		return fmt.Errorf("failed to marshal reel export job: %w", err)
+	}
+
+	// Publish to JetStream
+	ack, err := p.client.js.Publish(ctx, SubjectReelExport, data)
+	if err != nil {
+		logger.Error("Failed to publish reel export job",
+			"reel_id", job.ReelID,
+			"video_code", job.VideoCode,
+			"error", err,
+		)
+		return fmt.Errorf("failed to publish reel export job: %w", err)
+	}
+
+	logger.Info("Reel export job published to JetStream",
+		"reel_id", job.ReelID,
+		"video_id", job.VideoID,
+		"video_code", job.VideoCode,
+		"segment", fmt.Sprintf("%.2f-%.2f", job.SegmentStart, job.SegmentEnd),
+		"layers", len(job.Layers),
+		"stream", ack.Stream,
+		"sequence", ack.Sequence,
+	)
+
+	return nil
+}

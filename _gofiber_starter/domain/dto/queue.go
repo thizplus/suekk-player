@@ -13,6 +13,7 @@ type QueueStatsResponse struct {
 	Transcode TranscodeStats `json:"transcode"`
 	Subtitle  SubtitleStats  `json:"subtitle"`
 	WarmCache WarmCacheStats `json:"warmCache"`
+	Reel      ReelStats      `json:"reel"`
 }
 
 // TranscodeStats สถิติ transcode queue
@@ -37,6 +38,14 @@ type WarmCacheStats struct {
 	Warming   int64 `json:"warming"`
 	Cached    int64 `json:"cached"`
 	Failed    int64 `json:"failed"`
+}
+
+// ReelStats สถิติ reel export queue
+type ReelStats struct {
+	Draft     int64 `json:"draft"`     // กำลังแก้ไข
+	Exporting int64 `json:"exporting"` // กำลัง export
+	Ready     int64 `json:"ready"`     // export สำเร็จ
+	Failed    int64 `json:"failed"`    // export ล้มเหลว
 }
 
 // === Transcode Queue Items ===

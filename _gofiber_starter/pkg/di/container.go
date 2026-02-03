@@ -54,6 +54,8 @@ type Container struct {
 	AdStatsRepository          repositories.AdStatsRepository
 	SettingRepository          repositories.SettingRepository
 	SubtitleRepository         repositories.SubtitleRepository
+	ReelRepository             repositories.ReelRepository
+	ReelTemplateRepository     repositories.ReelTemplateRepository
 
 	// Services
 	UserService            services.UserService
@@ -68,6 +70,7 @@ type Container struct {
 	SettingService         services.SettingService
 	SubtitleService        services.SubtitleService
 	QueueService           services.QueueService
+	ReelService            services.ReelService
 
 	// Settings Cache
 	SettingsCache *settings.SettingsCache
@@ -123,6 +126,7 @@ func (c *Container) Initialize() error {
 	c.QueueService = serviceimpl.NewQueueService(
 		c.VideoRepository,
 		c.SubtitleRepository,
+		c.ReelRepository,
 		c.TranscodingService,
 		c.SubtitleService,
 		c.NATSPublisher,
@@ -346,6 +350,9 @@ func (c *Container) initRepositories() error {
 	c.SettingRepository = postgres.NewSettingRepository(c.DB)
 	// Subtitle
 	c.SubtitleRepository = postgres.NewSubtitleRepository(c.DB)
+	// Reel Generator
+	c.ReelRepository = postgres.NewReelRepository(c.DB)
+	c.ReelTemplateRepository = postgres.NewReelTemplateRepository(c.DB)
 	logger.Info("Repositories initialized")
 	return nil
 }
@@ -408,6 +415,14 @@ func (c *Container) initServices() error {
 	// Subtitle Service with NATS job publisher and storage
 	c.SubtitleService = serviceimpl.NewSubtitleService(c.VideoRepository, c.SubtitleRepository, c.NATSPublisher, c.Storage)
 	logger.Info("Subtitle service initialized", "has_publisher", c.NATSPublisher != nil)
+
+	// Reel Service with NATS job publisher
+	var reelPublisher services.ReelJobPublisher
+	if c.NATSPublisher != nil {
+		reelPublisher = messaging.NewNATSReelPublisher(c.NATSPublisher)
+	}
+	c.ReelService = serviceimpl.NewReelService(c.ReelRepository, c.ReelTemplateRepository, c.VideoRepository, reelPublisher)
+	logger.Info("Reel service initialized", "has_publisher", reelPublisher != nil)
 
 	// Queue Service (unified queue management)
 	// Note: TranscodingService ต้องถูก init ก่อนใน initTranscoding()
@@ -739,6 +754,7 @@ func (c *Container) GetHandlerServices() *handlers.Services {
 		SettingService:      c.SettingService,
 		SubtitleService:     c.SubtitleService,
 		QueueService:        c.QueueService,
+		ReelService:         c.ReelService,
 		VideoRepository:     c.VideoRepository, // สำหรับ SubtitleHandler
 		StreamCookieService: c.StreamCookieService, // Signed cookie สำหรับ CDN access
 		NATSPublisher:       c.NATSPublisher,

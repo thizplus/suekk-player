@@ -24,6 +24,7 @@ type Services struct {
 	SettingService     services.SettingService   // Admin Settings
 	SubtitleService    services.SubtitleService  // Subtitle management
 	QueueService       services.QueueService     // Queue management (transcode/subtitle/warmcache)
+	ReelService        services.ReelService      // Reel Generator
 	VideoRepository    repositories.VideoRepository // สำหรับ SubtitleHandler
 	StreamCookieService     *serviceimpl.StreamCookieService         // Signed cookie สำหรับ CDN access
 	NATSPublisher           *natspkg.Publisher                       // NATS JetStream publisher (แทน AsynqClient)
@@ -55,6 +56,7 @@ type Handlers struct {
 	SubtitleHandler      *SubtitleHandler                 // Subtitle management
 	QueueHandler         *QueueHandler                    // Queue management (transcode/subtitle/warmcache)
 	DirectUploadHandler  *DirectUploadHandler             // Direct Upload via Presigned URL
+	ReelHandler          *ReelHandler                     // Reel Generator
 	StreamCookieService  *serviceimpl.StreamCookieService // Signed cookie สำหรับ CDN access
 }
 
@@ -79,6 +81,7 @@ func NewHandlers(services *Services) *Handlers {
 		SubtitleHandler:      NewSubtitleHandler(services.SubtitleService, services.VideoRepository),
 		QueueHandler:         NewQueueHandler(services.QueueService),
 		DirectUploadHandler:  NewDirectUploadHandler(services.StoragePort, services.VideoService, services.SettingService, services.NATSPublisher),
+		ReelHandler:          NewReelHandler(services.ReelService),
 		StreamCookieService:  services.StreamCookieService,
 	}
 }

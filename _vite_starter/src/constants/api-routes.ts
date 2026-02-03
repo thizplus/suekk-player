@@ -151,6 +151,22 @@ export const QUEUE_ROUTES = {
   WARM_CACHE_ALL: '/api/v1/admin/queues/warm-cache/warm-all',
 }
 
+// Reel Generator - สร้าง reels สำหรับ social media
+export const REEL_ROUTES = {
+  // Templates
+  TEMPLATES: '/api/v1/reels/templates',
+  TEMPLATE_BY_ID: (id: string) => `/api/v1/reels/templates/${id}`,
+  // Reels CRUD
+  LIST: '/api/v1/reels',
+  BY_ID: (id: string) => `/api/v1/reels/${id}`,
+  CREATE: '/api/v1/reels',
+  UPDATE: (id: string) => `/api/v1/reels/${id}`,
+  DELETE: (id: string) => `/api/v1/reels/${id}`,
+  EXPORT: (id: string) => `/api/v1/reels/${id}/export`,
+  // Video reels
+  BY_VIDEO: (videoId: string) => `/api/v1/videos/${videoId}/reels`,
+}
+
 // Subtitle - จัดการ subtitle และ translation
 export const SUBTITLE_ROUTES = {
   // ภาษาที่รองรับ

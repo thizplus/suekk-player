@@ -78,6 +78,14 @@ const QueueManagementPage = lazyWithReload(() =>
   import('@/features/queue').then((m) => ({ default: m.QueueManagementPage }))
 )
 
+// Lazy load reel pages (Reel Generator)
+const ReelListPage = lazyWithReload(() =>
+  import('@/features/reel').then((m) => ({ default: m.ReelListPage }))
+)
+const ReelGeneratorPage = lazyWithReload(() =>
+  import('@/features/reel').then((m) => ({ default: m.ReelGeneratorPage }))
+)
+
 export default function AppRoutes() {
   return (
     <Routes>
@@ -150,6 +158,11 @@ export default function AppRoutes() {
 
             {/* Queue Management routes */}
             <Route path="/queues" element={<QueueManagementPage />} />
+
+            {/* Reel Generator routes */}
+            <Route path="/reels" element={<ReelListPage />} />
+            <Route path="/reels/create" element={<ReelGeneratorPage />} />
+            <Route path="/reels/:id/edit" element={<ReelGeneratorPage />} />
 
             {/* User routes */}
             <Route path="/profile" element={<UserProfilePage />} />

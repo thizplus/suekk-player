@@ -23,6 +23,12 @@ const (
 	WarmCacheStreamName   = "WARM_CACHE_JOBS"
 	WarmCacheConsumerName = "WARM_CACHE_WORKER"
 	SubjectWarmCache      = "jobs.warmcache"
+
+	// Reel Export Jobs Stream and Subjects
+	ReelStreamName     = "REEL_JOBS"
+	ReelConsumerName   = "REEL_WORKER"
+	SubjectReelExport  = "jobs.reel.export"
+	SubjectReelProgress = "progress.reel"
 )
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -121,5 +127,54 @@ func NewWarmCacheJob(videoID, videoCode, hlsPath string, segmentCounts map[strin
 		SegmentCounts: segmentCounts,
 		Priority:      priority,
 		CreatedAt:     time.Now().Unix(),
+	}
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// ReelExportJob - API → Reel Worker (via JetStream)
+// สำหรับ export reel เป็น MP4 แนวตั้ง (9:16) พร้อม layers composition
+// ⚠️ โครงสร้างนี้ต้องตรงกับ _reel_worker
+// ═══════════════════════════════════════════════════════════════════════════════
+type ReelExportJob struct {
+	ReelID       string         `json:"reel_id"`
+	VideoID      string         `json:"video_id"`
+	VideoCode    string         `json:"video_code"`
+	HLSPath      string         `json:"hls_path"`      // S3 path: hls/{code}/master.m3u8
+	SegmentStart float64        `json:"segment_start"` // Start time in seconds
+	SegmentEnd   float64        `json:"segment_end"`   // End time in seconds
+	Layers       []ReelLayerJob `json:"layers"`        // Composition layers
+	OutputPath   string         `json:"output_path"`   // S3 path: reels/{reel_id}/output.mp4
+	CreatedAt    int64          `json:"created_at"`
+}
+
+// ReelLayerJob layer ใน export job
+type ReelLayerJob struct {
+	Type       string  `json:"type"`                 // text, image, shape, background
+	Content    string  `json:"content,omitempty"`    // ข้อความ หรือ URL รูปภาพ
+	FontFamily string  `json:"font_family,omitempty"`
+	FontSize   int     `json:"font_size,omitempty"`
+	FontColor  string  `json:"font_color,omitempty"`
+	FontWeight string  `json:"font_weight,omitempty"`
+	X          float64 `json:"x"`                    // ตำแหน่ง X (0-100%)
+	Y          float64 `json:"y"`                    // ตำแหน่ง Y (0-100%)
+	Width      float64 `json:"width,omitempty"`      // ความกว้าง (0-100%)
+	Height     float64 `json:"height,omitempty"`     // ความสูง (0-100%)
+	Opacity    float64 `json:"opacity,omitempty"`    // ความโปร่งใส (0-1)
+	ZIndex     int     `json:"z_index,omitempty"`    // ลำดับ layer
+	Style      string  `json:"style,omitempty"`      // สไตล์เพิ่มเติม (gradient, shape type)
+}
+
+// NewReelExportJob สร้าง ReelExportJob ใหม่
+func NewReelExportJob(reelID, videoID, videoCode, hlsPath string, segmentStart, segmentEnd float64, layers []ReelLayerJob, outputPath string) *ReelExportJob {
+	return &ReelExportJob{
+		ReelID:       reelID,
+		VideoID:      videoID,
+		VideoCode:    videoCode,
+		HLSPath:      hlsPath,
+		SegmentStart: segmentStart,
+		SegmentEnd:   segmentEnd,
+		Layers:       layers,
+		OutputPath:   outputPath,
+		CreatedAt:    time.Now().Unix(),
 	}
 }

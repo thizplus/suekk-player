@@ -49,5 +49,8 @@ func Migrate(db *gorm.DB) error {
 		&models.SettingAuditLog{},
 		// Subtitles (separate table)
 		&models.Subtitle{},
+		// Reel Generator
+		&models.Reel{},
+		&models.ReelTemplate{},
 	)
 }
