@@ -44,6 +44,16 @@ const VIDEO_FIT_OPTIONS: { value: VideoFit; label: string }[] = [
   { value: 'contain', label: 'แสดงทั้งหมด (มีขอบดำ)' },
 ]
 
+// Aspect ratio options
+type AspectRatio = '9:16' | '1:1' | '4:5' | '16:9'
+
+const ASPECT_RATIO_OPTIONS: { value: AspectRatio; label: string; class: string }[] = [
+  { value: '9:16', label: '9:16 (Reels/TikTok)', class: 'aspect-[9/16]' },
+  { value: '1:1', label: '1:1 (Square)', class: 'aspect-square' },
+  { value: '4:5', label: '4:5 (Instagram)', class: 'aspect-[4/5]' },
+  { value: '16:9', label: '16:9 (YouTube)', class: 'aspect-video' },
+]
+
 export function ReelGeneratorPage() {
   const navigate = useNavigate()
   const { id } = useParams<{ id: string }>()
@@ -74,6 +84,7 @@ export function ReelGeneratorPage() {
   const [segmentEnd, setSegmentEnd] = useState(60)
 
   // Display options
+  const [aspectRatio, setAspectRatio] = useState<AspectRatio>('9:16')
   const [videoFit, setVideoFit] = useState<VideoFit>('cover')
   const [cropX, setCropX] = useState(50) // 0-100, 50 = center
   const [cropY, setCropY] = useState(50) // 0-100, 50 = center
@@ -439,10 +450,10 @@ export function ReelGeneratorPage() {
           <div className="w-full max-w-[320px] space-y-4">
             <Card>
               <CardHeader className="pb-2">
-                <CardTitle className="text-sm">Preview (9:16)</CardTitle>
+                <CardTitle className="text-sm">Preview ({aspectRatio})</CardTitle>
               </CardHeader>
               <CardContent className="p-3">
-                <div className="relative aspect-[9/16] bg-black rounded-lg overflow-hidden">
+                <div className={`relative bg-black rounded-lg overflow-hidden ${ASPECT_RATIO_OPTIONS.find(o => o.value === aspectRatio)?.class || 'aspect-[9/16]'}`}>
                   {/* Video Preview */}
                   {selectedVideo && streamAccess?.token && hlsUrl ? (
                     <>
@@ -647,9 +658,28 @@ export function ReelGeneratorPage() {
                 </SelectContent>
               </Select>
 
-              {/* Video Fit Option */}
+              {/* Aspect Ratio & Video Fit Options */}
               {selectedVideo && (
                 <div className="space-y-3">
+                  {/* Aspect Ratio Selection */}
+                  <div className="space-y-2">
+                    <Label className="text-xs text-muted-foreground">สัดส่วนภาพ</Label>
+                    <div className="grid grid-cols-4 gap-1">
+                      {ASPECT_RATIO_OPTIONS.map((opt) => (
+                        <Button
+                          key={opt.value}
+                          variant={aspectRatio === opt.value ? 'default' : 'outline'}
+                          size="sm"
+                          className="h-8 text-xs px-2"
+                          onClick={() => setAspectRatio(opt.value)}
+                        >
+                          {opt.value}
+                        </Button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Video Fit */}
                   <div className="space-y-2">
                     <Label className="text-xs text-muted-foreground">การแสดงผลวิดีโอ</Label>
                     <Select value={videoFit} onValueChange={(v) => setVideoFit(v as VideoFit)}>
