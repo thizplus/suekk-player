@@ -154,7 +154,8 @@ type Reel struct {
 
 	// Output
 	OutputPath   string     `gorm:"type:text"` // S3 path to MP4
-	ThumbnailURL string     `gorm:"type:text"` // thumbnail image
+	ThumbnailURL string     `gorm:"type:text"` // thumbnail image (9:16)
+	CoverURL     string     `gorm:"type:text"` // cover image (1:1 with gradient bg)
 	Duration     int        `gorm:"default:0"` // seconds
 	FileSize     int64      `gorm:"default:0"` // bytes
 
