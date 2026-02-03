@@ -479,27 +479,20 @@ export function ReelGeneratorPage() {
                     <>
                       {/* Crop ratio modes - wrap video in aspect container first */}
                       {cropAspectRatio ? (
-                        <div className="absolute inset-0 flex items-center justify-center p-1">
-                          <div
-                            className="relative overflow-hidden"
+                        <div className="absolute inset-0 flex items-center justify-center">
+                          <video
+                            ref={videoRef}
                             style={{
                               aspectRatio: cropAspectRatio,
-                              height: '100%',
                               maxWidth: '100%',
+                              maxHeight: '100%',
+                              objectFit: 'cover',
+                              objectPosition: `${cropX}% ${cropY}%`,
                             }}
-                          >
-                            <video
-                              ref={videoRef}
-                              className="absolute inset-0 w-full h-full"
-                              style={{
-                                objectFit: 'cover',
-                                objectPosition: `${cropX}% ${cropY}%`,
-                              }}
-                              muted
-                              playsInline
-                              onClick={togglePlayback}
-                            />
-                          </div>
+                            muted
+                            playsInline
+                            onClick={togglePlayback}
+                          />
                         </div>
                       ) : (
                         <video
@@ -530,25 +523,18 @@ export function ReelGeneratorPage() {
                   ) : selectedVideo?.thumbnailUrl ? (
                     <>
                       {cropAspectRatio ? (
-                        <div className="absolute inset-0 flex items-center justify-center p-1">
-                          <div
-                            className="relative overflow-hidden"
+                        <div className="absolute inset-0 flex items-center justify-center">
+                          <img
+                            src={selectedVideo.thumbnailUrl}
+                            alt="Preview"
                             style={{
                               aspectRatio: cropAspectRatio,
-                              height: '100%',
                               maxWidth: '100%',
+                              maxHeight: '100%',
+                              objectFit: 'cover',
+                              objectPosition: `${cropX}% ${cropY}%`,
                             }}
-                          >
-                            <img
-                              src={selectedVideo.thumbnailUrl}
-                              alt="Preview"
-                              className="absolute inset-0 w-full h-full"
-                              style={{
-                                objectFit: 'cover',
-                                objectPosition: `${cropX}% ${cropY}%`,
-                              }}
-                            />
-                          </div>
+                          />
                         </div>
                       ) : (
                         <img
