@@ -36,22 +36,14 @@ import { APP_CONFIG } from '@/constants/app-config'
 import type { ReelLayer, CreateReelRequest, UpdateReelRequest } from '../types'
 import { toast } from 'sonner'
 
-// Video fit options
-type VideoFit = 'cover' | 'contain'
+// Output format options - how to display the 16:9 source video
+type OutputFormat = '9:16' | '1:1' | '4:5' | 'full'
 
-const VIDEO_FIT_OPTIONS: { value: VideoFit; label: string }[] = [
-  { value: 'cover', label: 'เต็มจอ (Crop)' },
-  { value: 'contain', label: 'แสดงทั้งหมด (มีขอบดำ)' },
-]
-
-// Aspect ratio options
-type AspectRatio = '9:16' | '1:1' | '4:5' | '16:9'
-
-const ASPECT_RATIO_OPTIONS: { value: AspectRatio; label: string; class: string }[] = [
-  { value: '9:16', label: '9:16 (Reels/TikTok)', class: 'aspect-[9/16]' },
-  { value: '1:1', label: '1:1 (Square)', class: 'aspect-square' },
-  { value: '4:5', label: '4:5 (Instagram)', class: 'aspect-[4/5]' },
-  { value: '16:9', label: '16:9 (YouTube)', class: 'aspect-video' },
+const OUTPUT_FORMAT_OPTIONS: { value: OutputFormat; label: string; aspectClass: string; description: string }[] = [
+  { value: '9:16', label: '9:16', aspectClass: 'aspect-[9/16]', description: 'Reels/TikTok' },
+  { value: '1:1', label: '1:1', aspectClass: 'aspect-square', description: 'Square' },
+  { value: '4:5', label: '4:5', aspectClass: 'aspect-[4/5]', description: 'Instagram' },
+  { value: 'full', label: 'Full', aspectClass: 'aspect-video', description: '16:9 เต็ม' },
 ]
 
 export function ReelGeneratorPage() {
@@ -84,10 +76,12 @@ export function ReelGeneratorPage() {
   const [segmentEnd, setSegmentEnd] = useState(60)
 
   // Display options
-  const [aspectRatio, setAspectRatio] = useState<AspectRatio>('9:16')
-  const [videoFit, setVideoFit] = useState<VideoFit>('cover')
+  const [outputFormat, setOutputFormat] = useState<OutputFormat>('9:16')
   const [cropX, setCropX] = useState(50) // 0-100, 50 = center
   const [cropY, setCropY] = useState(50) // 0-100, 50 = center
+
+  // Check if current format needs cropping (not full 16:9)
+  const needsCrop = outputFormat !== 'full'
   const [showTitle, setShowTitle] = useState(true)
   const [showDescription, setShowDescription] = useState(true)
   const [showGradient, setShowGradient] = useState(true)
@@ -363,12 +357,13 @@ export function ReelGeneratorPage() {
     return `${mins}:${secs.toString().padStart(2, '0')}`
   }
 
-  // Get video style based on fit option
+  // Get video style based on output format
   const getVideoStyle = (): React.CSSProperties => {
-    if (videoFit === 'contain') {
+    if (outputFormat === 'full') {
+      // Full 16:9 - no crop needed
       return { objectFit: 'contain' }
     }
-    // cover mode - use custom crop position
+    // Cropped formats - use cover with custom position
     return {
       objectFit: 'cover',
       objectPosition: `${cropX}% ${cropY}%`,
@@ -450,10 +445,10 @@ export function ReelGeneratorPage() {
           <div className="w-full max-w-[320px] space-y-4">
             <Card>
               <CardHeader className="pb-2">
-                <CardTitle className="text-sm">Preview ({aspectRatio})</CardTitle>
+                <CardTitle className="text-sm">Preview ({outputFormat === 'full' ? '16:9' : outputFormat})</CardTitle>
               </CardHeader>
               <CardContent className="p-3">
-                <div className={`relative bg-black rounded-lg overflow-hidden ${ASPECT_RATIO_OPTIONS.find(o => o.value === aspectRatio)?.class || 'aspect-[9/16]'}`}>
+                <div className={`relative bg-black rounded-lg overflow-hidden ${OUTPUT_FORMAT_OPTIONS.find(o => o.value === outputFormat)?.aspectClass || 'aspect-[9/16]'}`}>
                   {/* Video Preview */}
                   {selectedVideo && streamAccess?.token && hlsUrl ? (
                     <>
@@ -658,48 +653,32 @@ export function ReelGeneratorPage() {
                 </SelectContent>
               </Select>
 
-              {/* Aspect Ratio & Video Fit Options */}
+              {/* Output Format Options */}
               {selectedVideo && (
                 <div className="space-y-3">
-                  {/* Aspect Ratio Selection */}
+                  {/* Format Selection */}
                   <div className="space-y-2">
-                    <Label className="text-xs text-muted-foreground">สัดส่วนภาพ</Label>
+                    <Label className="text-xs text-muted-foreground">รูปแบบ Output (Crop จาก 16:9)</Label>
                     <div className="grid grid-cols-4 gap-1">
-                      {ASPECT_RATIO_OPTIONS.map((opt) => (
+                      {OUTPUT_FORMAT_OPTIONS.map((opt) => (
                         <Button
                           key={opt.value}
-                          variant={aspectRatio === opt.value ? 'default' : 'outline'}
+                          variant={outputFormat === opt.value ? 'default' : 'outline'}
                           size="sm"
-                          className="h-8 text-xs px-2"
-                          onClick={() => setAspectRatio(opt.value)}
+                          className="h-auto py-2 text-xs px-2 flex flex-col"
+                          onClick={() => setOutputFormat(opt.value)}
                         >
-                          {opt.value}
+                          <span className="font-bold">{opt.label}</span>
+                          <span className="text-[10px] opacity-70">{opt.description}</span>
                         </Button>
                       ))}
                     </div>
                   </div>
 
-                  {/* Video Fit */}
-                  <div className="space-y-2">
-                    <Label className="text-xs text-muted-foreground">การแสดงผลวิดีโอ</Label>
-                    <Select value={videoFit} onValueChange={(v) => setVideoFit(v as VideoFit)}>
-                      <SelectTrigger className="h-9">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {VIDEO_FIT_OPTIONS.map((opt) => (
-                          <SelectItem key={opt.value} value={opt.value}>
-                            {opt.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  {/* Crop Position Controls (only for cover mode) */}
-                  {videoFit === 'cover' && (
+                  {/* Crop Position Controls (only when cropping) */}
+                  {needsCrop && (
                     <div className="space-y-3 p-3 bg-muted/50 rounded-lg">
-                      <Label className="text-xs text-muted-foreground">ตำแหน่ง Crop</Label>
+                      <Label className="text-xs text-muted-foreground">ตำแหน่ง Crop (เลื่อนส่วนที่จะแสดง)</Label>
 
                       {/* X Position (Left-Right) */}
                       <div className="space-y-1">
@@ -717,95 +696,49 @@ export function ReelGeneratorPage() {
                         />
                       </div>
 
-                      {/* Y Position (Top-Bottom) */}
-                      <div className="space-y-1">
-                        <div className="flex items-center justify-between text-xs">
-                          <span>บน</span>
-                          <span className="font-mono">{cropY}%</span>
-                          <span>ล่าง</span>
+                      {/* Y Position - only needed for extreme crops like 9:16 */}
+                      {outputFormat === '9:16' && (
+                        <div className="space-y-1">
+                          <div className="flex items-center justify-between text-xs">
+                            <span>บน</span>
+                            <span className="font-mono">{cropY}%</span>
+                            <span>ล่าง</span>
+                          </div>
+                          <Slider
+                            value={[cropY]}
+                            min={0}
+                            max={100}
+                            step={1}
+                            onValueChange={([v]) => setCropY(v)}
+                          />
                         </div>
-                        <Slider
-                          value={[cropY]}
-                          min={0}
-                          max={100}
-                          step={1}
-                          onValueChange={([v]) => setCropY(v)}
-                        />
-                      </div>
+                      )}
 
                       {/* Quick Position Buttons */}
-                      <div className="grid grid-cols-3 gap-1">
+                      <div className="flex gap-1 justify-center">
                         <Button
-                          variant={cropX === 0 && cropY === 0 ? 'default' : 'outline'}
+                          variant={cropX === 0 ? 'default' : 'outline'}
                           size="sm"
                           className="h-7 text-xs"
-                          onClick={() => { setCropX(0); setCropY(0) }}
-                        >
-                          ↖ บนซ้าย
-                        </Button>
-                        <Button
-                          variant={cropX === 50 && cropY === 0 ? 'default' : 'outline'}
-                          size="sm"
-                          className="h-7 text-xs"
-                          onClick={() => { setCropX(50); setCropY(0) }}
-                        >
-                          ↑ บน
-                        </Button>
-                        <Button
-                          variant={cropX === 100 && cropY === 0 ? 'default' : 'outline'}
-                          size="sm"
-                          className="h-7 text-xs"
-                          onClick={() => { setCropX(100); setCropY(0) }}
-                        >
-                          ↗ บนขวา
-                        </Button>
-                        <Button
-                          variant={cropX === 0 && cropY === 50 ? 'default' : 'outline'}
-                          size="sm"
-                          className="h-7 text-xs"
-                          onClick={() => { setCropX(0); setCropY(50) }}
+                          onClick={() => setCropX(0)}
                         >
                           ← ซ้าย
                         </Button>
                         <Button
-                          variant={cropX === 50 && cropY === 50 ? 'default' : 'outline'}
+                          variant={cropX === 50 ? 'default' : 'outline'}
                           size="sm"
                           className="h-7 text-xs"
-                          onClick={() => { setCropX(50); setCropY(50) }}
+                          onClick={() => setCropX(50)}
                         >
                           ● กลาง
                         </Button>
                         <Button
-                          variant={cropX === 100 && cropY === 50 ? 'default' : 'outline'}
+                          variant={cropX === 100 ? 'default' : 'outline'}
                           size="sm"
                           className="h-7 text-xs"
-                          onClick={() => { setCropX(100); setCropY(50) }}
+                          onClick={() => setCropX(100)}
                         >
-                          → ขวา
-                        </Button>
-                        <Button
-                          variant={cropX === 0 && cropY === 100 ? 'default' : 'outline'}
-                          size="sm"
-                          className="h-7 text-xs"
-                          onClick={() => { setCropX(0); setCropY(100) }}
-                        >
-                          ↙ ล่างซ้าย
-                        </Button>
-                        <Button
-                          variant={cropX === 50 && cropY === 100 ? 'default' : 'outline'}
-                          size="sm"
-                          className="h-7 text-xs"
-                          onClick={() => { setCropX(50); setCropY(100) }}
-                        >
-                          ↓ ล่าง
-                        </Button>
-                        <Button
-                          variant={cropX === 100 && cropY === 100 ? 'default' : 'outline'}
-                          size="sm"
-                          className="h-7 text-xs"
-                          onClick={() => { setCropX(100); setCropY(100) }}
-                        >
-                          ↘ ล่างขวา
+                          ขวา →
                         </Button>
                       </div>
                     </div>
