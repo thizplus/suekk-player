@@ -85,8 +85,11 @@ export function ReelGeneratorPage() {
   // Video info
   const selectedVideo = videosData?.data.find((v) => v.id === selectedVideoId) || videoByCode
   const [actualDuration, setActualDuration] = useState(0)
-  // ใช้ duration จาก video element ถ้ามี, ไม่งั้นใช้จาก API
-  const videoDuration = actualDuration || selectedVideo?.duration || 0
+  // จำกัด duration สูงสุด 10 นาที (600 วินาที) สำหรับทำ reel
+  const MAX_REEL_DURATION = 600
+  const rawDuration = actualDuration || selectedVideo?.duration || 0
+  const videoDuration = Math.min(rawDuration, MAX_REEL_DURATION)
+  const isVideoCapped = rawDuration > MAX_REEL_DURATION
 
   // Stream access for video preview
   const { data: streamAccess, isLoading: isStreamLoading } = useStreamAccess(selectedVideo?.code || '', {
@@ -789,6 +792,13 @@ export function ReelGeneratorPage() {
                 <CardTitle className="text-sm">2. เลือกช่วงเวลา</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
+                {/* Notice if video is capped */}
+                {isVideoCapped && (
+                  <div className="p-2 bg-yellow-500/10 border border-yellow-500/30 rounded text-xs text-yellow-600 dark:text-yellow-400">
+                    วิดีโอยาว {formatTime(rawDuration)} - ใช้ได้แค่ 10 นาทีแรก
+                  </div>
+                )}
+
                 {/* Show loading if duration not yet available */}
                 {videoDuration === 0 && (
                   <div className="flex items-center justify-center py-8 text-muted-foreground">
