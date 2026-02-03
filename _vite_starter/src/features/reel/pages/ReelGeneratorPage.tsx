@@ -371,30 +371,6 @@ export function ReelGeneratorPage() {
     return `${mins}:${secs.toString().padStart(2, '0')}`
   }
 
-  // Get video style based on video fit option
-  const getVideoStyle = (): React.CSSProperties => {
-    switch (videoFit) {
-      case 'fit':
-        // Show full video with letterbox/pillarbox
-        return { objectFit: 'contain' }
-      case 'crop-1:1':
-        // Crop to square first, then fit - simulate with aspect-ratio trick
-        return {
-          objectFit: 'cover',
-          objectPosition: `${cropX}% ${cropY}%`,
-          // This will crop to roughly 1:1 from the source
-          clipPath: 'inset(0)',
-        }
-      case 'fill':
-      default:
-        // Crop to fill the entire frame
-        return {
-          objectFit: 'cover',
-          objectPosition: `${cropX}% ${cropY}%`,
-        }
-    }
-  }
-
   // Get title Y position for preview
   const getTitleY = () => {
     switch (titlePosition) {
@@ -474,80 +450,88 @@ export function ReelGeneratorPage() {
               </CardHeader>
               <CardContent className="p-3">
                 <div className={`relative bg-black rounded-lg overflow-hidden ${OUTPUT_FORMAT_OPTIONS.find(o => o.value === outputFormat)?.aspectClass || 'aspect-[9/16]'}`}>
-                  {/* Video Preview */}
-                  {selectedVideo && streamAccess?.token && hlsUrl ? (
-                    <>
-                      {/* Crop ratio modes - wrap video in aspect container first */}
-                      {cropAspectRatio ? (
-                        <div className="absolute inset-0 flex items-center justify-center">
-                          <video
-                            ref={videoRef}
-                            style={{
-                              aspectRatio: cropAspectRatio,
-                              maxWidth: '100%',
-                              maxHeight: '100%',
-                              objectFit: 'cover',
-                              objectPosition: `${cropX}% ${cropY}%`,
-                            }}
-                            muted
-                            playsInline
-                            onClick={togglePlayback}
-                          />
-                        </div>
-                      ) : (
-                        <video
-                          ref={videoRef}
-                          className="absolute inset-0 w-full h-full"
-                          style={getVideoStyle()}
-                          muted
-                          playsInline
-                          onClick={togglePlayback}
-                        />
-                      )}
-                      {/* Play/Pause Overlay */}
-                      <div
-                        className="absolute inset-0 flex items-center justify-center cursor-pointer bg-black/20 opacity-0 hover:opacity-100 transition-opacity"
-                        onClick={togglePlayback}
-                      >
-                        {isPlaying ? (
-                          <Pause className="h-12 w-12 text-white drop-shadow-lg" />
-                        ) : (
-                          <Play className="h-12 w-12 text-white drop-shadow-lg" />
-                        )}
-                      </div>
-                    </>
-                  ) : selectedVideo && isStreamLoading ? (
-                    <div className="absolute inset-0 flex items-center justify-center">
+                  {/* Video Container - always present to maintain HLS connection */}
+                  <div className="absolute inset-0 flex items-center justify-center overflow-hidden">
+                    <video
+                      ref={videoRef}
+                      className="max-w-full max-h-full"
+                      style={cropAspectRatio ? {
+                        // Crop modes: show video with specific aspect ratio
+                        width: '100%',
+                        height: '100%',
+                        aspectRatio: cropAspectRatio,
+                        objectFit: 'cover',
+                        objectPosition: `${cropX}% ${cropY}%`,
+                      } : videoFit === 'fit' ? {
+                        // Fit mode: contain with letterbox
+                        width: '100%',
+                        height: '100%',
+                        objectFit: 'contain',
+                      } : {
+                        // Fill mode: cover entire frame
+                        width: '100%',
+                        height: '100%',
+                        objectFit: 'cover',
+                        objectPosition: `${cropX}% ${cropY}%`,
+                      }}
+                      muted
+                      playsInline
+                      onClick={togglePlayback}
+                    />
+                  </div>
+
+                  {/* Show loading/placeholder when no video */}
+                  {selectedVideo && isStreamLoading && (
+                    <div className="absolute inset-0 flex items-center justify-center bg-black">
                       <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
                     </div>
-                  ) : selectedVideo?.thumbnailUrl ? (
-                    <>
-                      {cropAspectRatio ? (
-                        <div className="absolute inset-0 flex items-center justify-center">
-                          <img
-                            src={selectedVideo.thumbnailUrl}
-                            alt="Preview"
-                            style={{
-                              aspectRatio: cropAspectRatio,
-                              maxWidth: '100%',
-                              maxHeight: '100%',
-                              objectFit: 'cover',
-                              objectPosition: `${cropX}% ${cropY}%`,
-                            }}
-                          />
-                        </div>
-                      ) : (
-                        <img
-                          src={selectedVideo.thumbnailUrl}
-                          alt="Preview"
-                          className="absolute inset-0 w-full h-full"
-                          style={getVideoStyle()}
-                        />
-                      )}
-                    </>
-                  ) : (
+                  )}
+
+                  {/* Thumbnail fallback when no stream */}
+                  {selectedVideo?.thumbnailUrl && !streamAccess?.token && !isStreamLoading && (
+                    <div className="absolute inset-0 flex items-center justify-center overflow-hidden">
+                      <img
+                        src={selectedVideo.thumbnailUrl}
+                        alt="Preview"
+                        className="max-w-full max-h-full"
+                        style={cropAspectRatio ? {
+                          width: '100%',
+                          height: '100%',
+                          aspectRatio: cropAspectRatio,
+                          objectFit: 'cover',
+                          objectPosition: `${cropX}% ${cropY}%`,
+                        } : videoFit === 'fit' ? {
+                          width: '100%',
+                          height: '100%',
+                          objectFit: 'contain',
+                        } : {
+                          width: '100%',
+                          height: '100%',
+                          objectFit: 'cover',
+                          objectPosition: `${cropX}% ${cropY}%`,
+                        }}
+                      />
+                    </div>
+                  )}
+
+                  {/* Empty state */}
+                  {!selectedVideo && (
                     <div className="absolute inset-0 flex items-center justify-center">
                       <Film className="h-16 w-16 text-muted-foreground/30" />
+                    </div>
+                  )}
+
+                  {/* Play/Pause Overlay */}
+                  {selectedVideo && streamAccess?.token && (
+                    <div
+                      className="absolute inset-0 flex items-center justify-center cursor-pointer bg-black/20 opacity-0 hover:opacity-100 transition-opacity"
+                      onClick={togglePlayback}
+                    >
+                      {isPlaying ? (
+                        <Pause className="h-12 w-12 text-white drop-shadow-lg" />
+                      ) : (
+                        <Play className="h-12 w-12 text-white drop-shadow-lg" />
+                      )}
                     </div>
                   )}
 
