@@ -27,6 +27,7 @@ func (p *NATSReelPublisher) PublishReelExportJob(ctx context.Context, job *servi
 		VideoID:      job.VideoID,
 		VideoCode:    job.VideoCode,
 		HLSPath:      job.HLSPath,
+		VideoQuality: job.VideoQuality,
 		SegmentStart: job.SegmentStart,
 		SegmentEnd:   job.SegmentEnd,
 		OutputFormat: job.OutputFormat,

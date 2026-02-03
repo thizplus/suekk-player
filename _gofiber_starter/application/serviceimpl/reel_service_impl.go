@@ -344,6 +344,7 @@ func (s *ReelServiceImpl) Export(ctx context.Context, id, userID uuid.UUID) erro
 			VideoID:      reel.VideoID.String(),
 			VideoCode:    reel.Video.Code,
 			HLSPath:      reel.Video.HLSPath,
+			VideoQuality: reel.Video.Quality, // ส่ง quality จาก database ไปให้ worker ใช้เลย
 			SegmentStart: reel.SegmentStart,
 			SegmentEnd:   reel.SegmentEnd,
 			OutputFormat: string(reel.OutputFormat),

@@ -55,6 +55,7 @@ type ReelExportJob struct {
 	VideoID      string         `json:"video_id"`
 	VideoCode    string         `json:"video_code"`
 	HLSPath      string         `json:"hls_path"`       // S3 path to HLS master playlist
+	VideoQuality string         `json:"video_quality"`  // Best available quality: 1080p, 720p, etc.
 	SegmentStart float64        `json:"segment_start"`  // Start time in seconds
 	SegmentEnd   float64        `json:"segment_end"`    // End time in seconds
 	OutputFormat string         `json:"output_format"`  // 9:16, 1:1, 4:5, 16:9
