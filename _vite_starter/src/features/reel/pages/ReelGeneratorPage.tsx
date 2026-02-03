@@ -11,6 +11,8 @@ import {
   Pause,
   SkipBack,
   SkipForward,
+  Scissors,
+  Flag,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -536,38 +538,76 @@ export function ReelGeneratorPage() {
 
                 {/* Playback Controls */}
                 {selectedVideo && streamAccess?.token && (
-                  <div className="mt-3 flex items-center justify-center gap-2">
-                    <Button
-                      variant="outline"
-                      size="icon"
-                      className="h-8 w-8"
-                      onClick={() => seekTo(segmentStart)}
-                      disabled={!isVideoReady}
-                    >
-                      <SkipBack className="h-4 w-4" />
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="icon"
-                      className="h-8 w-8"
-                      onClick={togglePlayback}
-                      disabled={!isVideoReady}
-                    >
-                      {isPlaying ? (
-                        <Pause className="h-4 w-4" />
-                      ) : (
-                        <Play className="h-4 w-4" />
-                      )}
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="icon"
-                      className="h-8 w-8"
-                      onClick={() => seekTo(Math.max(0, segmentEnd - 1))}
-                      disabled={!isVideoReady}
-                    >
-                      <SkipForward className="h-4 w-4" />
-                    </Button>
+                  <div className="mt-3 space-y-2">
+                    {/* Play/Seek Controls */}
+                    <div className="flex items-center justify-center gap-2">
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        className="h-8 w-8"
+                        onClick={() => seekTo(segmentStart)}
+                        disabled={!isVideoReady}
+                        title="ไปจุดเริ่มต้น"
+                      >
+                        <SkipBack className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        className="h-8 w-8"
+                        onClick={togglePlayback}
+                        disabled={!isVideoReady}
+                      >
+                        {isPlaying ? (
+                          <Pause className="h-4 w-4" />
+                        ) : (
+                          <Play className="h-4 w-4" />
+                        )}
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        className="h-8 w-8"
+                        onClick={() => seekTo(Math.max(0, segmentEnd - 1))}
+                        disabled={!isVideoReady}
+                        title="ไปจุดสิ้นสุด"
+                      >
+                        <SkipForward className="h-4 w-4" />
+                      </Button>
+                    </div>
+
+                    {/* Mark In/Out Controls */}
+                    <div className="flex items-center justify-center gap-2">
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        className="h-7 text-xs"
+                        onClick={() => {
+                          setSegmentStart(currentTime)
+                          if (currentTime >= segmentEnd) {
+                            setSegmentEnd(Math.min(currentTime + 30, videoDuration))
+                          }
+                        }}
+                        disabled={!isVideoReady}
+                      >
+                        <Flag className="h-3 w-3 mr-1" />
+                        จุดเริ่ม [{formatTime(currentTime)}]
+                      </Button>
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        className="h-7 text-xs"
+                        onClick={() => {
+                          if (currentTime > segmentStart) {
+                            setSegmentEnd(currentTime)
+                          }
+                        }}
+                        disabled={!isVideoReady || currentTime <= segmentStart}
+                      >
+                        <Scissors className="h-3 w-3 mr-1" />
+                        จุดจบ [{formatTime(currentTime)}]
+                      </Button>
+                    </div>
                   </div>
                 )}
               </CardContent>
@@ -645,9 +685,24 @@ export function ReelGeneratorPage() {
 
                 {videoDuration > 0 && (
                   <>
+                {/* Selected Segment Info */}
+                <div className="p-3 bg-primary/10 border border-primary/30 rounded-lg">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-sm font-medium">Segment ที่เลือก</span>
+                    <span className="text-lg font-bold text-primary">
+                      {formatTime(segmentEnd - segmentStart)}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between text-sm text-muted-foreground">
+                    <span>เริ่ม: <span className="font-mono text-foreground">{formatTime(segmentStart)}</span></span>
+                    <span>→</span>
+                    <span>จบ: <span className="font-mono text-foreground">{formatTime(segmentEnd)}</span></span>
+                  </div>
+                </div>
+
                 {/* Timeline Visual */}
                 <div
-                  className={`relative h-14 bg-muted rounded-lg overflow-hidden ${isVideoReady ? 'cursor-pointer' : 'cursor-not-allowed opacity-50'}`}
+                  className={`relative h-16 bg-muted rounded-lg overflow-hidden ${isVideoReady ? 'cursor-pointer' : 'cursor-not-allowed opacity-50'}`}
                   onClick={(e) => {
                     if (!isVideoReady) return
                     const rect = e.currentTarget.getBoundingClientRect()
@@ -663,15 +718,25 @@ export function ReelGeneratorPage() {
                       left: `${(segmentStart / videoDuration) * 100}%`,
                       width: `${((segmentEnd - segmentStart) / videoDuration) * 100}%`,
                     }}
-                  />
+                  >
+                    {/* Segment start/end labels */}
+                    <div className="absolute -left-1 top-1 text-[9px] font-bold text-primary bg-background px-1 rounded">
+                      IN
+                    </div>
+                    <div className="absolute -right-1 top-1 text-[9px] font-bold text-primary bg-background px-1 rounded">
+                      OUT
+                    </div>
+                  </div>
 
                   {/* Current playhead */}
                   <div
                     className="absolute top-0 bottom-0 w-1 bg-red-500 z-10"
                     style={{ left: `${(currentTime / videoDuration) * 100}%` }}
                   >
-                    {/* Playhead handle */}
                     <div className="absolute -top-1 left-1/2 -translate-x-1/2 w-3 h-3 bg-red-500 rounded-full" />
+                    <div className="absolute top-4 left-1/2 -translate-x-1/2 text-[9px] font-mono bg-red-500 text-white px-1 rounded whitespace-nowrap">
+                      {formatTime(currentTime)}
+                    </div>
                   </div>
 
                   {/* Time markers */}
@@ -690,14 +755,10 @@ export function ReelGeneratorPage() {
                   )}
                 </div>
 
-                {/* Time display */}
-                <div className="flex justify-between text-sm font-medium">
-                  <span className="text-primary">{formatTime(segmentStart)}</span>
-                  <span className="text-muted-foreground">
-                    ความยาว: {formatTime(segmentEnd - segmentStart)}
-                  </span>
-                  <span className="text-primary">{formatTime(segmentEnd)}</span>
-                </div>
+                {/* Instructions */}
+                <p className="text-xs text-muted-foreground text-center">
+                  คลิก timeline เพื่อ seek → กดปุ่ม "จุดเริ่ม" / "จุดจบ" ใต้ preview
+                </p>
 
                 {/* Start/End Sliders */}
                 <div className="space-y-3">
