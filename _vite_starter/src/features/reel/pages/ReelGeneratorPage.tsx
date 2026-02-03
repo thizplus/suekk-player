@@ -1,8 +1,9 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
-import { ArrowLeft, Save, Download, Loader2 } from 'lucide-react'
+import { ArrowLeft, Save, Download, Loader2, Film, Clock, Type } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { toast } from 'sonner'
 
 import { useReel, useCreateReel, useUpdateReel, useExportReel } from '../hooks'
@@ -64,6 +65,9 @@ export function ReelGeneratorPage() {
   // Seek request - use counter to ensure seek triggers even for same time
   const [seekRequest, setSeekRequest] = useState<{ time: number; id: number } | null>(null)
 
+  // Tab state
+  const [activeTab, setActiveTab] = useState('video')
+
   // === Derived State ===
   const selectedVideo = videosData?.data.find((v) => v.id === selectedVideoId) || videoByCode
   const rawDuration = actualDuration || selectedVideo?.duration || 0
@@ -89,6 +93,13 @@ export function ReelGeneratorPage() {
       setSegmentEnd(Math.min(60, videoByCode.duration))
     }
   }, [existingReel, videoByCode])
+
+  // Auto switch to timecode tab when video is selected
+  useEffect(() => {
+    if (selectedVideoId && activeTab === 'video') {
+      // Keep on video tab to let user configure output format first
+    }
+  }, [selectedVideoId, activeTab])
 
   // === Callbacks for child components ===
   const handleVideoSelect = useCallback((videoId: string) => {
@@ -261,15 +272,15 @@ export function ReelGeneratorPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">
           <Button variant="ghost" size="icon" onClick={() => navigate('/reels')}>
             <ArrowLeft className="h-4 w-4" />
           </Button>
-          <h1 className="text-2xl font-semibold">
-            {isEditing ? 'แก้ไข Reel' : 'สร้าง Reel ใหม่'}
+          <h1 className="text-xl font-semibold">
+            {isEditing ? 'แก้ไข Reel' : 'สร้าง Reel'}
           </h1>
         </div>
 
@@ -330,57 +341,77 @@ export function ReelGeneratorPage() {
           />
         </div>
 
-        {/* Settings Panel */}
-        <div className="space-y-4">
-          {/* Step 1: Video Selection */}
-          <ReelVideoSelector
-            videos={videosData?.data || []}
-            selectedVideoId={selectedVideoId}
-            outputFormat={outputFormat}
-            videoFit={videoFit}
-            cropX={cropX}
-            cropY={cropY}
-            isEditing={isEditing}
-            onVideoSelect={handleVideoSelect}
-            onOutputFormatChange={setOutputFormat}
-            onVideoFitChange={setVideoFit}
-            onCropXChange={setCropX}
-            onCropYChange={setCropY}
-          />
+        {/* Settings Panel with Tabs */}
+        <div>
+          <Tabs value={activeTab} onValueChange={setActiveTab}>
+            <TabsList className="w-full grid grid-cols-3">
+              <TabsTrigger value="video" className="gap-2">
+                <Film className="h-4 w-4" />
+                วิดีโอ
+              </TabsTrigger>
+              <TabsTrigger value="timecode" className="gap-2" disabled={!selectedVideo}>
+                <Clock className="h-4 w-4" />
+                ช่วงเวลา
+              </TabsTrigger>
+              <TabsTrigger value="text" className="gap-2" disabled={!selectedVideo}>
+                <Type className="h-4 w-4" />
+                ข้อความ
+              </TabsTrigger>
+            </TabsList>
 
-          {/* Step 2: Timecode Selection */}
-          {selectedVideo && (
-            <ReelTimecodeSelector
-              videoDuration={videoDuration}
-              rawDuration={rawDuration}
-              segmentStart={segmentStart}
-              segmentEnd={segmentEnd}
-              currentTime={currentTime}
-              isVideoReady={isVideoReady}
-              onSegmentStartChange={handleSegmentStartChange}
-              onSegmentEndChange={handleSegmentEndChange}
-              onSeekTo={triggerSeek}
-              onPreviewSegment={handlePreviewSegment}
-            />
-          )}
+            <TabsContent value="video" className="mt-4">
+              <ReelVideoSelector
+                videos={videosData?.data || []}
+                selectedVideoId={selectedVideoId}
+                outputFormat={outputFormat}
+                videoFit={videoFit}
+                cropX={cropX}
+                cropY={cropY}
+                isEditing={isEditing}
+                onVideoSelect={handleVideoSelect}
+                onOutputFormatChange={setOutputFormat}
+                onVideoFitChange={setVideoFit}
+                onCropXChange={setCropX}
+                onCropYChange={setCropY}
+              />
+            </TabsContent>
 
-          {/* Step 3: Text Overlay */}
-          {selectedVideo && (
-            <ReelTextOverlay
-              title={title}
-              description={description}
-              showTitle={showTitle}
-              showDescription={showDescription}
-              showGradient={showGradient}
-              titlePosition={titlePosition}
-              onTitleChange={setTitle}
-              onDescriptionChange={setDescription}
-              onShowTitleChange={setShowTitle}
-              onShowDescriptionChange={setShowDescription}
-              onShowGradientChange={setShowGradient}
-              onTitlePositionChange={setTitlePosition}
-            />
-          )}
+            <TabsContent value="timecode" className="mt-4">
+              {selectedVideo && (
+                <ReelTimecodeSelector
+                  videoDuration={videoDuration}
+                  rawDuration={rawDuration}
+                  segmentStart={segmentStart}
+                  segmentEnd={segmentEnd}
+                  currentTime={currentTime}
+                  isVideoReady={isVideoReady}
+                  onSegmentStartChange={handleSegmentStartChange}
+                  onSegmentEndChange={handleSegmentEndChange}
+                  onSeekTo={triggerSeek}
+                  onPreviewSegment={handlePreviewSegment}
+                />
+              )}
+            </TabsContent>
+
+            <TabsContent value="text" className="mt-4">
+              {selectedVideo && (
+                <ReelTextOverlay
+                  title={title}
+                  description={description}
+                  showTitle={showTitle}
+                  showDescription={showDescription}
+                  showGradient={showGradient}
+                  titlePosition={titlePosition}
+                  onTitleChange={setTitle}
+                  onDescriptionChange={setDescription}
+                  onShowTitleChange={setShowTitle}
+                  onShowDescriptionChange={setShowDescription}
+                  onShowGradientChange={setShowGradient}
+                  onTitlePositionChange={setTitlePosition}
+                />
+              )}
+            </TabsContent>
+          </Tabs>
         </div>
       </div>
     </div>

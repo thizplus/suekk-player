@@ -2,7 +2,6 @@ import { useEffect, useRef, useCallback, useState } from 'react'
 import Hls from 'hls.js'
 import { Play, Pause, SkipBack, SkipForward, Scissors, Flag, Film, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { useStreamAccess } from '@/features/embed/hooks/useStreamAccess'
 import { APP_CONFIG } from '@/constants/app-config'
 import type { Video } from '@/features/video/types'
@@ -226,13 +225,9 @@ export function ReelPreviewCanvas({
   }
 
   return (
-    <div className="w-full max-w-[320px] space-y-4">
-      <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="text-sm">Preview ({outputFormat})</CardTitle>
-        </CardHeader>
-        <CardContent className="p-3">
-          <div className={`relative bg-black rounded-lg overflow-hidden ${getAspectClass(outputFormat)}`}>
+    <div className="w-full max-w-[320px] space-y-3">
+      <div className="text-sm text-muted-foreground text-center">Preview ({outputFormat})</div>
+      <div className={`relative bg-black rounded-lg overflow-hidden ${getAspectClass(outputFormat)}`}>
             {/* Video Container */}
             <div className="absolute inset-0 flex items-center justify-center overflow-hidden">
               <video
@@ -325,85 +320,81 @@ export function ReelPreviewCanvas({
             {/* Current Time Indicator */}
             {selectedVideo && (
               <div className="absolute bottom-2 left-2 right-2">
-                <div className="bg-black/60 rounded px-2 py-1 text-xs text-white text-center">
+                <div className="bg-black/60 rounded px-2 py-1 text-sm text-white text-center">
                   {formatTime(currentTime)} / {formatTime(segmentEnd - segmentStart)}
                 </div>
               </div>
             )}
           </div>
 
-          {/* Playback Controls */}
-          {selectedVideo && streamAccess?.token && (
-            <div className="mt-3 space-y-2">
-              {/* Play/Seek Controls */}
-              <div className="flex items-center justify-center gap-2">
-                <Button
-                  variant="outline"
-                  size="icon"
-                  className="h-8 w-8"
-                  onClick={() => seekTo(segmentStart)}
-                  disabled={!isVideoReady}
-                  title="ไปจุดเริ่มต้น"
-                >
-                  <SkipBack className="h-4 w-4" />
-                </Button>
-                <Button
-                  variant="outline"
-                  size="icon"
-                  className="h-8 w-8"
-                  onClick={togglePlayback}
-                  disabled={!isVideoReady}
-                >
-                  {isPlaying ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
-                </Button>
-                <Button
-                  variant="outline"
-                  size="icon"
-                  className="h-8 w-8"
-                  onClick={() => seekTo(Math.max(0, segmentEnd - 1))}
-                  disabled={!isVideoReady}
-                  title="ไปจุดสิ้นสุด"
-                >
-                  <SkipForward className="h-4 w-4" />
-                </Button>
-              </div>
+      {/* Playback Controls */}
+      {selectedVideo && streamAccess?.token && (
+        <div className="space-y-2">
+          {/* Play/Seek Controls */}
+          <div className="flex items-center justify-center gap-2">
+            <Button
+              variant="outline"
+              size="icon"
+              className="h-8 w-8"
+              onClick={() => seekTo(segmentStart)}
+              disabled={!isVideoReady}
+              title="ไปจุดเริ่มต้น"
+            >
+              <SkipBack className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="outline"
+              size="icon"
+              className="h-8 w-8"
+              onClick={togglePlayback}
+              disabled={!isVideoReady}
+            >
+              {isPlaying ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
+            </Button>
+            <Button
+              variant="outline"
+              size="icon"
+              className="h-8 w-8"
+              onClick={() => seekTo(Math.max(0, segmentEnd - 1))}
+              disabled={!isVideoReady}
+              title="ไปจุดสิ้นสุด"
+            >
+              <SkipForward className="h-4 w-4" />
+            </Button>
+          </div>
 
-              {/* Mark In/Out Controls */}
-              <div className="flex items-center justify-center gap-2">
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  className="h-7 text-xs"
-                  onClick={() => {
-                    onSegmentStartChange(currentTime)
-                    if (currentTime >= segmentEnd) {
-                      onSegmentEndChange(currentTime + 30)
-                    }
-                  }}
-                  disabled={!isVideoReady}
-                >
-                  <Flag className="h-3 w-3 mr-1" />
-                  จุดเริ่ม [{formatTime(currentTime)}]
-                </Button>
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  className="h-7 text-xs"
-                  onClick={() => {
-                    if (currentTime > segmentStart) {
-                      onSegmentEndChange(currentTime)
-                    }
-                  }}
-                  disabled={!isVideoReady || currentTime <= segmentStart}
-                >
-                  <Scissors className="h-3 w-3 mr-1" />
-                  จุดจบ [{formatTime(currentTime)}]
-                </Button>
-              </div>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+          {/* Mark In/Out Controls */}
+          <div className="flex items-center justify-center gap-2">
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => {
+                onSegmentStartChange(currentTime)
+                if (currentTime >= segmentEnd) {
+                  onSegmentEndChange(currentTime + 30)
+                }
+              }}
+              disabled={!isVideoReady}
+            >
+              <Flag className="h-3 w-3 mr-1" />
+              จุดเริ่ม [{formatTime(currentTime)}]
+            </Button>
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => {
+                if (currentTime > segmentStart) {
+                  onSegmentEndChange(currentTime)
+                }
+              }}
+              disabled={!isVideoReady || currentTime <= segmentStart}
+            >
+              <Scissors className="h-3 w-3 mr-1" />
+              จุดจบ [{formatTime(currentTime)}]
+            </Button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
