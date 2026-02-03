@@ -1,61 +1,20 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
-import Hls from 'hls.js'
+import { useState, useEffect, useCallback } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
-import {
-  ArrowLeft,
-  Save,
-  Download,
-  Loader2,
-  Film,
-  Play,
-  Pause,
-  SkipBack,
-  SkipForward,
-  Scissors,
-  Flag,
-} from 'lucide-react'
+import { ArrowLeft, Save, Download, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { Textarea } from '@/components/ui/textarea'
-import { Slider } from '@/components/ui/slider'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
-import { Switch } from '@/components/ui/switch'
-import { useReel, useCreateReel, useUpdateReel, useExportReel } from '../hooks'
-import { useVideoByCode, useVideos } from '@/features/video/hooks'
-import { useStreamAccess } from '@/features/embed/hooks/useStreamAccess'
-import { APP_CONFIG } from '@/constants/app-config'
-import type { ReelLayer, CreateReelRequest, UpdateReelRequest } from '../types'
 import { toast } from 'sonner'
 
-// Output format - the final canvas/frame size
-type OutputFormat = '9:16' | '1:1' | '4:5' | '16:9'
-
-const OUTPUT_FORMAT_OPTIONS: { value: OutputFormat; label: string; aspectClass: string; description: string }[] = [
-  { value: '9:16', label: '9:16', aspectClass: 'aspect-[9/16]', description: 'Reels/TikTok' },
-  { value: '1:1', label: '1:1', aspectClass: 'aspect-square', description: 'Square' },
-  { value: '4:5', label: '4:5', aspectClass: 'aspect-[4/5]', description: 'Instagram' },
-  { value: '16:9', label: '16:9', aspectClass: 'aspect-video', description: 'YouTube' },
-]
-
-// Video fit - how the source video fills the output frame
-type VideoFit = 'fill' | 'fit' | 'crop-1:1' | 'crop-4:3' | 'crop-4:5'
-
-const VIDEO_FIT_OPTIONS: { value: VideoFit; label: string; description: string; aspectRatio?: string }[] = [
-  { value: 'fill', label: 'เต็มกรอบ', description: 'Crop ให้เต็ม' },
-  { value: 'fit', label: 'พอดี', description: 'มีขอบดำ' },
-  { value: 'crop-1:1', label: '1:1', description: 'สี่เหลี่ยม', aspectRatio: '1/1' },
-  { value: 'crop-4:3', label: '4:3', description: 'จอเก่า', aspectRatio: '4/3' },
-  { value: 'crop-4:5', label: '4:5', description: 'IG', aspectRatio: '4/5' },
-]
+import { useReel, useCreateReel, useUpdateReel, useExportReel } from '../hooks'
+import { useVideoByCode, useVideos } from '@/features/video/hooks'
+import type { ReelLayer, CreateReelRequest, UpdateReelRequest, OutputFormat, VideoFit, TitlePosition } from '../types'
+import {
+  ReelPreviewCanvas,
+  ReelVideoSelector,
+  ReelTimecodeSelector,
+  ReelTextOverlay,
+  MAX_REEL_DURATION,
+} from '../components'
 
 export function ReelGeneratorPage() {
   const navigate = useNavigate()
@@ -79,7 +38,7 @@ export function ReelGeneratorPage() {
   const updateReel = useUpdateReel()
   const exportReel = useExportReel()
 
-  // Form state
+  // === Form State ===
   const [selectedVideoId, setSelectedVideoId] = useState<string>('')
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
@@ -89,149 +48,26 @@ export function ReelGeneratorPage() {
   // Display options
   const [outputFormat, setOutputFormat] = useState<OutputFormat>('9:16')
   const [videoFit, setVideoFit] = useState<VideoFit>('fill')
-  const [cropX, setCropX] = useState(50) // 0-100, 50 = center
-  const [cropY, setCropY] = useState(50) // 0-100, 50 = center
+  const [cropX, setCropX] = useState(50)
+  const [cropY, setCropY] = useState(50)
 
-  // Check if crop position adjustment is needed
-  const needsCropPosition = videoFit !== 'fit'
-  // Get crop aspect ratio for intermediate crop modes
-  const cropAspectRatio = VIDEO_FIT_OPTIONS.find(o => o.value === videoFit)?.aspectRatio
+  // Text overlay
   const [showTitle, setShowTitle] = useState(true)
   const [showDescription, setShowDescription] = useState(true)
   const [showGradient, setShowGradient] = useState(true)
-  const [titlePosition, setTitlePosition] = useState<'top' | 'center' | 'bottom'>('top')
+  const [titlePosition, setTitlePosition] = useState<TitlePosition>('top')
 
-  // Video info
-  const selectedVideo = videosData?.data.find((v) => v.id === selectedVideoId) || videoByCode
+  // Video state (from preview canvas)
   const [actualDuration, setActualDuration] = useState(0)
-  // จำกัด duration สูงสุด 10 นาที (600 วินาที) สำหรับทำ reel
-  const MAX_REEL_DURATION = 600
-  const rawDuration = actualDuration || selectedVideo?.duration || 0
-  const videoDuration = Math.min(rawDuration, MAX_REEL_DURATION)
-  const isVideoCapped = rawDuration > MAX_REEL_DURATION
-
-  // Stream access for video preview
-  const { data: streamAccess, isLoading: isStreamLoading } = useStreamAccess(selectedVideo?.code || '', {
-    enabled: !!selectedVideo?.code && selectedVideo?.status === 'ready',
-  })
-
-  // HLS URL for video player
-  const hlsUrl = selectedVideo?.code ? `${APP_CONFIG.streamUrl}/${selectedVideo.code}/master.m3u8` : ''
-
-  // Video player ref and state
-  const videoRef = useRef<HTMLVideoElement>(null)
-  const hlsRef = useRef<Hls | null>(null)
-  const [isPlaying, setIsPlaying] = useState(false)
   const [currentTime, setCurrentTime] = useState(0)
   const [isVideoReady, setIsVideoReady] = useState(false)
 
-  // Initialize HLS.js for video preview
-  useEffect(() => {
-    const video = videoRef.current
-    if (!video || !hlsUrl || !streamAccess?.token) return
+  // === Derived State ===
+  const selectedVideo = videosData?.data.find((v) => v.id === selectedVideoId) || videoByCode
+  const rawDuration = actualDuration || selectedVideo?.duration || 0
+  const videoDuration = Math.min(rawDuration, MAX_REEL_DURATION)
 
-    setIsVideoReady(false)
-    setActualDuration(0)
-
-    // Destroy previous instance
-    if (hlsRef.current) {
-      hlsRef.current.destroy()
-      hlsRef.current = null
-    }
-
-    // Handler เมื่อ video โหลด metadata เสร็จ
-    const handleLoadedMetadata = () => {
-      console.log('Video metadata loaded, duration:', video.duration)
-      if (video.duration && isFinite(video.duration)) {
-        setActualDuration(video.duration)
-        // ตั้งค่า segment end ถ้ายังไม่ได้ตั้ง
-        if (segmentEnd === 60 || segmentEnd > video.duration) {
-          setSegmentEnd(Math.min(60, video.duration))
-        }
-      }
-      setIsVideoReady(true)
-      video.currentTime = segmentStart
-      setCurrentTime(segmentStart)
-    }
-
-    if (Hls.isSupported()) {
-      const hls = new Hls({
-        xhrSetup: (xhr) => {
-          xhr.setRequestHeader('X-Stream-Token', streamAccess.token)
-        },
-      })
-      hls.loadSource(hlsUrl)
-      hls.attachMedia(video)
-      hlsRef.current = hls
-
-      // ใช้ loadedmetadata event แทน MANIFEST_PARSED เพื่อให้ได้ duration ที่ถูกต้อง
-      video.addEventListener('loadedmetadata', handleLoadedMetadata, { once: true })
-
-      hls.on(Hls.Events.ERROR, (_, data) => {
-        console.error('HLS Error:', data)
-      })
-    } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
-      video.src = hlsUrl
-      video.addEventListener('loadedmetadata', handleLoadedMetadata, { once: true })
-    }
-
-    return () => {
-      video.removeEventListener('loadedmetadata', handleLoadedMetadata)
-      if (hlsRef.current) {
-        hlsRef.current.destroy()
-        hlsRef.current = null
-      }
-    }
-  }, [hlsUrl, streamAccess?.token])
-
-  // Sync video time with segment
-  useEffect(() => {
-    const video = videoRef.current
-    if (!video) return
-
-    const handleTimeUpdate = () => {
-      setCurrentTime(video.currentTime)
-      if (video.currentTime >= segmentEnd) {
-        video.currentTime = segmentStart
-        if (isPlaying) {
-          video.play()
-        }
-      }
-    }
-
-    video.addEventListener('timeupdate', handleTimeUpdate)
-    return () => video.removeEventListener('timeupdate', handleTimeUpdate)
-  }, [segmentStart, segmentEnd, isPlaying])
-
-  // Toggle play/pause
-  const togglePlayback = useCallback(() => {
-    const video = videoRef.current
-    if (!video) return
-
-    if (video.paused) {
-      if (video.currentTime < segmentStart || video.currentTime >= segmentEnd) {
-        video.currentTime = segmentStart
-      }
-      video.play()
-      setIsPlaying(true)
-    } else {
-      video.pause()
-      setIsPlaying(false)
-    }
-  }, [segmentStart, segmentEnd])
-
-  // Seek to time
-  const seekTo = useCallback((time: number) => {
-    const video = videoRef.current
-    if (!video || !isVideoReady) return
-
-    // Clamp time to valid range
-    const clampedTime = Math.max(0, Math.min(time, videoDuration))
-    video.currentTime = clampedTime
-    setCurrentTime(clampedTime)
-  }, [isVideoReady, videoDuration])
-
-  // Initialize form when data loads
+  // === Initialize form when data loads ===
   useEffect(() => {
     if (existingReel) {
       setSelectedVideoId(existingReel.video?.id || '')
@@ -252,11 +88,46 @@ export function ReelGeneratorPage() {
     }
   }, [existingReel, videoByCode])
 
-  // Build layers from display options
+  // === Callbacks for child components ===
+  const handleVideoSelect = useCallback((videoId: string) => {
+    setSelectedVideoId(videoId)
+    const video = videosData?.data.find((v) => v.id === videoId)
+    if (video) {
+      setSegmentEnd(Math.min(60, video.duration))
+      setSegmentStart(0)
+    }
+  }, [videosData?.data])
+
+  const handleDurationChange = useCallback((duration: number) => {
+    setActualDuration(duration)
+    if (segmentEnd === 60 || segmentEnd > duration) {
+      setSegmentEnd(Math.min(60, duration))
+    }
+  }, [segmentEnd])
+
+  const handleSegmentStartChange = useCallback((time: number) => {
+    setSegmentStart(time)
+    if (time >= segmentEnd) {
+      setSegmentEnd(Math.min(time + 30, videoDuration))
+    }
+  }, [segmentEnd, videoDuration])
+
+  const handleSegmentEndChange = useCallback((time: number) => {
+    setSegmentEnd(Math.min(time, videoDuration))
+  }, [videoDuration])
+
+  const handleSeekTo = useCallback((time: number) => {
+    setCurrentTime(time)
+  }, [])
+
+  const handlePreviewSegment = useCallback(() => {
+    // Preview segment will be handled by ReelPreviewCanvas
+  }, [])
+
+  // === Build layers ===
   const buildLayers = (): ReelLayer[] => {
     const layers: ReelLayer[] = []
 
-    // Background gradient
     if (showGradient) {
       layers.push({
         type: 'background',
@@ -270,7 +141,6 @@ export function ReelGeneratorPage() {
       })
     }
 
-    // Title
     if (showTitle && title) {
       const yPos = titlePosition === 'top' ? 12 : titlePosition === 'center' ? 50 : 88
       layers.push({
@@ -287,7 +157,6 @@ export function ReelGeneratorPage() {
       })
     }
 
-    // Description (always at bottom if shown)
     if (showDescription && description) {
       const yPos = titlePosition === 'bottom' ? 78 : 88
       layers.push({
@@ -307,7 +176,7 @@ export function ReelGeneratorPage() {
     return layers
   }
 
-  // Save/Update
+  // === Actions ===
   const handleSave = async () => {
     if (!selectedVideoId) {
       toast.error('กรุณาเลือกวิดีโอ')
@@ -350,7 +219,6 @@ export function ReelGeneratorPage() {
     }
   }
 
-  // Export
   const handleExport = async () => {
     if (!id) {
       toast.error('กรุณาบันทึกก่อน Export')
@@ -365,21 +233,7 @@ export function ReelGeneratorPage() {
     }
   }
 
-  const formatTime = (seconds: number) => {
-    const mins = Math.floor(seconds / 60)
-    const secs = Math.floor(seconds % 60)
-    return `${mins}:${secs.toString().padStart(2, '0')}`
-  }
-
-  // Get title Y position for preview
-  const getTitleY = () => {
-    switch (titlePosition) {
-      case 'top': return '12%'
-      case 'center': return '50%'
-      case 'bottom': return '88%'
-    }
-  }
-
+  // === Loading State ===
   const isLoading = isLoadingReel || isLoadingVideo
 
   if (isLoading) {
@@ -443,660 +297,78 @@ export function ReelGeneratorPage() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Preview Canvas */}
         <div className="flex justify-center">
-          <div className="w-full max-w-[320px] space-y-4">
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm">Preview ({outputFormat})</CardTitle>
-              </CardHeader>
-              <CardContent className="p-3">
-                <div className={`relative bg-black rounded-lg overflow-hidden ${OUTPUT_FORMAT_OPTIONS.find(o => o.value === outputFormat)?.aspectClass || 'aspect-[9/16]'}`}>
-                  {/* Video Container - always present to maintain HLS connection */}
-                  <div className="absolute inset-0 flex items-center justify-center overflow-hidden">
-                    <video
-                      ref={videoRef}
-                      className="max-w-full max-h-full"
-                      style={cropAspectRatio ? {
-                        // Crop modes: show video with specific aspect ratio
-                        width: '100%',
-                        height: '100%',
-                        aspectRatio: cropAspectRatio,
-                        objectFit: 'cover',
-                        objectPosition: `${cropX}% ${cropY}%`,
-                      } : videoFit === 'fit' ? {
-                        // Fit mode: contain with letterbox
-                        width: '100%',
-                        height: '100%',
-                        objectFit: 'contain',
-                      } : {
-                        // Fill mode: cover entire frame
-                        width: '100%',
-                        height: '100%',
-                        objectFit: 'cover',
-                        objectPosition: `${cropX}% ${cropY}%`,
-                      }}
-                      muted
-                      playsInline
-                      onClick={togglePlayback}
-                    />
-                  </div>
-
-                  {/* Show loading/placeholder when no video */}
-                  {selectedVideo && isStreamLoading && (
-                    <div className="absolute inset-0 flex items-center justify-center bg-black">
-                      <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-                    </div>
-                  )}
-
-                  {/* Thumbnail fallback when no stream */}
-                  {selectedVideo?.thumbnailUrl && !streamAccess?.token && !isStreamLoading && (
-                    <div className="absolute inset-0 flex items-center justify-center overflow-hidden">
-                      <img
-                        src={selectedVideo.thumbnailUrl}
-                        alt="Preview"
-                        className="max-w-full max-h-full"
-                        style={cropAspectRatio ? {
-                          width: '100%',
-                          height: '100%',
-                          aspectRatio: cropAspectRatio,
-                          objectFit: 'cover',
-                          objectPosition: `${cropX}% ${cropY}%`,
-                        } : videoFit === 'fit' ? {
-                          width: '100%',
-                          height: '100%',
-                          objectFit: 'contain',
-                        } : {
-                          width: '100%',
-                          height: '100%',
-                          objectFit: 'cover',
-                          objectPosition: `${cropX}% ${cropY}%`,
-                        }}
-                      />
-                    </div>
-                  )}
-
-                  {/* Empty state */}
-                  {!selectedVideo && (
-                    <div className="absolute inset-0 flex items-center justify-center">
-                      <Film className="h-16 w-16 text-muted-foreground/30" />
-                    </div>
-                  )}
-
-                  {/* Play/Pause Overlay */}
-                  {selectedVideo && streamAccess?.token && (
-                    <div
-                      className="absolute inset-0 flex items-center justify-center cursor-pointer bg-black/20 opacity-0 hover:opacity-100 transition-opacity"
-                      onClick={togglePlayback}
-                    >
-                      {isPlaying ? (
-                        <Pause className="h-12 w-12 text-white drop-shadow-lg" />
-                      ) : (
-                        <Play className="h-12 w-12 text-white drop-shadow-lg" />
-                      )}
-                    </div>
-                  )}
-
-                  {/* Gradient Overlay */}
-                  {showGradient && (
-                    <div
-                      className="absolute inset-0 pointer-events-none"
-                      style={{
-                        background: 'linear-gradient(to bottom, rgba(0,0,0,0.3) 0%, transparent 30%, transparent 60%, rgba(0,0,0,0.7) 100%)',
-                      }}
-                    />
-                  )}
-
-                  {/* Title Preview */}
-                  {showTitle && title && (
-                    <div
-                      className="absolute left-0 right-0 text-center pointer-events-none px-4"
-                      style={{ top: getTitleY(), transform: 'translateY(-50%)' }}
-                    >
-                      <span
-                        className="text-white font-bold drop-shadow-lg"
-                        style={{ fontSize: '14px' }}
-                      >
-                        {title}
-                      </span>
-                    </div>
-                  )}
-
-                  {/* Description Preview */}
-                  {showDescription && description && (
-                    <div
-                      className="absolute left-0 right-0 text-center pointer-events-none px-4"
-                      style={{
-                        top: titlePosition === 'bottom' ? '78%' : '88%',
-                        transform: 'translateY(-50%)'
-                      }}
-                    >
-                      <span
-                        className="text-white/90 drop-shadow-lg"
-                        style={{ fontSize: '10px' }}
-                      >
-                        {description}
-                      </span>
-                    </div>
-                  )}
-
-                  {/* Current Time Indicator */}
-                  {selectedVideo && (
-                    <div className="absolute bottom-2 left-2 right-2">
-                      <div className="bg-black/60 rounded px-2 py-1 text-xs text-white text-center">
-                        {formatTime(currentTime)} / {formatTime(videoDuration)}
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                {/* Playback Controls */}
-                {selectedVideo && streamAccess?.token && (
-                  <div className="mt-3 space-y-2">
-                    {/* Play/Seek Controls */}
-                    <div className="flex items-center justify-center gap-2">
-                      <Button
-                        variant="outline"
-                        size="icon"
-                        className="h-8 w-8"
-                        onClick={() => seekTo(segmentStart)}
-                        disabled={!isVideoReady}
-                        title="ไปจุดเริ่มต้น"
-                      >
-                        <SkipBack className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="icon"
-                        className="h-8 w-8"
-                        onClick={togglePlayback}
-                        disabled={!isVideoReady}
-                      >
-                        {isPlaying ? (
-                          <Pause className="h-4 w-4" />
-                        ) : (
-                          <Play className="h-4 w-4" />
-                        )}
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="icon"
-                        className="h-8 w-8"
-                        onClick={() => seekTo(Math.max(0, segmentEnd - 1))}
-                        disabled={!isVideoReady}
-                        title="ไปจุดสิ้นสุด"
-                      >
-                        <SkipForward className="h-4 w-4" />
-                      </Button>
-                    </div>
-
-                    {/* Mark In/Out Controls */}
-                    <div className="flex items-center justify-center gap-2">
-                      <Button
-                        variant="secondary"
-                        size="sm"
-                        className="h-7 text-xs"
-                        onClick={() => {
-                          setSegmentStart(currentTime)
-                          if (currentTime >= segmentEnd) {
-                            setSegmentEnd(Math.min(currentTime + 30, videoDuration))
-                          }
-                        }}
-                        disabled={!isVideoReady}
-                      >
-                        <Flag className="h-3 w-3 mr-1" />
-                        จุดเริ่ม [{formatTime(currentTime)}]
-                      </Button>
-                      <Button
-                        variant="secondary"
-                        size="sm"
-                        className="h-7 text-xs"
-                        onClick={() => {
-                          if (currentTime > segmentStart) {
-                            setSegmentEnd(currentTime)
-                          }
-                        }}
-                        disabled={!isVideoReady || currentTime <= segmentStart}
-                      >
-                        <Scissors className="h-3 w-3 mr-1" />
-                        จุดจบ [{formatTime(currentTime)}]
-                      </Button>
-                    </div>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          </div>
+          <ReelPreviewCanvas
+            selectedVideo={selectedVideo}
+            outputFormat={outputFormat}
+            videoFit={videoFit}
+            cropX={cropX}
+            cropY={cropY}
+            segmentStart={segmentStart}
+            segmentEnd={segmentEnd}
+            title={title}
+            description={description}
+            showTitle={showTitle}
+            showDescription={showDescription}
+            showGradient={showGradient}
+            titlePosition={titlePosition}
+            onTimeUpdate={handleSeekTo}
+            onDurationChange={handleDurationChange}
+            onVideoReady={setIsVideoReady}
+            onSegmentStartChange={handleSegmentStartChange}
+            onSegmentEndChange={handleSegmentEndChange}
+          />
         </div>
 
         {/* Settings Panel */}
         <div className="space-y-4">
           {/* Step 1: Video Selection */}
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm">1. เลือกวิดีโอ</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <Select
-                value={selectedVideoId}
-                onValueChange={(v) => {
-                  setSelectedVideoId(v)
-                  const video = videosData?.data.find((vid) => vid.id === v)
-                  if (video) {
-                    setSegmentEnd(Math.min(60, video.duration))
-                    setSegmentStart(0)
-                  }
-                }}
-                disabled={isEditing}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="เลือกวิดีโอ..." />
-                </SelectTrigger>
-                <SelectContent>
-                  {videosData?.data.map((video) => (
-                    <SelectItem key={video.id} value={video.id}>
-                      {video.code} - {video.title} ({formatTime(video.duration)})
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-
-              {/* Output Format & Video Fit Options */}
-              {selectedVideo && (
-                <div className="space-y-3">
-                  {/* Output Format Selection */}
-                  <div className="space-y-2">
-                    <Label className="text-xs text-muted-foreground">1. ขนาดกรอบ Output</Label>
-                    <div className="grid grid-cols-4 gap-1">
-                      {OUTPUT_FORMAT_OPTIONS.map((opt) => (
-                        <Button
-                          key={opt.value}
-                          variant={outputFormat === opt.value ? 'default' : 'outline'}
-                          size="sm"
-                          className="h-auto py-2 text-xs px-2 flex flex-col"
-                          onClick={() => setOutputFormat(opt.value)}
-                        >
-                          <span className="font-bold">{opt.label}</span>
-                          <span className="text-[10px] opacity-70">{opt.description}</span>
-                        </Button>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Video Fit Selection */}
-                  <div className="space-y-2">
-                    <Label className="text-xs text-muted-foreground">2. Video ในกรอบ (Crop จาก 16:9)</Label>
-                    <div className="grid grid-cols-5 gap-1">
-                      {VIDEO_FIT_OPTIONS.map((opt) => (
-                        <Button
-                          key={opt.value}
-                          variant={videoFit === opt.value ? 'default' : 'outline'}
-                          size="sm"
-                          className="h-auto py-1.5 text-xs px-1 flex flex-col"
-                          onClick={() => setVideoFit(opt.value)}
-                        >
-                          <span className="font-bold text-[11px]">{opt.label}</span>
-                          <span className="text-[9px] opacity-70">{opt.description}</span>
-                        </Button>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Crop Position Controls (only when cropping) */}
-                  {needsCropPosition && (
-                    <div className="space-y-3 p-3 bg-muted/50 rounded-lg">
-                      <Label className="text-xs text-muted-foreground">3. ตำแหน่ง Crop</Label>
-
-                      {/* X Position (Left-Right) */}
-                      <div className="space-y-1">
-                        <div className="flex items-center justify-between text-xs">
-                          <span>ซ้าย</span>
-                          <span className="font-mono">{cropX}%</span>
-                          <span>ขวา</span>
-                        </div>
-                        <Slider
-                          value={[cropX]}
-                          min={0}
-                          max={100}
-                          step={1}
-                          onValueChange={([v]) => setCropX(v)}
-                        />
-                      </div>
-
-                      {/* Y Position */}
-                      <div className="space-y-1">
-                        <div className="flex items-center justify-between text-xs">
-                          <span>บน</span>
-                          <span className="font-mono">{cropY}%</span>
-                          <span>ล่าง</span>
-                        </div>
-                        <Slider
-                          value={[cropY]}
-                          min={0}
-                          max={100}
-                          step={1}
-                          onValueChange={([v]) => setCropY(v)}
-                        />
-                      </div>
-
-                      {/* Quick Position Buttons */}
-                      <div className="grid grid-cols-3 gap-1">
-                        <Button
-                          variant={cropX === 0 && cropY === 0 ? 'default' : 'outline'}
-                          size="sm"
-                          className="h-6 text-[10px]"
-                          onClick={() => { setCropX(0); setCropY(0) }}
-                        >
-                          ↖
-                        </Button>
-                        <Button
-                          variant={cropX === 50 && cropY === 0 ? 'default' : 'outline'}
-                          size="sm"
-                          className="h-6 text-[10px]"
-                          onClick={() => { setCropX(50); setCropY(0) }}
-                        >
-                          ↑
-                        </Button>
-                        <Button
-                          variant={cropX === 100 && cropY === 0 ? 'default' : 'outline'}
-                          size="sm"
-                          className="h-6 text-[10px]"
-                          onClick={() => { setCropX(100); setCropY(0) }}
-                        >
-                          ↗
-                        </Button>
-                        <Button
-                          variant={cropX === 0 && cropY === 50 ? 'default' : 'outline'}
-                          size="sm"
-                          className="h-6 text-[10px]"
-                          onClick={() => { setCropX(0); setCropY(50) }}
-                        >
-                          ←
-                        </Button>
-                        <Button
-                          variant={cropX === 50 && cropY === 50 ? 'default' : 'outline'}
-                          size="sm"
-                          className="h-6 text-[10px]"
-                          onClick={() => { setCropX(50); setCropY(50) }}
-                        >
-                          ●
-                        </Button>
-                        <Button
-                          variant={cropX === 100 && cropY === 50 ? 'default' : 'outline'}
-                          size="sm"
-                          className="h-6 text-[10px]"
-                          onClick={() => { setCropX(100); setCropY(50) }}
-                        >
-                          →
-                        </Button>
-                        <Button
-                          variant={cropX === 0 && cropY === 100 ? 'default' : 'outline'}
-                          size="sm"
-                          className="h-6 text-[10px]"
-                          onClick={() => { setCropX(0); setCropY(100) }}
-                        >
-                          ↙
-                        </Button>
-                        <Button
-                          variant={cropX === 50 && cropY === 100 ? 'default' : 'outline'}
-                          size="sm"
-                          className="h-6 text-[10px]"
-                          onClick={() => { setCropX(50); setCropY(100) }}
-                        >
-                          ↓
-                        </Button>
-                        <Button
-                          variant={cropX === 100 && cropY === 100 ? 'default' : 'outline'}
-                          size="sm"
-                          className="h-6 text-[10px]"
-                          onClick={() => { setCropX(100); setCropY(100) }}
-                        >
-                          ↘
-                        </Button>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
-            </CardContent>
-          </Card>
+          <ReelVideoSelector
+            videos={videosData?.data || []}
+            selectedVideoId={selectedVideoId}
+            outputFormat={outputFormat}
+            videoFit={videoFit}
+            cropX={cropX}
+            cropY={cropY}
+            isEditing={isEditing}
+            onVideoSelect={handleVideoSelect}
+            onOutputFormatChange={setOutputFormat}
+            onVideoFitChange={setVideoFit}
+            onCropXChange={setCropX}
+            onCropYChange={setCropY}
+          />
 
           {/* Step 2: Timecode Selection */}
           {selectedVideo && (
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm">2. เลือกช่วงเวลา</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                {/* Notice if video is capped */}
-                {isVideoCapped && (
-                  <div className="p-2 bg-yellow-500/10 border border-yellow-500/30 rounded text-xs text-yellow-600 dark:text-yellow-400">
-                    วิดีโอยาว {formatTime(rawDuration)} - ใช้ได้แค่ 10 นาทีแรก
-                  </div>
-                )}
-
-                {/* Show loading if duration not yet available */}
-                {videoDuration === 0 && (
-                  <div className="flex items-center justify-center py-8 text-muted-foreground">
-                    <Loader2 className="h-5 w-5 animate-spin mr-2" />
-                    <span className="text-sm">กำลังโหลดข้อมูลวิดีโอ...</span>
-                  </div>
-                )}
-
-                {videoDuration > 0 && (
-                  <>
-                {/* Selected Segment Info */}
-                <div className="p-3 bg-primary/10 border border-primary/30 rounded-lg">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-sm font-medium">Segment ที่เลือก</span>
-                    <span className="text-lg font-bold text-primary">
-                      {formatTime(segmentEnd - segmentStart)}
-                    </span>
-                  </div>
-                  <div className="flex items-center justify-between text-sm text-muted-foreground">
-                    <span>เริ่ม: <span className="font-mono text-foreground">{formatTime(segmentStart)}</span></span>
-                    <span>→</span>
-                    <span>จบ: <span className="font-mono text-foreground">{formatTime(segmentEnd)}</span></span>
-                  </div>
-                </div>
-
-                {/* Timeline Visual */}
-                <div
-                  className={`relative h-16 bg-muted rounded-lg overflow-hidden ${isVideoReady ? 'cursor-pointer' : 'cursor-not-allowed opacity-50'}`}
-                  onClick={(e) => {
-                    if (!isVideoReady) return
-                    const rect = e.currentTarget.getBoundingClientRect()
-                    const x = e.clientX - rect.left
-                    const time = (x / rect.width) * videoDuration
-                    seekTo(time)
-                  }}
-                >
-                  {/* Selected range highlight */}
-                  <div
-                    className="absolute top-0 bottom-0 bg-primary/40 border-x-2 border-primary"
-                    style={{
-                      left: `${(segmentStart / videoDuration) * 100}%`,
-                      width: `${((segmentEnd - segmentStart) / videoDuration) * 100}%`,
-                    }}
-                  >
-                    {/* Segment start/end labels */}
-                    <div className="absolute -left-1 top-1 text-[9px] font-bold text-primary bg-background px-1 rounded">
-                      IN
-                    </div>
-                    <div className="absolute -right-1 top-1 text-[9px] font-bold text-primary bg-background px-1 rounded">
-                      OUT
-                    </div>
-                  </div>
-
-                  {/* Current playhead */}
-                  <div
-                    className="absolute top-0 bottom-0 w-1 bg-red-500 z-10"
-                    style={{ left: `${(currentTime / videoDuration) * 100}%` }}
-                  >
-                    <div className="absolute -top-1 left-1/2 -translate-x-1/2 w-3 h-3 bg-red-500 rounded-full" />
-                    <div className="absolute top-4 left-1/2 -translate-x-1/2 text-[9px] font-mono bg-red-500 text-white px-1 rounded whitespace-nowrap">
-                      {formatTime(currentTime)}
-                    </div>
-                  </div>
-
-                  {/* Time markers */}
-                  <div className="absolute bottom-1 left-2 text-[10px] text-muted-foreground">
-                    0:00
-                  </div>
-                  <div className="absolute bottom-1 right-2 text-[10px] text-muted-foreground">
-                    {formatTime(videoDuration)}
-                  </div>
-
-                  {/* Loading indicator */}
-                  {!isVideoReady && (
-                    <div className="absolute inset-0 flex items-center justify-center">
-                      <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-                    </div>
-                  )}
-                </div>
-
-                {/* Instructions */}
-                <p className="text-xs text-muted-foreground text-center">
-                  คลิก timeline เพื่อ seek → กดปุ่ม "จุดเริ่ม" / "จุดจบ" ใต้ preview
-                </p>
-
-                {/* Start/End Sliders */}
-                <div className="space-y-3">
-                  <div className="space-y-1">
-                    <div className="flex items-center justify-between">
-                      <Label className="text-xs">จุดเริ่มต้น</Label>
-                      <span className="text-xs text-muted-foreground font-mono">
-                        {formatTime(segmentStart)}
-                      </span>
-                    </div>
-                    <Slider
-                      value={[segmentStart]}
-                      min={0}
-                      max={Math.max(0, videoDuration - 1)}
-                      step={0.5}
-                      onValueChange={([value]) => {
-                        setSegmentStart(value)
-                        if (value >= segmentEnd) {
-                          setSegmentEnd(Math.min(value + 15, videoDuration))
-                        }
-                        seekTo(value)
-                      }}
-                    />
-                  </div>
-
-                  <div className="space-y-1">
-                    <div className="flex items-center justify-between">
-                      <Label className="text-xs">จุดสิ้นสุด</Label>
-                      <span className="text-xs text-muted-foreground font-mono">
-                        {formatTime(segmentEnd)}
-                      </span>
-                    </div>
-                    <Slider
-                      value={[segmentEnd]}
-                      min={segmentStart + 1}
-                      max={videoDuration}
-                      step={0.5}
-                      onValueChange={([value]) => {
-                        setSegmentEnd(value)
-                        // Seek to end point to preview where it ends
-                        seekTo(value - 0.5)
-                      }}
-                    />
-                  </div>
-                </div>
-
-                {/* Preview Segment Button */}
-                <Button
-                  variant="secondary"
-                  className="w-full"
-                  onClick={() => {
-                    seekTo(segmentStart)
-                    togglePlayback()
-                  }}
-                  disabled={!isVideoReady}
-                >
-                  <Play className="h-4 w-4 mr-2" />
-                  Preview Segment ({formatTime(segmentEnd - segmentStart)})
-                </Button>
-
-                {/* Quick Duration Buttons */}
-                <div className="flex gap-2">
-                  {[15, 30, 60, 90].map((duration) => (
-                    <Button
-                      key={duration}
-                      variant={segmentEnd - segmentStart === duration ? 'default' : 'outline'}
-                      size="sm"
-                      className="flex-1"
-                      onClick={() => {
-                        const newEnd = Math.min(segmentStart + duration, videoDuration)
-                        setSegmentEnd(newEnd)
-                      }}
-                    >
-                      {duration}s
-                    </Button>
-                  ))}
-                </div>
-                  </>
-                )}
-              </CardContent>
-            </Card>
+            <ReelTimecodeSelector
+              videoDuration={videoDuration}
+              rawDuration={rawDuration}
+              segmentStart={segmentStart}
+              segmentEnd={segmentEnd}
+              currentTime={currentTime}
+              isVideoReady={isVideoReady}
+              onSegmentStartChange={handleSegmentStartChange}
+              onSegmentEndChange={handleSegmentEndChange}
+              onSeekTo={handleSeekTo}
+              onPreviewSegment={handlePreviewSegment}
+            />
           )}
 
           {/* Step 3: Text Overlay */}
           {selectedVideo && (
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm">3. ข้อความบนวิดีโอ</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                {/* Title */}
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <Label>หัวข้อ</Label>
-                    <Switch checked={showTitle} onCheckedChange={setShowTitle} />
-                  </div>
-                  {showTitle && (
-                    <>
-                      <Input
-                        value={title}
-                        onChange={(e) => setTitle(e.target.value)}
-                        placeholder="พิมพ์หัวข้อ..."
-                      />
-                      <Select value={titlePosition} onValueChange={(v) => setTitlePosition(v as 'top' | 'center' | 'bottom')}>
-                        <SelectTrigger className="h-8">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="top">แสดงด้านบน</SelectItem>
-                          <SelectItem value="center">แสดงตรงกลาง</SelectItem>
-                          <SelectItem value="bottom">แสดงด้านล่าง</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </>
-                  )}
-                </div>
-
-                {/* Description */}
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <Label>คำอธิบาย</Label>
-                    <Switch checked={showDescription} onCheckedChange={setShowDescription} />
-                  </div>
-                  {showDescription && (
-                    <Textarea
-                      value={description}
-                      onChange={(e) => setDescription(e.target.value)}
-                      placeholder="พิมพ์คำอธิบาย..."
-                      rows={2}
-                    />
-                  )}
-                </div>
-
-                {/* Gradient Toggle */}
-                <div className="flex items-center justify-between">
-                  <Label>Gradient พื้นหลัง</Label>
-                  <Switch checked={showGradient} onCheckedChange={setShowGradient} />
-                </div>
-              </CardContent>
-            </Card>
+            <ReelTextOverlay
+              title={title}
+              description={description}
+              showTitle={showTitle}
+              showDescription={showDescription}
+              showGradient={showGradient}
+              titlePosition={titlePosition}
+              onTitleChange={setTitle}
+              onDescriptionChange={setDescription}
+              onShowTitleChange={setShowTitle}
+              onShowDescriptionChange={setShowDescription}
+              onShowGradientChange={setShowGradient}
+              onTitlePositionChange={setTitlePosition}
+            />
           )}
         </div>
       </div>

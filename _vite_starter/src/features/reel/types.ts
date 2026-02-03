@@ -1,6 +1,30 @@
 // Reel Generator Types
 
 export type ReelStatus = 'draft' | 'exporting' | 'ready' | 'failed'
+
+// Output format - the final canvas/frame size
+export type OutputFormat = '9:16' | '1:1' | '4:5' | '16:9'
+
+// Video fit - how the source video fills the output frame
+export type VideoFit = 'fill' | 'fit' | 'crop-1:1' | 'crop-4:3' | 'crop-4:5'
+
+export type TitlePosition = 'top' | 'center' | 'bottom'
+
+// Output format option for UI
+export interface OutputFormatOption {
+  value: OutputFormat
+  label: string
+  aspectClass: string
+  description: string
+}
+
+// Video fit option for UI
+export interface VideoFitOption {
+  value: VideoFit
+  label: string
+  description: string
+  aspectRatio?: string
+}
 export type ReelLayerType = 'text' | 'image' | 'shape' | 'background'
 
 // Layer definition for composition
