@@ -33,12 +33,14 @@ export async function downloadReel(videoCode: string, reelId: string, title?: st
       return false
     }
 
-    // 2. Fetch reel with token
-    const url = `${CDN_BASE_URL}/reels/${videoCode}/${reelId}.mp4`
+    // 2. Fetch reel with token (add cache buster to bypass CDN/browser cache)
+    const cacheBuster = Date.now()
+    const url = `${CDN_BASE_URL}/reels/${videoCode}/${reelId}.mp4?t=${cacheBuster}`
     const response = await fetch(url, {
       headers: {
         'X-Stream-Token': token,
       },
+      cache: 'no-store',
     })
 
     if (!response.ok) {
@@ -68,39 +70,37 @@ export async function downloadReel(videoCode: string, reelId: string, title?: st
 }
 
 /**
- * เปิด reel ใน tab ใหม่ผ่าน authenticated CDN
+ * ดึง reel เป็น blob URL สำหรับ preview
  */
-export async function openReel(videoCode: string, reelId: string): Promise<boolean> {
+export async function getReelBlobUrl(videoCode: string, reelId: string): Promise<string | null> {
   try {
     // 1. Get stream token
     const token = await getStreamToken(videoCode)
     if (!token) {
-      toast.error('ไม่สามารถเปิดได้')
-      return false
+      toast.error('ไม่สามารถโหลดได้')
+      return null
     }
 
-    // 2. Fetch reel with token
-    const url = `${CDN_BASE_URL}/reels/${videoCode}/${reelId}.mp4`
+    // 2. Fetch reel with token (add cache buster to bypass CDN/browser cache)
+    const cacheBuster = Date.now()
+    const url = `${CDN_BASE_URL}/reels/${videoCode}/${reelId}.mp4?t=${cacheBuster}`
     const response = await fetch(url, {
       headers: {
         'X-Stream-Token': token,
       },
+      cache: 'no-store',
     })
 
     if (!response.ok) {
       throw new Error('Failed to fetch reel')
     }
 
-    // 3. Create blob and open in new tab
+    // 3. Create blob URL
     const blob = await response.blob()
-    const blobUrl = URL.createObjectURL(blob)
-
-    window.open(blobUrl, '_blank')
-
-    return true
+    return URL.createObjectURL(blob)
   } catch (error) {
-    console.error('Open error:', error)
-    toast.error('เปิดไม่สำเร็จ')
-    return false
+    console.error('Fetch error:', error)
+    toast.error('โหลดไม่สำเร็จ')
+    return null
   }
 }

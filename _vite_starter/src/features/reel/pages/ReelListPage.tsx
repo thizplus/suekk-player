@@ -1,16 +1,6 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import {
-  Plus,
-  Trash2,
-  MoreVertical,
-  Loader2,
-  Film,
-  Download,
-  Eye,
-  Pencil,
-  ExternalLink,
-} from 'lucide-react'
+import { Plus, Trash2, MoreVertical, Loader2, Film, Download, Eye, Pencil, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import {
@@ -23,6 +13,12 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -50,7 +46,7 @@ import { Card } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useReels, useDeleteReel, useExportReel } from '../hooks'
 import type { Reel, ReelFilterParams, ReelStatus } from '../types'
-import { downloadReel, openReel } from '../utils/reelDownload'
+import { downloadReel, getReelBlobUrl } from '../utils/reelDownload'
 import { toast } from 'sonner'
 
 // Status styles
@@ -80,6 +76,12 @@ interface DeleteTarget {
   title: string
 }
 
+interface PreviewTarget {
+  reel: Reel
+  blobUrl: string | null
+  isLoading: boolean
+}
+
 export function ReelListPage() {
   const navigate = useNavigate()
   const [filters, setFilters] = useState<ReelFilterParams>({
@@ -89,6 +91,7 @@ export function ReelListPage() {
     sortOrder: 'desc',
   })
   const [deleteTarget, setDeleteTarget] = useState<DeleteTarget | null>(null)
+  const [preview, setPreview] = useState<PreviewTarget | null>(null)
 
   const { data, isLoading, error } = useReels(filters)
   const deleteReel = useDeleteReel()
@@ -149,6 +152,37 @@ export function ReelListPage() {
       minute: '2-digit',
     })
   }
+
+  const handlePreview = async (reel: Reel) => {
+    if (!reel.video?.code) return
+
+    // Set loading state
+    setPreview({ reel, blobUrl: null, isLoading: true })
+
+    // Fetch blob URL
+    const blobUrl = await getReelBlobUrl(reel.video.code, reel.id)
+    if (blobUrl) {
+      setPreview({ reel, blobUrl, isLoading: false })
+    } else {
+      setPreview(null)
+    }
+  }
+
+  const closePreview = () => {
+    if (preview?.blobUrl) {
+      URL.revokeObjectURL(preview.blobUrl)
+    }
+    setPreview(null)
+  }
+
+  // Cleanup blob URL on unmount
+  useEffect(() => {
+    return () => {
+      if (preview?.blobUrl) {
+        URL.revokeObjectURL(preview.blobUrl)
+      }
+    }
+  }, [preview?.blobUrl])
 
   if (error) {
     return (
@@ -246,22 +280,8 @@ export function ReelListPage() {
                     {/* Video Info */}
                     <TableCell>
                       <div className="flex items-center gap-3">
-                        <div className="w-12 h-12 rounded bg-muted flex items-center justify-center shrink-0 overflow-hidden">
-                          {reel.thumbnailUrl ? (
-                            <img
-                              src={reel.thumbnailUrl}
-                              alt=""
-                              className="w-full h-full object-cover"
-                            />
-                          ) : reel.video?.thumbnailUrl ? (
-                            <img
-                              src={reel.video.thumbnailUrl}
-                              alt=""
-                              className="w-full h-full object-cover opacity-60"
-                            />
-                          ) : (
-                            <Film className="h-5 w-5 text-muted-foreground/50" />
-                          )}
+                        <div className="w-10 h-10 rounded bg-muted flex items-center justify-center shrink-0">
+                          <Film className="h-5 w-5 text-muted-foreground/50" />
                         </div>
                         <div className="min-w-0">
                           <p className="font-medium truncate max-w-[200px]">
@@ -345,7 +365,7 @@ export function ReelListPage() {
                               <DropdownMenuItem
                                 onClick={(e) => {
                                   e.stopPropagation()
-                                  openReel(reel.video!.code, reel.id)
+                                  handlePreview(reel)
                                 }}
                               >
                                 <Eye className="h-4 w-4 mr-2" />
@@ -357,7 +377,7 @@ export function ReelListPage() {
                                   downloadReel(reel.video!.code, reel.id, reel.title)
                                 }}
                               >
-                                <ExternalLink className="h-4 w-4 mr-2" />
+                                <Download className="h-4 w-4 mr-2" />
                                 ดาวน์โหลด
                               </DropdownMenuItem>
                             </>
@@ -452,6 +472,42 @@ export function ReelListPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Preview Dialog */}
+      <Dialog open={!!preview} onOpenChange={(open) => !open && closePreview()}>
+        <DialogContent className="w-auto max-w-[90vw] p-0 overflow-hidden max-h-[85vh] [&>button]:hidden">
+          <div className="aspect-[9/16] h-[75vh] bg-black flex items-center justify-center">
+            {preview?.isLoading ? (
+              <div className="flex flex-col items-center gap-2 text-white">
+                <Loader2 className="h-8 w-8 animate-spin" />
+                <span className="text-sm">กำลังโหลด...</span>
+              </div>
+            ) : preview?.blobUrl ? (
+              <video
+                src={preview.blobUrl}
+                controls
+                autoPlay
+                className="w-full h-full object-contain"
+              />
+            ) : null}
+          </div>
+          {preview?.reel && !preview.isLoading && (
+            <div className="p-3 flex justify-end border-t">
+              <Button
+                size="sm"
+                onClick={() => {
+                  if (preview.reel.video?.code) {
+                    downloadReel(preview.reel.video.code, preview.reel.id, preview.reel.title)
+                  }
+                }}
+              >
+                <Download className="h-4 w-4 mr-2" />
+                ดาวน์โหลด
+              </Button>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
