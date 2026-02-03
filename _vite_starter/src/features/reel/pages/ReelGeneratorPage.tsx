@@ -97,11 +97,14 @@ export function ReelGeneratorPage() {
   const hlsRef = useRef<Hls | null>(null)
   const [isPlaying, setIsPlaying] = useState(false)
   const [currentTime, setCurrentTime] = useState(0)
+  const [isVideoReady, setIsVideoReady] = useState(false)
 
   // Initialize HLS.js for video preview
   useEffect(() => {
     const video = videoRef.current
     if (!video || !hlsUrl || !streamAccess?.token) return
+
+    setIsVideoReady(false)
 
     // Destroy previous instance
     if (hlsRef.current) {
@@ -120,13 +123,21 @@ export function ReelGeneratorPage() {
       hlsRef.current = hls
 
       hls.on(Hls.Events.MANIFEST_PARSED, () => {
+        setIsVideoReady(true)
         video.currentTime = segmentStart
         setCurrentTime(segmentStart)
       })
+
+      hls.on(Hls.Events.ERROR, (_, data) => {
+        console.error('HLS Error:', data)
+      })
     } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
       video.src = hlsUrl
-      video.currentTime = segmentStart
-      setCurrentTime(segmentStart)
+      video.addEventListener('loadedmetadata', () => {
+        setIsVideoReady(true)
+        video.currentTime = segmentStart
+        setCurrentTime(segmentStart)
+      }, { once: true })
     }
 
     return () => {
@@ -176,10 +187,13 @@ export function ReelGeneratorPage() {
   // Seek to time
   const seekTo = useCallback((time: number) => {
     const video = videoRef.current
-    if (!video) return
-    video.currentTime = time
-    setCurrentTime(time)
-  }, [])
+    if (!video || !isVideoReady) return
+
+    // Clamp time to valid range
+    const clampedTime = Math.max(0, Math.min(time, videoDuration))
+    video.currentTime = clampedTime
+    setCurrentTime(clampedTime)
+  }, [isVideoReady, videoDuration])
 
   // Initialize form when data loads
   useEffect(() => {
@@ -516,6 +530,7 @@ export function ReelGeneratorPage() {
                       size="icon"
                       className="h-8 w-8"
                       onClick={() => seekTo(segmentStart)}
+                      disabled={!isVideoReady}
                     >
                       <SkipBack className="h-4 w-4" />
                     </Button>
@@ -524,6 +539,7 @@ export function ReelGeneratorPage() {
                       size="icon"
                       className="h-8 w-8"
                       onClick={togglePlayback}
+                      disabled={!isVideoReady}
                     >
                       {isPlaying ? (
                         <Pause className="h-4 w-4" />
@@ -535,7 +551,8 @@ export function ReelGeneratorPage() {
                       variant="outline"
                       size="icon"
                       className="h-8 w-8"
-                      onClick={() => seekTo(segmentEnd)}
+                      onClick={() => seekTo(Math.max(0, segmentEnd - 1))}
+                      disabled={!isVideoReady}
                     >
                       <SkipForward className="h-4 w-4" />
                     </Button>
@@ -607,32 +624,48 @@ export function ReelGeneratorPage() {
               </CardHeader>
               <CardContent className="space-y-4">
                 {/* Timeline Visual */}
-                <div className="relative h-12 bg-muted rounded-lg overflow-hidden">
-                  {/* Full video bar */}
-                  <div className="absolute inset-0 bg-muted" />
-                  {/* Selected range */}
+                <div
+                  className={`relative h-14 bg-muted rounded-lg overflow-hidden ${isVideoReady ? 'cursor-pointer' : 'cursor-not-allowed opacity-50'}`}
+                  onClick={(e) => {
+                    if (!isVideoReady) return
+                    const rect = e.currentTarget.getBoundingClientRect()
+                    const x = e.clientX - rect.left
+                    const time = (x / rect.width) * videoDuration
+                    seekTo(time)
+                  }}
+                >
+                  {/* Selected range highlight */}
                   <div
-                    className="absolute top-0 bottom-0 bg-primary/30"
+                    className="absolute top-0 bottom-0 bg-primary/40 border-x-2 border-primary"
                     style={{
                       left: `${(segmentStart / videoDuration) * 100}%`,
                       width: `${((segmentEnd - segmentStart) / videoDuration) * 100}%`,
                     }}
                   />
-                  {/* Current position */}
+
+                  {/* Current playhead */}
                   <div
-                    className="absolute top-0 bottom-0 w-0.5 bg-primary"
+                    className="absolute top-0 bottom-0 w-1 bg-red-500 z-10"
                     style={{ left: `${(currentTime / videoDuration) * 100}%` }}
-                  />
-                  {/* Clickable overlay */}
-                  <div
-                    className="absolute inset-0 cursor-pointer"
-                    onClick={(e) => {
-                      const rect = e.currentTarget.getBoundingClientRect()
-                      const x = e.clientX - rect.left
-                      const time = (x / rect.width) * videoDuration
-                      seekTo(Math.max(0, Math.min(videoDuration, time)))
-                    }}
-                  />
+                  >
+                    {/* Playhead handle */}
+                    <div className="absolute -top-1 left-1/2 -translate-x-1/2 w-3 h-3 bg-red-500 rounded-full" />
+                  </div>
+
+                  {/* Time markers */}
+                  <div className="absolute bottom-1 left-2 text-[10px] text-muted-foreground">
+                    0:00
+                  </div>
+                  <div className="absolute bottom-1 right-2 text-[10px] text-muted-foreground">
+                    {formatTime(videoDuration)}
+                  </div>
+
+                  {/* Loading indicator */}
+                  {!isVideoReady && (
+                    <div className="absolute inset-0 flex items-center justify-center">
+                      <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                    </div>
+                  )}
                 </div>
 
                 {/* Time display */}
@@ -647,12 +680,17 @@ export function ReelGeneratorPage() {
                 {/* Start/End Sliders */}
                 <div className="space-y-3">
                   <div className="space-y-1">
-                    <Label className="text-xs">เริ่มต้น</Label>
+                    <div className="flex items-center justify-between">
+                      <Label className="text-xs">จุดเริ่มต้น</Label>
+                      <span className="text-xs text-muted-foreground font-mono">
+                        {formatTime(segmentStart)}
+                      </span>
+                    </div>
                     <Slider
                       value={[segmentStart]}
                       min={0}
                       max={Math.max(0, videoDuration - 1)}
-                      step={1}
+                      step={0.5}
                       onValueChange={([value]) => {
                         setSegmentStart(value)
                         if (value >= segmentEnd) {
@@ -664,18 +702,39 @@ export function ReelGeneratorPage() {
                   </div>
 
                   <div className="space-y-1">
-                    <Label className="text-xs">สิ้นสุด</Label>
+                    <div className="flex items-center justify-between">
+                      <Label className="text-xs">จุดสิ้นสุด</Label>
+                      <span className="text-xs text-muted-foreground font-mono">
+                        {formatTime(segmentEnd)}
+                      </span>
+                    </div>
                     <Slider
                       value={[segmentEnd]}
                       min={segmentStart + 1}
                       max={videoDuration}
-                      step={1}
+                      step={0.5}
                       onValueChange={([value]) => {
                         setSegmentEnd(value)
+                        // Seek to end point to preview where it ends
+                        seekTo(value - 0.5)
                       }}
                     />
                   </div>
                 </div>
+
+                {/* Preview Segment Button */}
+                <Button
+                  variant="secondary"
+                  className="w-full"
+                  onClick={() => {
+                    seekTo(segmentStart)
+                    togglePlayback()
+                  }}
+                  disabled={!isVideoReady}
+                >
+                  <Play className="h-4 w-4 mr-2" />
+                  Preview Segment ({formatTime(segmentEnd - segmentStart)})
+                </Button>
 
                 {/* Quick Duration Buttons */}
                 <div className="flex gap-2">
