@@ -60,19 +60,19 @@ type ReelExportJob struct {
 	SegmentEnd   float64 `json:"segment_end"`   // End time in seconds
 
 	// NEW: Style-based composition (simplified)
-	Style        string `json:"style"`         // letterbox, square, fullcover
-	Title        string `json:"title"`         // Main title text
-	Line1        string `json:"line1"`         // Secondary line 1
-	Line2        string `json:"line2"`         // Secondary line 2
-	ShowLogo     bool   `json:"show_logo"`     // Show logo overlay
-	LogoPath     string `json:"logo_path"`     // S3 path to logo PNG (optional)
-	GradientPath string `json:"gradient_path"` // S3 path to gradient PNG (for fullcover)
+	Style        string  `json:"style"`         // letterbox, square, fullcover
+	Title        string  `json:"title"`         // Main title text
+	Line1        string  `json:"line1"`         // Secondary line 1
+	Line2        string  `json:"line2"`         // Secondary line 2
+	ShowLogo     bool    `json:"show_logo"`     // Show logo overlay
+	LogoPath     string  `json:"logo_path"`     // S3 path to logo PNG (optional)
+	GradientPath string  `json:"gradient_path"` // S3 path to gradient PNG (for fullcover)
+	CropX        float64 `json:"crop_x"`        // 0-100 crop position X (for square/fullcover)
+	CropY        float64 `json:"crop_y"`        // 0-100 crop position Y (for square)
 
 	// LEGACY: Layer-based composition (deprecated)
 	OutputFormat string         `json:"output_format"` // 9:16, 1:1, 4:5, 16:9
 	VideoFit     string         `json:"video_fit"`     // fill, fit, crop-1:1, crop-4:3, crop-4:5
-	CropX        float64        `json:"crop_x"`        // 0-100 crop position X
-	CropY        float64        `json:"crop_y"`        // 0-100 crop position Y
 	Layers       []ReelLayerJob `json:"layers"`        // Composition layers
 
 	OutputPath string `json:"output_path"` // S3 path for MP4 output

@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useMemo } from 'react'
 import { Search, X, Loader2, Check } from 'lucide-react'
 import { Label } from '@/components/ui/label'
+import { Slider } from '@/components/ui/slider'
 import { useVideos } from '@/features/video/hooks'
 import type { Video } from '@/features/video/types'
 import type { ReelStyle } from '../types'
@@ -29,8 +30,12 @@ interface ReelVideoSelectorProps {
   selectedVideo: Video | undefined
   style: ReelStyle
   isEditing: boolean
+  cropX: number
+  cropY: number
   onVideoSelect: (videoId: string, video?: Video) => void
   onStyleChange: (style: ReelStyle) => void
+  onCropXChange: (value: number) => void
+  onCropYChange: (value: number) => void
 }
 
 export function ReelVideoSelector({
@@ -38,8 +43,12 @@ export function ReelVideoSelector({
   selectedVideo,
   style,
   isEditing,
+  cropX,
+  cropY,
   onVideoSelect,
   onStyleChange,
+  onCropXChange,
+  onCropYChange,
 }: ReelVideoSelectorProps) {
   const hasVideo = !!selectedVideoId
 
@@ -211,6 +220,72 @@ export function ReelVideoSelector({
           {/* Style preview hint */}
           <p className="text-xs text-muted-foreground text-center">
             Output: 1080x1920 (9:16) พร้อม Logo และ Text Overlay
+          </p>
+        </div>
+      )}
+
+      {/* Crop Position - Only show for square and fullcover styles */}
+      {hasVideo && (style === 'square' || style === 'fullcover') && (
+        <div className="space-y-4 p-4 bg-muted/30 rounded-lg">
+          <div className="flex items-center justify-between">
+            <Label className="text-sm font-medium">ตำแหน่ง Crop</Label>
+            <button
+              onClick={() => {
+                onCropXChange(50)
+                onCropYChange(50)
+              }}
+              className="text-xs text-primary hover:underline"
+            >
+              รีเซ็ตกลาง
+            </button>
+          </div>
+
+          {/* Crop X - Horizontal position */}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-muted-foreground">แนวนอน (X)</span>
+              <span className="text-sm font-mono">{cropX}%</span>
+            </div>
+            <div className="flex items-center gap-3">
+              <span className="text-xs text-muted-foreground">ซ้าย</span>
+              <Slider
+                value={[cropX]}
+                onValueChange={([value]) => onCropXChange(value)}
+                min={0}
+                max={100}
+                step={1}
+                className="flex-1"
+              />
+              <span className="text-xs text-muted-foreground">ขวา</span>
+            </div>
+          </div>
+
+          {/* Crop Y - Vertical position (only for square, fullcover doesn't need Y) */}
+          {style === 'square' && (
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-muted-foreground">แนวตั้ง (Y)</span>
+                <span className="text-sm font-mono">{cropY}%</span>
+              </div>
+              <div className="flex items-center gap-3">
+                <span className="text-xs text-muted-foreground">บน</span>
+                <Slider
+                  value={[cropY]}
+                  onValueChange={([value]) => onCropYChange(value)}
+                  min={0}
+                  max={100}
+                  step={1}
+                  className="flex-1"
+                />
+                <span className="text-xs text-muted-foreground">ล่าง</span>
+              </div>
+            </div>
+          )}
+
+          <p className="text-xs text-muted-foreground">
+            {style === 'square'
+              ? 'ปรับตำแหน่ง crop สำหรับวิดีโอ 1:1 (50% = กึ่งกลาง)'
+              : 'ปรับตำแหน่ง crop แนวนอนสำหรับวิดีโอเต็มจอ'}
           </p>
         </div>
       )}

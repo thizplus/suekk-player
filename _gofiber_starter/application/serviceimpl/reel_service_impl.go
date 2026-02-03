@@ -96,9 +96,20 @@ func (s *ReelServiceImpl) Create(ctx context.Context, userID uuid.UUID, req *dto
 		if req.ShowLogo != nil {
 			reel.ShowLogo = *req.ShowLogo
 		}
+		// Crop position for square/fullcover styles (default to center)
+		reel.CropX = 50.0
+		reel.CropY = 50.0
+		if req.CropX > 0 {
+			reel.CropX = req.CropX
+		}
+		if req.CropY > 0 {
+			reel.CropY = req.CropY
+		}
 		logger.InfoContext(ctx, "Creating style-based reel",
 			"style", req.Style,
 			"title", req.Title,
+			"crop_x", reel.CropX,
+			"crop_y", reel.CropY,
 		)
 	} else {
 		// LEGACY: Layer-based composition
@@ -392,9 +403,13 @@ func (s *ReelServiceImpl) Export(ctx context.Context, id, userID uuid.UUID) erro
 			job.Line1 = reel.Line1
 			job.Line2 = reel.Line2
 			job.ShowLogo = reel.ShowLogo
+			job.CropX = reel.CropX // Crop position X (0-100)
+			job.CropY = reel.CropY // Crop position Y (0-100)
 			logger.InfoContext(ctx, "Publishing style-based reel export job",
 				"reel_id", id,
 				"style", reel.Style,
+				"crop_x", reel.CropX,
+				"crop_y", reel.CropY,
 			)
 		} else {
 			// LEGACY: Layer-based job

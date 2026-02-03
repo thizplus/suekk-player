@@ -49,6 +49,8 @@ export function ReelGeneratorPage() {
   const [line1, setLine1] = useState('')
   const [line2, setLine2] = useState('')
   const [showLogo, setShowLogo] = useState(true)
+  const [cropX, setCropX] = useState(50) // 0-100, center default
+  const [cropY, setCropY] = useState(50) // 0-100, center default
 
   // Video state (from preview canvas)
   const [actualDuration, setActualDuration] = useState(0)
@@ -80,6 +82,8 @@ export function ReelGeneratorPage() {
       setLine1(existingReel.line1 || '')
       setLine2(existingReel.line2 || '')
       setShowLogo(existingReel.showLogo ?? true)
+      setCropX(existingReel.cropX ?? 50)
+      setCropY(existingReel.cropY ?? 50)
     } else if (videoByCode) {
       setSelectedVideoId(videoByCode.id)
       setSelectedVideo(videoByCode)
@@ -149,6 +153,8 @@ export function ReelGeneratorPage() {
           line1,
           line2,
           showLogo,
+          cropX,
+          cropY,
         }
         await updateReel.mutateAsync({ id, data })
         toast.success('บันทึกสำเร็จ')
@@ -162,6 +168,8 @@ export function ReelGeneratorPage() {
           line1,
           line2,
           showLogo,
+          cropX,
+          cropY,
         }
         const newReel = await createReel.mutateAsync(data)
         toast.success('สร้าง Reel สำเร็จ')
@@ -293,8 +301,12 @@ export function ReelGeneratorPage() {
                 selectedVideo={activeVideo}
                 style={style}
                 isEditing={isEditing}
+                cropX={cropX}
+                cropY={cropY}
                 onVideoSelect={handleVideoSelect}
                 onStyleChange={setStyle}
+                onCropXChange={setCropX}
+                onCropYChange={setCropY}
               />
             </TabsContent>
 

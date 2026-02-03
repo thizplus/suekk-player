@@ -227,12 +227,16 @@ export function ReelPreviewCanvas({
     ? { textShadow: '2px 2px 4px rgba(0,0,0,0.7)' }
     : {}
 
+  // Style label in Thai
+  const styleLabels: Record<ReelStyle, string> = {
+    letterbox: 'แบบมีขอบดำ (16:9)',
+    square: 'แบบสี่เหลี่ยม (1:1)',
+    fullcover: 'แบบเต็มจอ',
+  }
+
   return (
     <div className="w-full max-w-[320px] space-y-3">
-      <div className="text-sm text-muted-foreground text-center">
-        Preview ({style}) - 1080x1920
-      </div>
-      <div className="relative bg-black rounded-lg overflow-hidden aspect-[9/16]">
+      <div className="relative bg-black overflow-hidden aspect-[9/16]">
         {/* Video Container */}
         <div className={`absolute inset-0 flex overflow-hidden ${layout.containerClass}`}>
           <video
@@ -353,6 +357,11 @@ export function ReelPreviewCanvas({
           </div>
         )}
 
+      </div>
+
+      {/* Style label below preview */}
+      <div className="text-xs text-muted-foreground text-center">
+        {styleLabels[style]} • 1080×1920
       </div>
 
       {/* Controls below preview */}
