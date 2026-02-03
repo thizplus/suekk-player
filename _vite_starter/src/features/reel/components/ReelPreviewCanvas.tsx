@@ -181,21 +181,27 @@ export function ReelPreviewCanvas({
   // Get video style
   const getVideoStyle = (): React.CSSProperties => {
     if (cropAspectRatio) {
+      // Crop modes (1:1, 4:3, 4:5): แสดง video ตาม aspect ratio ที่เลือก
+      // ไม่ใช้ width/height 100% เพื่อให้ aspectRatio ทำงานได้
       return {
-        width: '100%',
-        height: '100%',
         aspectRatio: cropAspectRatio,
+        maxWidth: '100%',
+        maxHeight: '100%',
+        width: 'auto',
+        height: 'auto',
         objectFit: 'cover',
         objectPosition: `${cropX}% ${cropY}%`,
       }
     }
     if (videoFit === 'fit') {
+      // Fit mode: แสดง video เต็มแต่มี letterbox
       return {
         width: '100%',
         height: '100%',
         objectFit: 'contain',
       }
     }
+    // Fill mode: crop ให้เต็มกรอบ
     return {
       width: '100%',
       height: '100%',
