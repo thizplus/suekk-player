@@ -37,12 +37,10 @@ import type { ReelLayer, CreateReelRequest, UpdateReelRequest } from '../types'
 import { toast } from 'sonner'
 
 // Video fit options
-type VideoFit = 'cover' | 'contain' | 'cover-top' | 'cover-bottom'
+type VideoFit = 'cover' | 'contain'
 
 const VIDEO_FIT_OPTIONS: { value: VideoFit; label: string }[] = [
-  { value: 'cover', label: 'เต็มจอ (Crop กลาง)' },
-  { value: 'cover-top', label: 'เต็มจอ (Crop ล่าง)' },
-  { value: 'cover-bottom', label: 'เต็มจอ (Crop บน)' },
+  { value: 'cover', label: 'เต็มจอ (Crop)' },
   { value: 'contain', label: 'แสดงทั้งหมด (มีขอบดำ)' },
 ]
 
@@ -77,6 +75,8 @@ export function ReelGeneratorPage() {
 
   // Display options
   const [videoFit, setVideoFit] = useState<VideoFit>('cover')
+  const [cropX, setCropX] = useState(50) // 0-100, 50 = center
+  const [cropY, setCropY] = useState(50) // 0-100, 50 = center
   const [showTitle, setShowTitle] = useState(true)
   const [showDescription, setShowDescription] = useState(true)
   const [showGradient, setShowGradient] = useState(true)
@@ -351,16 +351,13 @@ export function ReelGeneratorPage() {
 
   // Get video style based on fit option
   const getVideoStyle = (): React.CSSProperties => {
-    switch (videoFit) {
-      case 'contain':
-        return { objectFit: 'contain' }
-      case 'cover-top':
-        return { objectFit: 'cover', objectPosition: 'top' }
-      case 'cover-bottom':
-        return { objectFit: 'cover', objectPosition: 'bottom' }
-      case 'cover':
-      default:
-        return { objectFit: 'cover', objectPosition: 'center' }
+    if (videoFit === 'contain') {
+      return { objectFit: 'contain' }
+    }
+    // cover mode - use custom crop position
+    return {
+      objectFit: 'cover',
+      objectPosition: `${cropX}% ${cropY}%`,
     }
   }
 
@@ -649,20 +646,137 @@ export function ReelGeneratorPage() {
 
               {/* Video Fit Option */}
               {selectedVideo && (
-                <div className="space-y-2">
-                  <Label className="text-xs text-muted-foreground">การแสดงผลวิดีโอ</Label>
-                  <Select value={videoFit} onValueChange={(v) => setVideoFit(v as VideoFit)}>
-                    <SelectTrigger className="h-9">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {VIDEO_FIT_OPTIONS.map((opt) => (
-                        <SelectItem key={opt.value} value={opt.value}>
-                          {opt.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                <div className="space-y-3">
+                  <div className="space-y-2">
+                    <Label className="text-xs text-muted-foreground">การแสดงผลวิดีโอ</Label>
+                    <Select value={videoFit} onValueChange={(v) => setVideoFit(v as VideoFit)}>
+                      <SelectTrigger className="h-9">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {VIDEO_FIT_OPTIONS.map((opt) => (
+                          <SelectItem key={opt.value} value={opt.value}>
+                            {opt.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {/* Crop Position Controls (only for cover mode) */}
+                  {videoFit === 'cover' && (
+                    <div className="space-y-3 p-3 bg-muted/50 rounded-lg">
+                      <Label className="text-xs text-muted-foreground">ตำแหน่ง Crop</Label>
+
+                      {/* X Position (Left-Right) */}
+                      <div className="space-y-1">
+                        <div className="flex items-center justify-between text-xs">
+                          <span>ซ้าย</span>
+                          <span className="font-mono">{cropX}%</span>
+                          <span>ขวา</span>
+                        </div>
+                        <Slider
+                          value={[cropX]}
+                          min={0}
+                          max={100}
+                          step={1}
+                          onValueChange={([v]) => setCropX(v)}
+                        />
+                      </div>
+
+                      {/* Y Position (Top-Bottom) */}
+                      <div className="space-y-1">
+                        <div className="flex items-center justify-between text-xs">
+                          <span>บน</span>
+                          <span className="font-mono">{cropY}%</span>
+                          <span>ล่าง</span>
+                        </div>
+                        <Slider
+                          value={[cropY]}
+                          min={0}
+                          max={100}
+                          step={1}
+                          onValueChange={([v]) => setCropY(v)}
+                        />
+                      </div>
+
+                      {/* Quick Position Buttons */}
+                      <div className="grid grid-cols-3 gap-1">
+                        <Button
+                          variant={cropX === 0 && cropY === 0 ? 'default' : 'outline'}
+                          size="sm"
+                          className="h-7 text-xs"
+                          onClick={() => { setCropX(0); setCropY(0) }}
+                        >
+                          ↖ บนซ้าย
+                        </Button>
+                        <Button
+                          variant={cropX === 50 && cropY === 0 ? 'default' : 'outline'}
+                          size="sm"
+                          className="h-7 text-xs"
+                          onClick={() => { setCropX(50); setCropY(0) }}
+                        >
+                          ↑ บน
+                        </Button>
+                        <Button
+                          variant={cropX === 100 && cropY === 0 ? 'default' : 'outline'}
+                          size="sm"
+                          className="h-7 text-xs"
+                          onClick={() => { setCropX(100); setCropY(0) }}
+                        >
+                          ↗ บนขวา
+                        </Button>
+                        <Button
+                          variant={cropX === 0 && cropY === 50 ? 'default' : 'outline'}
+                          size="sm"
+                          className="h-7 text-xs"
+                          onClick={() => { setCropX(0); setCropY(50) }}
+                        >
+                          ← ซ้าย
+                        </Button>
+                        <Button
+                          variant={cropX === 50 && cropY === 50 ? 'default' : 'outline'}
+                          size="sm"
+                          className="h-7 text-xs"
+                          onClick={() => { setCropX(50); setCropY(50) }}
+                        >
+                          ● กลาง
+                        </Button>
+                        <Button
+                          variant={cropX === 100 && cropY === 50 ? 'default' : 'outline'}
+                          size="sm"
+                          className="h-7 text-xs"
+                          onClick={() => { setCropX(100); setCropY(50) }}
+                        >
+                          → ขวา
+                        </Button>
+                        <Button
+                          variant={cropX === 0 && cropY === 100 ? 'default' : 'outline'}
+                          size="sm"
+                          className="h-7 text-xs"
+                          onClick={() => { setCropX(0); setCropY(100) }}
+                        >
+                          ↙ ล่างซ้าย
+                        </Button>
+                        <Button
+                          variant={cropX === 50 && cropY === 100 ? 'default' : 'outline'}
+                          size="sm"
+                          className="h-7 text-xs"
+                          onClick={() => { setCropX(50); setCropY(100) }}
+                        >
+                          ↓ ล่าง
+                        </Button>
+                        <Button
+                          variant={cropX === 100 && cropY === 100 ? 'default' : 'outline'}
+                          size="sm"
+                          className="h-7 text-xs"
+                          onClick={() => { setCropX(100); setCropY(100) }}
+                        >
+                          ↘ ล่างขวา
+                        </Button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
             </CardContent>
