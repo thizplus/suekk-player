@@ -31,6 +31,9 @@ import {
 import { Skeleton } from '@/components/ui/skeleton'
 import { useReel, useCreateReel, useUpdateReel, useExportReel, useReelTemplates } from '../hooks'
 import { useVideoByCode, useVideos } from '@/features/video/hooks'
+import { useStreamAccess } from '@/features/embed/hooks/useStreamAccess'
+import { VideoPlayer } from '@/features/video/components/VideoPlayer'
+import { APP_CONFIG } from '@/constants/app-config'
 import type { ReelLayer, ReelLayerType, CreateReelRequest, UpdateReelRequest } from '../types'
 import { toast } from 'sonner'
 
@@ -110,6 +113,14 @@ export function ReelGeneratorPage() {
   // Video info
   const selectedVideo = videosData?.data.find((v) => v.id === selectedVideoId) || videoByCode
   const videoDuration = selectedVideo?.duration || 0
+
+  // Stream access for video preview
+  const { data: streamAccess, isLoading: isStreamLoading } = useStreamAccess(selectedVideo?.code || '', {
+    enabled: !!selectedVideo?.code && selectedVideo?.status === 'ready',
+  })
+
+  // HLS URL for video player
+  const hlsUrl = selectedVideo?.code ? `${APP_CONFIG.streamUrl}/${selectedVideo.code}/master.m3u8` : ''
 
   // Initialize form when data loads
   useEffect(() => {
@@ -315,8 +326,20 @@ export function ReelGeneratorPage() {
             </CardHeader>
             <CardContent>
               <div className="relative aspect-[9/16] bg-black rounded-lg overflow-hidden">
-                {/* Video Thumbnail */}
-                {selectedVideo?.thumbnailUrl ? (
+                {/* Video Player or Placeholder */}
+                {selectedVideo && streamAccess?.token && hlsUrl ? (
+                  <div className="absolute inset-0 [&_.art-video-player]:!h-full">
+                    <VideoPlayer
+                      src={hlsUrl}
+                      streamToken={streamAccess.token}
+                      autoPlay={false}
+                    />
+                  </div>
+                ) : selectedVideo && isStreamLoading ? (
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                  </div>
+                ) : selectedVideo?.thumbnailUrl ? (
                   <img
                     src={selectedVideo.thumbnailUrl}
                     alt="Preview"
