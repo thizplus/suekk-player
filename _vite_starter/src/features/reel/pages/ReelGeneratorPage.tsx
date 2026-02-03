@@ -82,7 +82,9 @@ export function ReelGeneratorPage() {
 
   // Video info
   const selectedVideo = videosData?.data.find((v) => v.id === selectedVideoId) || videoByCode
-  const videoDuration = selectedVideo?.duration || 0
+  const [actualDuration, setActualDuration] = useState(0)
+  // ใช้ duration จาก video element ถ้ามี, ไม่งั้นใช้จาก API
+  const videoDuration = actualDuration || selectedVideo?.duration || 0
 
   // Stream access for video preview
   const { data: streamAccess, isLoading: isStreamLoading } = useStreamAccess(selectedVideo?.code || '', {
@@ -105,11 +107,27 @@ export function ReelGeneratorPage() {
     if (!video || !hlsUrl || !streamAccess?.token) return
 
     setIsVideoReady(false)
+    setActualDuration(0)
 
     // Destroy previous instance
     if (hlsRef.current) {
       hlsRef.current.destroy()
       hlsRef.current = null
+    }
+
+    // Handler เมื่อ video โหลด metadata เสร็จ
+    const handleLoadedMetadata = () => {
+      console.log('Video metadata loaded, duration:', video.duration)
+      if (video.duration && isFinite(video.duration)) {
+        setActualDuration(video.duration)
+        // ตั้งค่า segment end ถ้ายังไม่ได้ตั้ง
+        if (segmentEnd === 60 || segmentEnd > video.duration) {
+          setSegmentEnd(Math.min(60, video.duration))
+        }
+      }
+      setIsVideoReady(true)
+      video.currentTime = segmentStart
+      setCurrentTime(segmentStart)
     }
 
     if (Hls.isSupported()) {
@@ -122,25 +140,19 @@ export function ReelGeneratorPage() {
       hls.attachMedia(video)
       hlsRef.current = hls
 
-      hls.on(Hls.Events.MANIFEST_PARSED, () => {
-        setIsVideoReady(true)
-        video.currentTime = segmentStart
-        setCurrentTime(segmentStart)
-      })
+      // ใช้ loadedmetadata event แทน MANIFEST_PARSED เพื่อให้ได้ duration ที่ถูกต้อง
+      video.addEventListener('loadedmetadata', handleLoadedMetadata, { once: true })
 
       hls.on(Hls.Events.ERROR, (_, data) => {
         console.error('HLS Error:', data)
       })
     } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
       video.src = hlsUrl
-      video.addEventListener('loadedmetadata', () => {
-        setIsVideoReady(true)
-        video.currentTime = segmentStart
-        setCurrentTime(segmentStart)
-      }, { once: true })
+      video.addEventListener('loadedmetadata', handleLoadedMetadata, { once: true })
     }
 
     return () => {
+      video.removeEventListener('loadedmetadata', handleLoadedMetadata)
       if (hlsRef.current) {
         hlsRef.current.destroy()
         hlsRef.current = null
@@ -623,6 +635,16 @@ export function ReelGeneratorPage() {
                 <CardTitle className="text-sm">2. เลือกช่วงเวลา</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
+                {/* Show loading if duration not yet available */}
+                {videoDuration === 0 && (
+                  <div className="flex items-center justify-center py-8 text-muted-foreground">
+                    <Loader2 className="h-5 w-5 animate-spin mr-2" />
+                    <span className="text-sm">กำลังโหลดข้อมูลวิดีโอ...</span>
+                  </div>
+                )}
+
+                {videoDuration > 0 && (
+                  <>
                 {/* Timeline Visual */}
                 <div
                   className={`relative h-14 bg-muted rounded-lg overflow-hidden ${isVideoReady ? 'cursor-pointer' : 'cursor-not-allowed opacity-50'}`}
@@ -753,6 +775,8 @@ export function ReelGeneratorPage() {
                     </Button>
                   ))}
                 </div>
+                  </>
+                )}
               </CardContent>
             </Card>
           )}
