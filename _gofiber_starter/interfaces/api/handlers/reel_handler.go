@@ -22,15 +22,11 @@ func NewReelHandler(reelService services.ReelService) *ReelHandler {
 
 // getUserIDFromContext ดึง user ID จาก fiber context
 func getUserIDFromContext(c *fiber.Ctx) (uuid.UUID, error) {
-	uid := c.Locals("user_id")
-	if uid == nil {
+	userCtx, err := utils.GetUserFromContext(c)
+	if err != nil {
 		return uuid.Nil, fiber.ErrUnauthorized
 	}
-	userID, ok := uid.(uuid.UUID)
-	if !ok {
-		return uuid.Nil, fiber.ErrUnauthorized
-	}
-	return userID, nil
+	return userCtx.ID, nil
 }
 
 // Create สร้าง reel ใหม่
