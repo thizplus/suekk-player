@@ -1,135 +1,104 @@
 import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/input'
-import { Textarea } from '@/components/ui/textarea'
 import { Switch } from '@/components/ui/switch'
-import { Slider } from '@/components/ui/slider'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
-import type { TitlePosition } from '../types'
+import type { ReelStyle } from '../types'
 
 interface ReelTextOverlayProps {
+  style: ReelStyle
   title: string
-  description: string
-  showTitle: boolean
-  showDescription: boolean
-  showGradient: boolean
-  titlePosition: TitlePosition
-  titleFontSize: number
-  descriptionFontSize: number
+  line1: string
+  line2: string
+  showLogo: boolean
   onTitleChange: (title: string) => void
-  onDescriptionChange: (desc: string) => void
-  onShowTitleChange: (show: boolean) => void
-  onShowDescriptionChange: (show: boolean) => void
-  onShowGradientChange: (show: boolean) => void
-  onTitlePositionChange: (pos: TitlePosition) => void
-  onTitleFontSizeChange: (size: number) => void
-  onDescriptionFontSizeChange: (size: number) => void
+  onLine1Change: (line1: string) => void
+  onLine2Change: (line2: string) => void
+  onShowLogoChange: (show: boolean) => void
+}
+
+// Text position info per style (for display only)
+const STYLE_TEXT_INFO: Record<ReelStyle, { titlePos: string; linesPos: string }> = {
+  letterbox: { titlePos: 'ด้านบน (ในแถบดำ)', linesPos: 'ด้านล่าง (ในแถบดำ)' },
+  square: { titlePos: 'ด้านบน (ในแถบดำ)', linesPos: 'ด้านล่าง (ในแถบดำ)' },
+  fullcover: { titlePos: 'ด้านล่าง (บน gradient)', linesPos: 'ด้านล่าง (บน gradient)' },
 }
 
 export function ReelTextOverlay({
+  style,
   title,
-  description,
-  showTitle,
-  showDescription,
-  showGradient,
-  titlePosition,
-  titleFontSize,
-  descriptionFontSize,
+  line1,
+  line2,
+  showLogo,
   onTitleChange,
-  onDescriptionChange,
-  onShowTitleChange,
-  onShowDescriptionChange,
-  onShowGradientChange,
-  onTitlePositionChange,
-  onTitleFontSizeChange,
-  onDescriptionFontSizeChange,
+  onLine1Change,
+  onLine2Change,
+  onShowLogoChange,
 }: ReelTextOverlayProps) {
+  const textInfo = STYLE_TEXT_INFO[style]
+
   return (
-    <div className="space-y-4">
-      {/* Title */}
+    <div className="space-y-5">
+      {/* Title - Main heading */}
       <div className="space-y-2">
         <div className="flex items-center justify-between">
-          <Label>หัวข้อ</Label>
-          <Switch checked={showTitle} onCheckedChange={onShowTitleChange} />
+          <Label className="text-sm font-medium">หัวข้อหลัก (ตัวใหญ่)</Label>
+          <span className="text-xs text-muted-foreground">{textInfo.titlePos}</span>
         </div>
-        {showTitle && (
-          <div className="space-y-3">
-            <Input
-              value={title}
-              onChange={(e) => onTitleChange(e.target.value)}
-              placeholder="พิมพ์หัวข้อ..."
-            />
-            <Select
-              value={titlePosition}
-              onValueChange={(v) => onTitlePositionChange(v as TitlePosition)}
-            >
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="top">แสดงด้านบน</SelectItem>
-                <SelectItem value="center">แสดงตรงกลาง</SelectItem>
-                <SelectItem value="bottom">แสดงด้านล่าง</SelectItem>
-              </SelectContent>
-            </Select>
-            <div className="space-y-1">
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-muted-foreground">ขนาดตัวอักษร</span>
-                <span className="font-mono">{titleFontSize}px</span>
-              </div>
-              <Slider
-                value={[titleFontSize]}
-                min={24}
-                max={100}
-                step={2}
-                onValueChange={([v]) => onTitleFontSizeChange(v)}
-              />
-            </div>
-          </div>
-        )}
+        <Input
+          value={title}
+          onChange={(e) => onTitleChange(e.target.value)}
+          placeholder="พิมพ์หัวข้อ..."
+          maxLength={50}
+          className="text-base"
+        />
+        <p className="text-xs text-muted-foreground">ขนาด 120px, ตัวหนา, กลางจอ</p>
       </div>
 
-      {/* Description */}
+      {/* Line 1 - Secondary text */}
       <div className="space-y-2">
         <div className="flex items-center justify-between">
-          <Label>คำอธิบาย</Label>
-          <Switch checked={showDescription} onCheckedChange={onShowDescriptionChange} />
+          <Label className="text-sm font-medium">บรรทัดที่ 1</Label>
+          <span className="text-xs text-muted-foreground">{textInfo.linesPos}</span>
         </div>
-        {showDescription && (
-          <div className="space-y-3">
-            <Textarea
-              value={description}
-              onChange={(e) => onDescriptionChange(e.target.value)}
-              placeholder="พิมพ์คำอธิบาย..."
-              rows={2}
-            />
-            <div className="space-y-1">
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-muted-foreground">ขนาดตัวอักษร</span>
-                <span className="font-mono">{descriptionFontSize}px</span>
-              </div>
-              <Slider
-                value={[descriptionFontSize]}
-                min={16}
-                max={52}
-                step={2}
-                onValueChange={([v]) => onDescriptionFontSizeChange(v)}
-              />
-            </div>
-          </div>
-        )}
+        <Input
+          value={line1}
+          onChange={(e) => onLine1Change(e.target.value)}
+          placeholder="พิมพ์ข้อความบรรทัดที่ 1..."
+          maxLength={50}
+        />
+        <p className="text-xs text-muted-foreground">ขนาด 70px, กลางจอ</p>
       </div>
 
-      {/* Gradient Toggle */}
-      <div className="flex items-center justify-between">
-        <Label>Gradient พื้นหลัง</Label>
-        <Switch checked={showGradient} onCheckedChange={onShowGradientChange} />
+      {/* Line 2 - Third text */}
+      <div className="space-y-2">
+        <Label className="text-sm font-medium">บรรทัดที่ 2</Label>
+        <Input
+          value={line2}
+          onChange={(e) => onLine2Change(e.target.value)}
+          placeholder="พิมพ์ข้อความบรรทัดที่ 2..."
+          maxLength={50}
+        />
+        <p className="text-xs text-muted-foreground">ขนาด 70px, กลางจอ</p>
       </div>
+
+      {/* Logo Toggle */}
+      <div className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
+        <div>
+          <Label className="text-sm font-medium">แสดง Logo</Label>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            {style === 'fullcover' ? 'มุมซ้ายบน' : 'มุมซ้ายบนในวิดีโอ'}, โปร่งใส 30%
+          </p>
+        </div>
+        <Switch checked={showLogo} onCheckedChange={onShowLogoChange} />
+      </div>
+
+      {/* Style-specific note */}
+      {style === 'fullcover' && (
+        <div className="p-3 bg-primary/5 border border-primary/20 rounded-lg">
+          <p className="text-xs text-primary">
+            สไตล์ Full Cover จะมี gradient ด้านล่างและ text shadow อัตโนมัติ
+          </p>
+        </div>
+      )}
     </div>
   )
 }

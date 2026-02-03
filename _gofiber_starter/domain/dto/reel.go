@@ -11,25 +11,41 @@ import (
 
 // CreateReelRequest สร้าง reel ใหม่
 type CreateReelRequest struct {
-	VideoID      uuid.UUID           `json:"videoId" validate:"required,uuid"`
-	Title        string              `json:"title" validate:"omitempty,max=255"`
-	Description  string              `json:"description" validate:"omitempty,max=1000"`
-	SegmentStart float64             `json:"segmentStart" validate:"min=0"`
-	SegmentEnd   float64             `json:"segmentEnd" validate:"required,gtfield=SegmentStart"`
-	OutputFormat string              `json:"outputFormat" validate:"omitempty,oneof=9:16 1:1 4:5 16:9"`
-	VideoFit     string              `json:"videoFit" validate:"omitempty,oneof=fill fit crop-1:1 crop-4:3 crop-4:5"`
-	CropX        float64             `json:"cropX" validate:"min=0,max=100"`
-	CropY        float64             `json:"cropY" validate:"min=0,max=100"`
-	TemplateID   *uuid.UUID          `json:"templateId" validate:"omitempty,uuid"`
-	Layers       []ReelLayerRequest  `json:"layers" validate:"dive"`
+	VideoID      uuid.UUID `json:"videoId" validate:"required,uuid"`
+	SegmentStart float64   `json:"segmentStart" validate:"min=0"`
+	SegmentEnd   float64   `json:"segmentEnd" validate:"required,gtfield=SegmentStart"`
+
+	// NEW: Style-based fields (preferred)
+	Style    string `json:"style" validate:"omitempty,oneof=letterbox square fullcover"`
+	Title    string `json:"title" validate:"omitempty,max=255"`
+	Line1    string `json:"line1" validate:"omitempty,max=255"`
+	Line2    string `json:"line2" validate:"omitempty,max=255"`
+	ShowLogo *bool  `json:"showLogo"` // nil = true (default)
+
+	// LEGACY: Layer-based fields (deprecated but still supported)
+	Description  string             `json:"description" validate:"omitempty,max=1000"` // deprecated, use line1
+	OutputFormat string             `json:"outputFormat" validate:"omitempty,oneof=9:16 1:1 4:5 16:9"`
+	VideoFit     string             `json:"videoFit" validate:"omitempty,oneof=fill fit crop-1:1 crop-4:3 crop-4:5"`
+	CropX        float64            `json:"cropX" validate:"min=0,max=100"`
+	CropY        float64            `json:"cropY" validate:"min=0,max=100"`
+	TemplateID   *uuid.UUID         `json:"templateId" validate:"omitempty,uuid"`
+	Layers       []ReelLayerRequest `json:"layers" validate:"dive"`
 }
 
 // UpdateReelRequest อัปเดต reel
 type UpdateReelRequest struct {
-	Title        *string             `json:"title" validate:"omitempty,max=255"`
+	SegmentStart *float64 `json:"segmentStart" validate:"omitempty,min=0"`
+	SegmentEnd   *float64 `json:"segmentEnd" validate:"omitempty"`
+
+	// NEW: Style-based fields (preferred)
+	Style    *string `json:"style" validate:"omitempty,oneof=letterbox square fullcover"`
+	Title    *string `json:"title" validate:"omitempty,max=255"`
+	Line1    *string `json:"line1" validate:"omitempty,max=255"`
+	Line2    *string `json:"line2" validate:"omitempty,max=255"`
+	ShowLogo *bool   `json:"showLogo"`
+
+	// LEGACY: Layer-based fields (deprecated but still supported)
 	Description  *string             `json:"description" validate:"omitempty,max=1000"`
-	SegmentStart *float64            `json:"segmentStart" validate:"omitempty,min=0"`
-	SegmentEnd   *float64            `json:"segmentEnd" validate:"omitempty"`
 	OutputFormat *string             `json:"outputFormat" validate:"omitempty,oneof=9:16 1:1 4:5 16:9"`
 	VideoFit     *string             `json:"videoFit" validate:"omitempty,oneof=fill fit crop-1:1 crop-4:3 crop-4:5"`
 	CropX        *float64            `json:"cropX" validate:"omitempty,min=0,max=100"`
@@ -70,27 +86,39 @@ type ReelFilterRequest struct {
 
 // ReelResponse reel response
 type ReelResponse struct {
-	ID           uuid.UUID           `json:"id"`
-	Title        string              `json:"title"`
-	Description  string              `json:"description"`
-	SegmentStart float64             `json:"segmentStart"`
-	SegmentEnd   float64             `json:"segmentEnd"`
-	Duration     int                 `json:"duration"`
-	OutputFormat string              `json:"outputFormat"`
-	VideoFit     string              `json:"videoFit"`
-	CropX        float64             `json:"cropX"`
-	CropY        float64             `json:"cropY"`
-	Status       models.ReelStatus   `json:"status"`
-	OutputURL    string              `json:"outputUrl,omitempty"`
-	ThumbnailURL string              `json:"thumbnailUrl,omitempty"`
-	FileSize     int64               `json:"fileSize,omitempty"`
-	ExportError  string              `json:"exportError,omitempty"`
-	ExportedAt   *time.Time          `json:"exportedAt,omitempty"`
-	Layers       []ReelLayerResponse `json:"layers"`
-	Video        *VideoBasicResponse `json:"video,omitempty"`
+	ID           uuid.UUID         `json:"id"`
+	SegmentStart float64           `json:"segmentStart"`
+	SegmentEnd   float64           `json:"segmentEnd"`
+	Duration     int               `json:"duration"`
+	Status       models.ReelStatus `json:"status"`
+
+	// NEW: Style-based fields
+	Style    string `json:"style,omitempty"`
+	Title    string `json:"title"`
+	Line1    string `json:"line1,omitempty"`
+	Line2    string `json:"line2,omitempty"`
+	ShowLogo bool   `json:"showLogo"`
+
+	// Output
+	OutputURL    string     `json:"outputUrl,omitempty"`
+	ThumbnailURL string     `json:"thumbnailUrl,omitempty"`
+	FileSize     int64      `json:"fileSize,omitempty"`
+	ExportError  string     `json:"exportError,omitempty"`
+	ExportedAt   *time.Time `json:"exportedAt,omitempty"`
+
+	// LEGACY: Layer-based fields (for backward compatibility)
+	Description  string              `json:"description,omitempty"`
+	OutputFormat string              `json:"outputFormat,omitempty"`
+	VideoFit     string              `json:"videoFit,omitempty"`
+	CropX        float64             `json:"cropX,omitempty"`
+	CropY        float64             `json:"cropY,omitempty"`
+	Layers       []ReelLayerResponse `json:"layers,omitempty"`
 	Template     *ReelTemplateBasic  `json:"template,omitempty"`
-	CreatedAt    time.Time           `json:"createdAt"`
-	UpdatedAt    time.Time           `json:"updatedAt"`
+
+	// Relations
+	Video     *VideoBasicResponse `json:"video,omitempty"`
+	CreatedAt time.Time           `json:"createdAt"`
+	UpdatedAt time.Time           `json:"updatedAt"`
 }
 
 // ReelLayerResponse layer ใน response
@@ -164,24 +192,35 @@ func ReelToResponse(reel *models.Reel) *ReelResponse {
 
 	resp := &ReelResponse{
 		ID:           reel.ID,
-		Title:        reel.Title,
-		Description:  reel.Description,
 		SegmentStart: reel.SegmentStart,
 		SegmentEnd:   reel.SegmentEnd,
 		Duration:     reel.Duration,
-		OutputFormat: string(reel.OutputFormat),
-		VideoFit:     string(reel.VideoFit),
-		CropX:        reel.CropX,
-		CropY:        reel.CropY,
 		Status:       reel.Status,
+
+		// NEW: Style-based fields
+		Style:    string(reel.Style),
+		Title:    reel.Title,
+		Line1:    reel.Line1,
+		Line2:    reel.Line2,
+		ShowLogo: reel.ShowLogo,
+
+		// Output
 		OutputURL:    reel.OutputPath,
 		ThumbnailURL: reel.ThumbnailURL,
 		FileSize:     reel.FileSize,
 		ExportError:  reel.ExportError,
 		ExportedAt:   reel.ExportedAt,
+
+		// LEGACY: For backward compatibility
+		Description:  reel.Description,
+		OutputFormat: string(reel.OutputFormat),
+		VideoFit:     string(reel.VideoFit),
+		CropX:        reel.CropX,
+		CropY:        reel.CropY,
 		Layers:       layersToResponse(reel.Layers),
-		CreatedAt:    reel.CreatedAt,
-		UpdatedAt:    reel.UpdatedAt,
+
+		CreatedAt: reel.CreatedAt,
+		UpdatedAt: reel.UpdatedAt,
 	}
 
 	// Video info

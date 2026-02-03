@@ -76,38 +76,56 @@ func (s *ReelServiceImpl) Create(ctx context.Context, userID uuid.UUID, req *dto
 		layers = template.DefaultLayers
 	}
 
-	// 6. สร้าง reel record with display options
-	outputFormat := models.OutputFormat9x16 // default
-	if req.OutputFormat != "" {
-		outputFormat = models.OutputFormat(req.OutputFormat)
-	}
-	videoFit := models.VideoFitFill // default
-	if req.VideoFit != "" {
-		videoFit = models.VideoFit(req.VideoFit)
-	}
-	cropX := 50.0 // default center
-	if req.CropX > 0 {
-		cropX = req.CropX
-	}
-	cropY := 50.0 // default center
-	if req.CropY > 0 {
-		cropY = req.CropY
-	}
-
+	// 6. สร้าง reel record
 	reel := &models.Reel{
 		UserID:       userID,
 		VideoID:      req.VideoID,
 		Title:        req.Title,
-		Description:  req.Description,
 		SegmentStart: req.SegmentStart,
 		SegmentEnd:   req.SegmentEnd,
-		OutputFormat: outputFormat,
-		VideoFit:     videoFit,
-		CropX:        cropX,
-		CropY:        cropY,
-		TemplateID:   req.TemplateID,
-		Layers:       layers,
 		Status:       models.ReelStatusDraft,
+	}
+
+	// Check if using new style-based system
+	if req.Style != "" {
+		// NEW: Style-based composition
+		reel.Style = models.ReelStyle(req.Style)
+		reel.Line1 = req.Line1
+		reel.Line2 = req.Line2
+		reel.ShowLogo = true // default
+		if req.ShowLogo != nil {
+			reel.ShowLogo = *req.ShowLogo
+		}
+		logger.InfoContext(ctx, "Creating style-based reel",
+			"style", req.Style,
+			"title", req.Title,
+		)
+	} else {
+		// LEGACY: Layer-based composition
+		outputFormat := models.OutputFormat9x16 // default
+		if req.OutputFormat != "" {
+			outputFormat = models.OutputFormat(req.OutputFormat)
+		}
+		videoFit := models.VideoFitFill // default
+		if req.VideoFit != "" {
+			videoFit = models.VideoFit(req.VideoFit)
+		}
+		cropX := 50.0 // default center
+		if req.CropX > 0 {
+			cropX = req.CropX
+		}
+		cropY := 50.0 // default center
+		if req.CropY > 0 {
+			cropY = req.CropY
+		}
+
+		reel.Description = req.Description
+		reel.OutputFormat = outputFormat
+		reel.VideoFit = videoFit
+		reel.CropX = cropX
+		reel.CropY = cropY
+		reel.TemplateID = req.TemplateID
+		reel.Layers = layers
 	}
 
 	if err := s.reelRepo.Create(ctx, reel); err != nil {
@@ -171,12 +189,9 @@ func (s *ReelServiceImpl) Update(ctx context.Context, id, userID uuid.UUID, req 
 		return nil, errors.New("cannot update reel that is being exported or already exported")
 	}
 
-	// 3. อัปเดตฟิลด์
+	// 3. อัปเดตฟิลด์ทั่วไป
 	if req.Title != nil {
 		reel.Title = *req.Title
-	}
-	if req.Description != nil {
-		reel.Description = *req.Description
 	}
 	if req.SegmentStart != nil {
 		reel.SegmentStart = *req.SegmentStart
@@ -187,6 +202,25 @@ func (s *ReelServiceImpl) Update(ctx context.Context, id, userID uuid.UUID, req 
 			return nil, fmt.Errorf("segment end (%v) exceeds video duration (%v)", *req.SegmentEnd, reel.Video.Duration)
 		}
 		reel.SegmentEnd = *req.SegmentEnd
+	}
+
+	// NEW: Style-based fields
+	if req.Style != nil {
+		reel.Style = models.ReelStyle(*req.Style)
+	}
+	if req.Line1 != nil {
+		reel.Line1 = *req.Line1
+	}
+	if req.Line2 != nil {
+		reel.Line2 = *req.Line2
+	}
+	if req.ShowLogo != nil {
+		reel.ShowLogo = *req.ShowLogo
+	}
+
+	// LEGACY: Layer-based fields
+	if req.Description != nil {
+		reel.Description = *req.Description
 	}
 	if req.OutputFormat != nil {
 		reel.OutputFormat = models.OutputFormat(*req.OutputFormat)
@@ -344,15 +378,35 @@ func (s *ReelServiceImpl) Export(ctx context.Context, id, userID uuid.UUID) erro
 			VideoID:      reel.VideoID.String(),
 			VideoCode:    reel.Video.Code,
 			HLSPath:      reel.Video.HLSPath,
-			VideoQuality: reel.Video.Quality, // ส่ง quality จาก database ไปให้ worker ใช้เลย
+			VideoQuality: reel.Video.Quality,
 			SegmentStart: reel.SegmentStart,
 			SegmentEnd:   reel.SegmentEnd,
-			OutputFormat: string(reel.OutputFormat),
-			VideoFit:     string(reel.VideoFit),
-			CropX:        reel.CropX,
-			CropY:        reel.CropY,
-			Layers:       convertLayersToJobFormat(reel.Layers),
 			OutputPath:   fmt.Sprintf("reels/%s/%s.mp4", reel.Video.Code, reel.ID.String()),
+		}
+
+		// Check if using style-based or legacy layer-based
+		if reel.IsStyleBased() {
+			// NEW: Style-based job
+			job.Style = string(reel.Style)
+			job.Title = reel.Title
+			job.Line1 = reel.Line1
+			job.Line2 = reel.Line2
+			job.ShowLogo = reel.ShowLogo
+			logger.InfoContext(ctx, "Publishing style-based reel export job",
+				"reel_id", id,
+				"style", reel.Style,
+			)
+		} else {
+			// LEGACY: Layer-based job
+			job.OutputFormat = string(reel.OutputFormat)
+			job.VideoFit = string(reel.VideoFit)
+			job.CropX = reel.CropX
+			job.CropY = reel.CropY
+			job.Layers = convertLayersToJobFormat(reel.Layers)
+			logger.InfoContext(ctx, "Publishing legacy layer-based reel export job",
+				"reel_id", id,
+				"output_format", reel.OutputFormat,
+			)
 		}
 
 		if err := s.jobPublisher.PublishReelExportJob(ctx, job); err != nil {

@@ -1,5 +1,33 @@
-import type { OutputFormat, VideoFit, OutputFormatOption, VideoFitOption } from '../types'
+import type { OutputFormat, VideoFit, OutputFormatOption, VideoFitOption, ReelStyle, ReelStyleOption } from '../types'
 
+// NEW: Style-based options (preferred)
+export const REEL_STYLE_OPTIONS: ReelStyleOption[] = [
+  {
+    value: 'letterbox',
+    label: 'Letterbox',
+    description: 'วิดีโอ 16:9 มีขอบดำบน-ล่าง',
+    icon: '🎬',
+  },
+  {
+    value: 'square',
+    label: 'Square',
+    description: 'วิดีโอ 1:1 มีขอบดำบน-ล่าง',
+    icon: '⬜',
+  },
+  {
+    value: 'fullcover',
+    label: 'Full Cover',
+    description: 'เต็มจอ + gradient ล่าง',
+    icon: '📱',
+  },
+]
+
+// Helper to get style option
+export const getStyleOption = (style: ReelStyle): ReelStyleOption | undefined => {
+  return REEL_STYLE_OPTIONS.find(o => o.value === style)
+}
+
+// LEGACY: Output format options (deprecated)
 export const OUTPUT_FORMAT_OPTIONS: OutputFormatOption[] = [
   { value: '9:16', label: '9:16', aspectClass: 'aspect-[9/16]', description: 'Reels/TikTok' },
   { value: '1:1', label: '1:1', aspectClass: 'aspect-square', description: 'Square' },
@@ -7,6 +35,7 @@ export const OUTPUT_FORMAT_OPTIONS: OutputFormatOption[] = [
   { value: '16:9', label: '16:9', aspectClass: 'aspect-video', description: 'YouTube' },
 ]
 
+// LEGACY: Video fit options (deprecated)
 export const VIDEO_FIT_OPTIONS: VideoFitOption[] = [
   { value: 'fill', label: 'เต็มกรอบ', description: 'Crop ให้เต็ม' },
   { value: 'fit', label: 'พอดี', description: 'มีขอบดำ' },

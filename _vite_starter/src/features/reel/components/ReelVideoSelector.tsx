@@ -1,12 +1,11 @@
 import { useState, useRef, useEffect, useMemo } from 'react'
-import { Search, X, Loader2 } from 'lucide-react'
+import { Search, X, Loader2, Check } from 'lucide-react'
 import { Label } from '@/components/ui/label'
-import { Button } from '@/components/ui/button'
-import { Slider } from '@/components/ui/slider'
 import { useVideos } from '@/features/video/hooks'
 import type { Video } from '@/features/video/types'
-import type { OutputFormat, VideoFit } from '../types'
-import { OUTPUT_FORMAT_OPTIONS, VIDEO_FIT_OPTIONS, formatTime } from './constants'
+import type { ReelStyle } from '../types'
+import { REEL_STYLE_OPTIONS, formatTime } from './constants'
+import { cn } from '@/lib/utils'
 
 // Custom hook สำหรับ debounce
 function useDebounce<T>(value: T, delay: number): T {
@@ -28,33 +27,20 @@ function useDebounce<T>(value: T, delay: number): T {
 interface ReelVideoSelectorProps {
   selectedVideoId: string
   selectedVideo: Video | undefined
-  outputFormat: OutputFormat
-  videoFit: VideoFit
-  cropX: number
-  cropY: number
+  style: ReelStyle
   isEditing: boolean
   onVideoSelect: (videoId: string, video?: Video) => void
-  onOutputFormatChange: (format: OutputFormat) => void
-  onVideoFitChange: (fit: VideoFit) => void
-  onCropXChange: (x: number) => void
-  onCropYChange: (y: number) => void
+  onStyleChange: (style: ReelStyle) => void
 }
 
 export function ReelVideoSelector({
   selectedVideoId,
   selectedVideo,
-  outputFormat,
-  videoFit,
-  cropX,
-  cropY,
+  style,
   isEditing,
   onVideoSelect,
-  onOutputFormatChange,
-  onVideoFitChange,
-  onCropXChange,
-  onCropYChange,
+  onStyleChange,
 }: ReelVideoSelectorProps) {
-  const needsCropPosition = videoFit !== 'fit'
   const hasVideo = !!selectedVideoId
 
   const [search, setSearch] = useState('')
@@ -110,183 +96,122 @@ export function ReelVideoSelector({
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       {/* Video Search Input */}
-      <div className="relative">
+      <div className="space-y-2">
+        <Label className="text-sm font-medium">เลือกวิดีโอ</Label>
         <div className="relative">
-          <Search className="absolute left-0 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <input
-            ref={inputRef}
-            type="text"
-            value={selectedVideo && !isOpen ? `${selectedVideo.code} - ${selectedVideo.title}` : search}
-            onChange={(e) => {
-              setSearch(e.target.value)
-              setIsOpen(true)
-            }}
-            onFocus={() => {
-              if (!isEditing) {
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <input
+              ref={inputRef}
+              type="text"
+              value={selectedVideo && !isOpen ? `${selectedVideo.code} - ${selectedVideo.title}` : search}
+              onChange={(e) => {
+                setSearch(e.target.value)
                 setIsOpen(true)
-                if (selectedVideo) setSearch('')
-              }
-            }}
-            placeholder="ค้นหาวิดีโอ (code หรือ title)..."
-            disabled={isEditing}
-            className="w-full pl-6 pr-8 py-2 bg-transparent border-0 border-b border-input focus:border-primary focus:outline-none transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-          />
-          {selectedVideo && !isEditing && (
-            <button
-              onClick={handleClear}
-              className="absolute right-0 top-1/2 -translate-y-1/2 p-1 hover:bg-muted rounded"
-            >
-              <X className="h-4 w-4 text-muted-foreground" />
-            </button>
-          )}
-        </div>
-
-        {/* Dropdown */}
-        {isOpen && !isEditing && (
-          <div
-            ref={dropdownRef}
-            className="absolute z-50 w-full mt-1 bg-popover border rounded-md shadow-lg max-h-60 overflow-auto"
-          >
-            {isSearching ? (
-              <div className="p-3 flex items-center justify-center text-muted-foreground">
-                <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                <span className="text-sm">กำลังค้นหา...</span>
-              </div>
-            ) : filteredVideos.length === 0 ? (
-              <div className="p-3 text-sm text-muted-foreground text-center">
-                {debouncedSearch ? 'ไม่พบวิดีโอ' : 'พิมพ์เพื่อค้นหาวิดีโอ'}
-              </div>
-            ) : (
-              filteredVideos.map((video) => (
-                <button
-                  key={video.id}
-                  onClick={() => handleSelect(video)}
-                  className={`w-full px-3 py-2 text-left hover:bg-muted transition-colors flex items-center justify-between ${
-                    video.id === selectedVideoId ? 'bg-muted' : ''
-                  }`}
-                >
-                  <div className="flex-1 min-w-0">
-                    <div className="font-medium truncate">{video.title}</div>
-                    <div className="text-sm text-muted-foreground">{video.code}</div>
-                  </div>
-                  <div className="text-sm text-muted-foreground ml-2">
-                    {formatTime(video.duration)}
-                  </div>
-                </button>
-              ))
+              }}
+              onFocus={() => {
+                if (!isEditing) {
+                  setIsOpen(true)
+                  if (selectedVideo) setSearch('')
+                }
+              }}
+              placeholder="ค้นหาวิดีโอ (code หรือ title)..."
+              disabled={isEditing}
+              className="w-full pl-10 pr-10 py-2.5 bg-background border border-input rounded-lg focus:border-primary focus:ring-1 focus:ring-primary focus:outline-none transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+            />
+            {selectedVideo && !isEditing && (
+              <button
+                onClick={handleClear}
+                className="absolute right-3 top-1/2 -translate-y-1/2 p-1 hover:bg-muted rounded"
+              >
+                <X className="h-4 w-4 text-muted-foreground" />
+              </button>
             )}
           </div>
-        )}
-      </div>
 
-      {hasVideo && (
-        <div className="space-y-4">
-          {/* Output Format Selection */}
-          <div className="space-y-2">
-            <Label className="text-sm text-muted-foreground">ขนาดกรอบ Output</Label>
-            <div className="grid grid-cols-4 gap-2">
-              {OUTPUT_FORMAT_OPTIONS.map((opt) => (
-                <Button
-                  key={opt.value}
-                  variant={outputFormat === opt.value ? 'default' : 'outline'}
-                  size="sm"
-                  className="h-auto py-2 flex flex-col"
-                  onClick={() => onOutputFormatChange(opt.value)}
-                >
-                  <span className="font-bold">{opt.label}</span>
-                  <span className="text-sm opacity-70">{opt.description}</span>
-                </Button>
-              ))}
-            </div>
-          </div>
-
-          {/* Video Fit Selection */}
-          <div className="space-y-2">
-            <Label className="text-sm text-muted-foreground">Video ในกรอบ (Crop จาก 16:9)</Label>
-            <div className="grid grid-cols-5 gap-1">
-              {VIDEO_FIT_OPTIONS.map((opt) => (
-                <Button
-                  key={opt.value}
-                  variant={videoFit === opt.value ? 'default' : 'outline'}
-                  size="sm"
-                  className="h-auto py-2 flex flex-col"
-                  onClick={() => onVideoFitChange(opt.value)}
-                >
-                  <span className="font-bold">{opt.label}</span>
-                  <span className="text-sm opacity-70">{opt.description}</span>
-                </Button>
-              ))}
-            </div>
-          </div>
-
-          {/* Crop Position Controls */}
-          {needsCropPosition && (
-            <div className="space-y-3 p-3 bg-muted/50 rounded-lg">
-              <Label className="text-sm text-muted-foreground">ตำแหน่ง Crop</Label>
-
-              {/* X Position */}
-              <div className="space-y-1">
-                <div className="flex items-center justify-between text-sm">
-                  <span>ซ้าย</span>
-                  <span className="font-mono">{cropX}%</span>
-                  <span>ขวา</span>
+          {/* Dropdown */}
+          {isOpen && !isEditing && (
+            <div
+              ref={dropdownRef}
+              className="absolute z-50 w-full mt-1 bg-popover border rounded-lg shadow-lg max-h-60 overflow-auto"
+            >
+              {isSearching ? (
+                <div className="p-4 flex items-center justify-center text-muted-foreground">
+                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                  <span className="text-sm">กำลังค้นหา...</span>
                 </div>
-                <Slider
-                  value={[cropX]}
-                  min={0}
-                  max={100}
-                  step={1}
-                  onValueChange={([v]) => onCropXChange(v)}
-                />
-              </div>
-
-              {/* Y Position */}
-              <div className="space-y-1">
-                <div className="flex items-center justify-between text-sm">
-                  <span>บน</span>
-                  <span className="font-mono">{cropY}%</span>
-                  <span>ล่าง</span>
+              ) : filteredVideos.length === 0 ? (
+                <div className="p-4 text-sm text-muted-foreground text-center">
+                  {debouncedSearch ? 'ไม่พบวิดีโอ' : 'พิมพ์เพื่อค้นหาวิดีโอ'}
                 </div>
-                <Slider
-                  value={[cropY]}
-                  min={0}
-                  max={100}
-                  step={1}
-                  onValueChange={([v]) => onCropYChange(v)}
-                />
-              </div>
-
-              {/* Quick Position Buttons */}
-              <div className="grid grid-cols-3 gap-1">
-                {[
-                  { x: 0, y: 0, label: '↖' },
-                  { x: 50, y: 0, label: '↑' },
-                  { x: 100, y: 0, label: '↗' },
-                  { x: 0, y: 50, label: '←' },
-                  { x: 50, y: 50, label: '●' },
-                  { x: 100, y: 50, label: '→' },
-                  { x: 0, y: 100, label: '↙' },
-                  { x: 50, y: 100, label: '↓' },
-                  { x: 100, y: 100, label: '↘' },
-                ].map((pos) => (
-                  <Button
-                    key={`${pos.x}-${pos.y}`}
-                    variant={cropX === pos.x && cropY === pos.y ? 'default' : 'outline'}
-                    size="sm"
-                    className="h-8"
-                    onClick={() => {
-                      onCropXChange(pos.x)
-                      onCropYChange(pos.y)
-                    }}
+              ) : (
+                filteredVideos.map((video) => (
+                  <button
+                    key={video.id}
+                    onClick={() => handleSelect(video)}
+                    className={cn(
+                      'w-full px-4 py-3 text-left hover:bg-muted transition-colors flex items-center justify-between',
+                      video.id === selectedVideoId && 'bg-muted'
+                    )}
                   >
-                    {pos.label}
-                  </Button>
-                ))}
-              </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="font-medium truncate">{video.title}</div>
+                      <div className="text-sm text-muted-foreground">{video.code}</div>
+                    </div>
+                    <div className="text-sm text-muted-foreground ml-2">
+                      {formatTime(video.duration)}
+                    </div>
+                  </button>
+                ))
+              )}
             </div>
           )}
+        </div>
+      </div>
+
+      {/* Style Selection - Only show after video is selected */}
+      {hasVideo && (
+        <div className="space-y-3">
+          <Label className="text-sm font-medium">เลือกสไตล์</Label>
+          <div className="grid grid-cols-3 gap-3">
+            {REEL_STYLE_OPTIONS.map((opt) => (
+              <button
+                key={opt.value}
+                onClick={() => onStyleChange(opt.value)}
+                className={cn(
+                  'relative flex flex-col items-center p-4 rounded-xl border-2 transition-all hover:border-primary/50',
+                  style === opt.value
+                    ? 'border-primary bg-primary/5'
+                    : 'border-muted bg-muted/30 hover:bg-muted/50'
+                )}
+              >
+                {/* Selected indicator */}
+                {style === opt.value && (
+                  <div className="absolute top-2 right-2">
+                    <Check className="h-4 w-4 text-primary" />
+                  </div>
+                )}
+
+                {/* Icon */}
+                <span className="text-3xl mb-2">{opt.icon}</span>
+
+                {/* Label */}
+                <span className="font-semibold text-sm">{opt.label}</span>
+
+                {/* Description */}
+                <span className="text-xs text-muted-foreground mt-1 text-center">
+                  {opt.description}
+                </span>
+              </button>
+            ))}
+          </div>
+
+          {/* Style preview hint */}
+          <p className="text-xs text-muted-foreground text-center">
+            Output: 1080x1920 (9:16) พร้อม Logo และ Text Overlay
+          </p>
         </div>
       )}
     </div>

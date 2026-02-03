@@ -2,10 +2,21 @@
 
 export type ReelStatus = 'draft' | 'exporting' | 'ready' | 'failed'
 
-// Output format - the final canvas/frame size
+// NEW: Reel Style - simplified 3-style system
+export type ReelStyle = 'letterbox' | 'square' | 'fullcover'
+
+// Style option for UI
+export interface ReelStyleOption {
+  value: ReelStyle
+  label: string
+  description: string
+  icon: string
+}
+
+// LEGACY: Output format - the final canvas/frame size (deprecated)
 export type OutputFormat = '9:16' | '1:1' | '4:5' | '16:9'
 
-// Video fit - how the source video fills the output frame
+// LEGACY: Video fit - how the source video fills the output frame (deprecated)
 export type VideoFit = 'fill' | 'fit' | 'crop-1:1' | 'crop-4:3' | 'crop-4:5'
 
 export type TitlePosition = 'top' | 'center' | 'bottom'
@@ -62,24 +73,36 @@ export interface ReelTemplateBasic {
 // Full reel object
 export interface Reel {
   id: string
-  title: string
-  description: string
   segmentStart: number
   segmentEnd: number
   duration: number
-  outputFormat: OutputFormat
-  videoFit: VideoFit
-  cropX: number
-  cropY: number
   status: ReelStatus
+
+  // NEW: Style-based fields
+  style?: ReelStyle
+  title: string
+  line1?: string
+  line2?: string
+  showLogo: boolean
+
+  // Output
   outputUrl?: string
   thumbnailUrl?: string
   fileSize?: number
   exportError?: string
   exportedAt?: string
-  layers: ReelLayer[]
-  video?: VideoBasic
+
+  // LEGACY: Layer-based fields (for backward compatibility)
+  description?: string
+  outputFormat?: OutputFormat
+  videoFit?: VideoFit
+  cropX?: number
+  cropY?: number
+  layers?: ReelLayer[]
   template?: ReelTemplateBasic
+
+  // Relations
+  video?: VideoBasic
   createdAt: string
   updatedAt: string
 }
@@ -104,10 +127,18 @@ export interface ReelTemplate {
 
 export interface CreateReelRequest {
   videoId: string
-  title?: string
-  description?: string
   segmentStart: number
   segmentEnd: number
+
+  // NEW: Style-based fields (preferred)
+  style?: ReelStyle
+  title?: string
+  line1?: string
+  line2?: string
+  showLogo?: boolean
+
+  // LEGACY: Layer-based fields (deprecated but still supported)
+  description?: string
   outputFormat?: OutputFormat
   videoFit?: VideoFit
   cropX?: number
@@ -117,10 +148,18 @@ export interface CreateReelRequest {
 }
 
 export interface UpdateReelRequest {
-  title?: string
-  description?: string
   segmentStart?: number
   segmentEnd?: number
+
+  // NEW: Style-based fields
+  style?: ReelStyle
+  title?: string
+  line1?: string
+  line2?: string
+  showLogo?: boolean
+
+  // LEGACY: Layer-based fields
+  description?: string
   outputFormat?: OutputFormat
   videoFit?: VideoFit
   cropX?: number

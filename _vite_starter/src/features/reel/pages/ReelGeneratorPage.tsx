@@ -9,7 +9,7 @@ import { toast } from 'sonner'
 import { useReel, useCreateReel, useUpdateReel, useExportReel } from '../hooks'
 import { useVideoByCode } from '@/features/video/hooks'
 import type { Video } from '@/features/video/types'
-import type { ReelLayer, CreateReelRequest, UpdateReelRequest, OutputFormat, VideoFit, TitlePosition } from '../types'
+import type { ReelStyle, CreateReelRequest, UpdateReelRequest } from '../types'
 import {
   ReelPreviewCanvas,
   ReelVideoSelector,
@@ -40,30 +40,20 @@ export function ReelGeneratorPage() {
   // === Form State ===
   const [selectedVideoId, setSelectedVideoId] = useState<string>('')
   const [selectedVideo, setSelectedVideo] = useState<Video | undefined>(undefined)
-  const [title, setTitle] = useState('')
-  const [description, setDescription] = useState('')
   const [segmentStart, setSegmentStart] = useState(0)
   const [segmentEnd, setSegmentEnd] = useState(60)
 
-  // Display options
-  const [outputFormat, setOutputFormat] = useState<OutputFormat>('9:16')
-  const [videoFit, setVideoFit] = useState<VideoFit>('fill')
-  const [cropX, setCropX] = useState(50)
-  const [cropY, setCropY] = useState(50)
-
-  // Text overlay
-  const [showTitle, setShowTitle] = useState(true)
-  const [showDescription, setShowDescription] = useState(true)
-  const [showGradient, setShowGradient] = useState(true)
-  const [titlePosition, setTitlePosition] = useState<TitlePosition>('top')
-  const [titleFontSize, setTitleFontSize] = useState(72)
-  const [descriptionFontSize, setDescriptionFontSize] = useState(36)
+  // NEW: Style-based fields
+  const [style, setStyle] = useState<ReelStyle>('letterbox')
+  const [title, setTitle] = useState('')
+  const [line1, setLine1] = useState('')
+  const [line2, setLine2] = useState('')
+  const [showLogo, setShowLogo] = useState(true)
 
   // Video state (from preview canvas)
   const [actualDuration, setActualDuration] = useState(0)
   const [currentTime, setCurrentTime] = useState(0)
   const [isVideoReady, setIsVideoReady] = useState(false)
-  // Seek request - use counter to ensure seek triggers even for same time
   const [seekRequest, setSeekRequest] = useState<{ time: number; id: number } | null>(null)
 
   // Tab state
@@ -79,35 +69,23 @@ export function ReelGeneratorPage() {
     if (existingReel) {
       setSelectedVideoId(existingReel.video?.id || '')
       setSelectedVideo(existingReel.video as Video | undefined)
-      setTitle(existingReel.title || '')
-      setDescription(existingReel.description || '')
       setSegmentStart(existingReel.segmentStart)
       setSegmentEnd(existingReel.segmentEnd)
-      // Restore display options
-      if (existingReel.outputFormat) setOutputFormat(existingReel.outputFormat)
-      if (existingReel.videoFit) setVideoFit(existingReel.videoFit)
-      if (existingReel.cropX !== undefined) setCropX(existingReel.cropX)
-      if (existingReel.cropY !== undefined) setCropY(existingReel.cropY)
-      // Parse layers to restore text options
-      const titleLayer = existingReel.layers?.find((l: ReelLayer) => l.type === 'text' && l.y < 30)
-      const descLayer = existingReel.layers?.find((l: ReelLayer) => l.type === 'text' && l.y > 70)
-      const bgLayer = existingReel.layers?.find((l: ReelLayer) => l.type === 'background')
-      setShowTitle(!!titleLayer)
-      setShowDescription(!!descLayer)
-      setShowGradient(!!bgLayer)
+
+      // NEW: Style-based fields
+      if (existingReel.style) {
+        setStyle(existingReel.style)
+      }
+      setTitle(existingReel.title || '')
+      setLine1(existingReel.line1 || '')
+      setLine2(existingReel.line2 || '')
+      setShowLogo(existingReel.showLogo ?? true)
     } else if (videoByCode) {
       setSelectedVideoId(videoByCode.id)
       setSelectedVideo(videoByCode)
       setSegmentEnd(Math.min(60, videoByCode.duration))
     }
   }, [existingReel, videoByCode])
-
-  // Auto switch to timecode tab when video is selected
-  useEffect(() => {
-    if (selectedVideoId && activeTab === 'video') {
-      // Keep on video tab to let user configure output format first
-    }
-  }, [selectedVideoId, activeTab])
 
   // === Callbacks for child components ===
   const handleVideoSelect = useCallback((videoId: string, video?: Video) => {
@@ -137,72 +115,17 @@ export function ReelGeneratorPage() {
     setSegmentEnd(Math.min(time, videoDuration))
   }, [videoDuration])
 
-  // Trigger seek in video player
   const triggerSeek = useCallback((time: number) => {
     setSeekRequest(prev => ({ time, id: (prev?.id || 0) + 1 }))
   }, [])
 
-  // Handle time update from video player (just update display)
   const handleTimeUpdate = useCallback((time: number) => {
     setCurrentTime(time)
   }, [])
 
-  // Preview segment from start
   const handlePreviewSegment = useCallback(() => {
     triggerSeek(segmentStart)
   }, [segmentStart, triggerSeek])
-
-  // === Build layers ===
-  const buildLayers = (): ReelLayer[] => {
-    const layers: ReelLayer[] = []
-
-    if (showGradient) {
-      layers.push({
-        type: 'background',
-        style: 'gradient-dark',
-        x: 0,
-        y: 0,
-        width: 100,
-        height: 100,
-        opacity: 0.5,
-        zIndex: 1,
-      })
-    }
-
-    if (showTitle && title) {
-      const yPos = titlePosition === 'top' ? 12 : titlePosition === 'center' ? 50 : 88
-      layers.push({
-        type: 'text',
-        content: title,
-        fontFamily: 'Google Sans',
-        fontSize: titleFontSize,
-        fontColor: '#ffffff',
-        fontWeight: 'bold',
-        x: 50,
-        y: yPos,
-        opacity: 1,
-        zIndex: 10,
-      })
-    }
-
-    if (showDescription && description) {
-      const yPos = titlePosition === 'bottom' ? 78 : 88
-      layers.push({
-        type: 'text',
-        content: description,
-        fontFamily: 'Google Sans',
-        fontSize: descriptionFontSize,
-        fontColor: '#ffffff',
-        fontWeight: 'normal',
-        x: 50,
-        y: yPos,
-        opacity: 0.9,
-        zIndex: 10,
-      })
-    }
-
-    return layers
-  }
 
   // === Actions ===
   const handleSave = async () => {
@@ -216,35 +139,29 @@ export function ReelGeneratorPage() {
       return
     }
 
-    const layers = buildLayers()
-
     try {
       if (isEditing && id) {
         const data: UpdateReelRequest = {
-          title,
-          description,
           segmentStart,
           segmentEnd,
-          outputFormat,
-          videoFit,
-          cropX,
-          cropY,
-          layers,
+          style,
+          title,
+          line1,
+          line2,
+          showLogo,
         }
         await updateReel.mutateAsync({ id, data })
         toast.success('บันทึกสำเร็จ')
       } else {
         const data: CreateReelRequest = {
           videoId: selectedVideoId,
-          title,
-          description,
           segmentStart,
           segmentEnd,
-          outputFormat,
-          videoFit,
-          cropX,
-          cropY,
-          layers,
+          style,
+          title,
+          line1,
+          line2,
+          showLogo,
         }
         const newReel = await createReel.mutateAsync(data)
         toast.success('สร้าง Reel สำเร็จ')
@@ -335,20 +252,13 @@ export function ReelGeneratorPage() {
         <div className="flex justify-center">
           <ReelPreviewCanvas
             selectedVideo={activeVideo}
-            outputFormat={outputFormat}
-            videoFit={videoFit}
-            cropX={cropX}
-            cropY={cropY}
+            style={style}
             segmentStart={segmentStart}
             segmentEnd={segmentEnd}
             title={title}
-            description={description}
-            showTitle={showTitle}
-            showDescription={showDescription}
-            showGradient={showGradient}
-            titlePosition={titlePosition}
-            titleFontSize={titleFontSize}
-            descriptionFontSize={descriptionFontSize}
+            line1={line1}
+            line2={line2}
+            showLogo={showLogo}
             seekToTime={seekRequest?.time}
             seekRequestId={seekRequest?.id}
             onTimeUpdate={handleTimeUpdate}
@@ -381,16 +291,10 @@ export function ReelGeneratorPage() {
               <ReelVideoSelector
                 selectedVideoId={selectedVideoId}
                 selectedVideo={activeVideo}
-                outputFormat={outputFormat}
-                videoFit={videoFit}
-                cropX={cropX}
-                cropY={cropY}
+                style={style}
                 isEditing={isEditing}
                 onVideoSelect={handleVideoSelect}
-                onOutputFormatChange={setOutputFormat}
-                onVideoFitChange={setVideoFit}
-                onCropXChange={setCropX}
-                onCropYChange={setCropY}
+                onStyleChange={setStyle}
               />
             </TabsContent>
 
@@ -414,22 +318,15 @@ export function ReelGeneratorPage() {
             <TabsContent value="text" className="mt-4">
               {activeVideo && (
                 <ReelTextOverlay
+                  style={style}
                   title={title}
-                  description={description}
-                  showTitle={showTitle}
-                  showDescription={showDescription}
-                  showGradient={showGradient}
-                  titlePosition={titlePosition}
-                  titleFontSize={titleFontSize}
-                  descriptionFontSize={descriptionFontSize}
+                  line1={line1}
+                  line2={line2}
+                  showLogo={showLogo}
                   onTitleChange={setTitle}
-                  onDescriptionChange={setDescription}
-                  onShowTitleChange={setShowTitle}
-                  onShowDescriptionChange={setShowDescription}
-                  onShowGradientChange={setShowGradient}
-                  onTitlePositionChange={setTitlePosition}
-                  onTitleFontSizeChange={setTitleFontSize}
-                  onDescriptionFontSizeChange={setDescriptionFontSize}
+                  onLine1Change={setLine1}
+                  onLine2Change={setLine2}
+                  onShowLogoChange={setShowLogo}
                 />
               )}
             </TabsContent>

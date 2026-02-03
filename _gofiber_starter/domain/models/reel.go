@@ -38,7 +38,7 @@ const (
 	OutputFormat16x9 OutputFormat = "16:9"  // YouTube
 )
 
-// VideoFit วิธีการ fit video ในกรอบ
+// VideoFit วิธีการ fit video ในกรอบ (DEPRECATED - use ReelStyle instead)
 type VideoFit string
 
 const (
@@ -48,6 +48,32 @@ const (
 	VideoFitCrop4x3 VideoFit = "crop-4:3"  // Crop เป็น 4:3
 	VideoFitCrop4x5 VideoFit = "crop-4:5"  // Crop เป็น 4:5
 )
+
+// ReelStyle สไตล์การแสดงผล reel (NEW simplified system)
+type ReelStyle string
+
+const (
+	ReelStyleLetterbox ReelStyle = "letterbox" // 16:9 video centered with black bars
+	ReelStyleSquare    ReelStyle = "square"    // 1:1 video centered with black bars
+	ReelStyleFullcover ReelStyle = "fullcover" // Video fills entire 9:16 frame, sides cropped
+)
+
+// ValidReelStyles รายการสไตล์ที่รองรับ
+var ValidReelStyles = []ReelStyle{
+	ReelStyleLetterbox,
+	ReelStyleSquare,
+	ReelStyleFullcover,
+}
+
+// IsValidStyle ตรวจสอบว่า style ถูกต้อง
+func IsValidStyle(style string) bool {
+	for _, valid := range ValidReelStyles {
+		if string(valid) == style {
+			return true
+		}
+	}
+	return false
+}
 
 // ReelLayer แต่ละ layer ใน reel composition
 type ReelLayer struct {
@@ -94,28 +120,36 @@ func (l ReelLayers) Value() (driver.Value, error) {
 
 // Reel แต่ละ reel ที่สร้างจาก video
 type Reel struct {
-	ID        uuid.UUID  `gorm:"primaryKey;type:uuid;default:gen_random_uuid()"`
-	UserID    uuid.UUID  `gorm:"type:uuid;not null;index"`
-	VideoID   uuid.UUID  `gorm:"type:uuid;not null;index"`
+	ID        uuid.UUID `gorm:"primaryKey;type:uuid;default:gen_random_uuid()"`
+	UserID    uuid.UUID `gorm:"type:uuid;not null;index"`
+	VideoID   uuid.UUID `gorm:"type:uuid;not null;index"`
 
 	// Basic Info
-	Title       string     `gorm:"size:255"`
-	Description string     `gorm:"type:text"`
+	Title       string `gorm:"size:255"`
+	Description string `gorm:"type:text"` // DEPRECATED - use Line1 instead
+
+	// NEW: Style-based text fields
+	Line1 string `gorm:"size:255"` // Secondary line 1
+	Line2 string `gorm:"size:255"` // Secondary line 2
 
 	// Video Segment
 	SegmentStart float64 `gorm:"default:0"`  // start time (seconds)
 	SegmentEnd   float64 `gorm:"default:60"` // end time (seconds)
 
-	// Display Options
+	// NEW: Style-based display (simplified)
+	Style    ReelStyle `gorm:"size:20;default:'letterbox'"` // letterbox, square, fullcover
+	ShowLogo bool      `gorm:"default:true"`                // show logo overlay
+
+	// LEGACY: Display Options (deprecated - kept for backward compatibility)
 	OutputFormat OutputFormat `gorm:"size:10;default:'9:16'"` // output aspect ratio
 	VideoFit     VideoFit     `gorm:"size:20;default:'fill'"` // how video fits in frame
 	CropX        float64      `gorm:"default:50"`             // crop position X (0-100%)
 	CropY        float64      `gorm:"default:50"`             // crop position Y (0-100%)
 
-	// Template (optional)
+	// Template (optional) - DEPRECATED
 	TemplateID *uuid.UUID `gorm:"type:uuid"` // null = custom
 
-	// Composition Layers (JSONB)
+	// Composition Layers (JSONB) - DEPRECATED for style-based, kept for legacy
 	Layers ReelLayers `gorm:"type:jsonb;default:'[]'"`
 
 	// Output
@@ -125,9 +159,9 @@ type Reel struct {
 	FileSize     int64      `gorm:"default:0"` // bytes
 
 	// Status
-	Status       ReelStatus `gorm:"size:20;default:'draft'"`
-	ExportError  string     `gorm:"type:text"`
-	ExportedAt   *time.Time `gorm:"type:timestamptz"`
+	Status      ReelStatus `gorm:"size:20;default:'draft'"`
+	ExportError string     `gorm:"type:text"`
+	ExportedAt  *time.Time `gorm:"type:timestamptz"`
 
 	// Timestamps
 	CreatedAt time.Time
@@ -137,6 +171,11 @@ type Reel struct {
 	User     *User         `gorm:"foreignKey:UserID"`
 	Video    *Video        `gorm:"foreignKey:VideoID"`
 	Template *ReelTemplate `gorm:"foreignKey:TemplateID"`
+}
+
+// IsStyleBased ตรวจสอบว่าใช้ระบบ style-based หรือไม่
+func (r *Reel) IsStyleBased() bool {
+	return r.Style != ""
 }
 
 func (Reel) TableName() string {

@@ -5,29 +5,20 @@ import { Button } from '@/components/ui/button'
 import { useStreamAccess } from '@/features/embed/hooks/useStreamAccess'
 import { APP_CONFIG } from '@/constants/app-config'
 import type { Video } from '@/features/video/types'
-import type { OutputFormat, VideoFit, TitlePosition } from '../types'
-import { getAspectClass, getCropAspectRatio, formatTime } from './constants'
+import type { ReelStyle } from '../types'
+import { formatTime } from './constants'
 
 interface ReelPreviewCanvasProps {
   selectedVideo: Video | undefined
-  outputFormat: OutputFormat
-  videoFit: VideoFit
-  cropX: number
-  cropY: number
+  style: ReelStyle
   segmentStart: number
   segmentEnd: number
   title: string
-  description: string
-  showTitle: boolean
-  showDescription: boolean
-  showGradient: boolean
-  titlePosition: TitlePosition
-  titleFontSize: number
-  descriptionFontSize: number
-  // Seek control from parent (time + id to allow repeated seeks to same time)
+  line1: string
+  line2: string
+  showLogo: boolean
   seekToTime?: number
   seekRequestId?: number
-  // Callbacks
   onTimeUpdate: (time: number) => void
   onDurationChange: (duration: number) => void
   onVideoReady: (ready: boolean) => void
@@ -35,22 +26,58 @@ interface ReelPreviewCanvasProps {
   onSegmentEndChange: (time: number) => void
 }
 
+// Style-specific layout configurations
+const STYLE_LAYOUTS: Record<ReelStyle, {
+  videoStyle: React.CSSProperties
+  containerClass: string
+  titleY: string
+  line1Y: string
+  line2Y: string
+  logoPos: { top?: string; left: string }
+  hasGradient: boolean
+  hasTextShadow: boolean
+}> = {
+  letterbox: {
+    videoStyle: { width: '100%', height: 'auto', objectFit: 'contain' },
+    containerClass: 'items-center justify-center',
+    titleY: '20%',  // In top black bar
+    line1Y: '71%',  // In bottom black bar
+    line2Y: '76%',
+    logoPos: { top: '35%', left: '5%' }, // Inside video frame
+    hasGradient: false,
+    hasTextShadow: false,
+  },
+  square: {
+    videoStyle: { width: '100%', height: '56.25%', objectFit: 'cover' }, // 1:1 in center
+    containerClass: 'items-center justify-center',
+    titleY: '10%',  // In top black bar
+    line1Y: '80%',  // In bottom black bar
+    line2Y: '85%',
+    logoPos: { top: '23%', left: '5%' }, // Inside video frame
+    hasGradient: false,
+    hasTextShadow: false,
+  },
+  fullcover: {
+    videoStyle: { width: '100%', height: '100%', objectFit: 'cover' },
+    containerClass: 'items-center justify-center',
+    titleY: '82%',  // Over gradient
+    line1Y: '88%',
+    line2Y: '93%',
+    logoPos: { top: '2%', left: '2%' }, // Top left
+    hasGradient: true,
+    hasTextShadow: true,
+  },
+}
+
 export function ReelPreviewCanvas({
   selectedVideo,
-  outputFormat,
-  videoFit,
-  cropX,
-  cropY,
+  style,
   segmentStart,
   segmentEnd,
   title,
-  description,
-  showTitle,
-  showDescription,
-  showGradient,
-  titlePosition,
-  titleFontSize,
-  descriptionFontSize,
+  line1,
+  line2,
+  showLogo,
   seekToTime,
   seekRequestId,
   onTimeUpdate,
@@ -65,6 +92,8 @@ export function ReelPreviewCanvas({
   const [currentTime, setCurrentTime] = useState(0)
   const [isVideoReady, setIsVideoReady] = useState(false)
 
+  const layout = STYLE_LAYOUTS[style]
+
   // Stream access for video preview
   const { data: streamAccess, isLoading: isStreamLoading } = useStreamAccess(
     selectedVideo?.code || '',
@@ -74,9 +103,6 @@ export function ReelPreviewCanvas({
   // HLS URL
   const hlsUrl = selectedVideo?.code ? `${APP_CONFIG.streamUrl}/${selectedVideo.code}/master.m3u8` : ''
 
-  // Get crop aspect ratio
-  const cropAspectRatio = getCropAspectRatio(videoFit)
-
   // Initialize HLS.js
   useEffect(() => {
     const video = videoRef.current
@@ -85,7 +111,6 @@ export function ReelPreviewCanvas({
     setIsVideoReady(false)
     onVideoReady(false)
 
-    // Destroy previous instance
     if (hlsRef.current) {
       hlsRef.current.destroy()
       hlsRef.current = null
@@ -151,7 +176,7 @@ export function ReelPreviewCanvas({
     return () => video.removeEventListener('timeupdate', handleTimeUpdate)
   }, [segmentStart, segmentEnd, isPlaying, onTimeUpdate])
 
-  // Handle seek from parent (triggered by seekRequestId change)
+  // Handle seek from parent
   useEffect(() => {
     const video = videoRef.current
     if (!video || !isVideoReady || seekToTime === undefined || !seekRequestId) return
@@ -159,9 +184,8 @@ export function ReelPreviewCanvas({
     video.currentTime = seekToTime
     setCurrentTime(seekToTime)
     onTimeUpdate(seekToTime)
-  }, [seekRequestId]) // Only depend on seekRequestId to allow repeated seeks
+  }, [seekRequestId])
 
-  // Toggle play/pause
   const togglePlayback = useCallback(() => {
     const video = videoRef.current
     if (!video) return
@@ -178,7 +202,6 @@ export function ReelPreviewCanvas({
     }
   }, [segmentStart, segmentEnd])
 
-  // Seek to time
   const seekTo = useCallback((time: number) => {
     const video = videoRef.current
     if (!video || !isVideoReady) return
@@ -187,160 +210,139 @@ export function ReelPreviewCanvas({
     onTimeUpdate(time)
   }, [isVideoReady, onTimeUpdate])
 
-  // Get title Y position
-  const getTitleY = () => {
-    switch (titlePosition) {
-      case 'top': return '12%'
-      case 'center': return '50%'
-      case 'bottom': return '88%'
-    }
-  }
-
-  // Get video style
-  const getVideoStyle = (): React.CSSProperties => {
-    if (cropAspectRatio) {
-      // Crop modes (1:1, 4:3, 4:5): แสดง video ตาม aspect ratio ที่เลือก
-      // ไม่ใช้ width/height 100% เพื่อให้ aspectRatio ทำงานได้
-      return {
-        aspectRatio: cropAspectRatio,
-        maxWidth: '100%',
-        maxHeight: '100%',
-        width: 'auto',
-        height: 'auto',
-        objectFit: 'cover',
-        objectPosition: `${cropX}% ${cropY}%`,
-      }
-    }
-    if (videoFit === 'fit') {
-      // Fit mode: แสดง video เต็มแต่มี letterbox
-      return {
-        width: '100%',
-        height: '100%',
-        objectFit: 'contain',
-      }
-    }
-    // Fill mode: crop ให้เต็มกรอบ
-    return {
-      width: '100%',
-      height: '100%',
-      objectFit: 'cover',
-      objectPosition: `${cropX}% ${cropY}%`,
-    }
-  }
+  const textShadowStyle = layout.hasTextShadow
+    ? { textShadow: '2px 2px 4px rgba(0,0,0,0.5)' }
+    : {}
 
   return (
     <div className="w-full max-w-[320px] space-y-3">
-      <div className="text-sm text-muted-foreground text-center">Preview ({outputFormat})</div>
-      <div className={`relative bg-black rounded-lg overflow-hidden ${getAspectClass(outputFormat)}`}>
-            {/* Video Container */}
-            <div className="absolute inset-0 flex items-center justify-center overflow-hidden">
-              <video
-                ref={videoRef}
-                className="max-w-full max-h-full"
-                style={getVideoStyle()}
-                muted
-                playsInline
-                onClick={togglePlayback}
-              />
-            </div>
+      <div className="text-sm text-muted-foreground text-center">
+        Preview ({style}) - 1080x1920
+      </div>
+      <div className="relative bg-black rounded-lg overflow-hidden aspect-[9/16]">
+        {/* Video Container */}
+        <div className={`absolute inset-0 flex overflow-hidden ${layout.containerClass}`}>
+          <video
+            ref={videoRef}
+            className="max-w-full max-h-full"
+            style={layout.videoStyle}
+            muted
+            playsInline
+            onClick={togglePlayback}
+          />
+        </div>
 
-            {/* Loading state */}
-            {selectedVideo && isStreamLoading && (
-              <div className="absolute inset-0 flex items-center justify-center bg-black">
-                <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-              </div>
-            )}
+        {/* Loading state */}
+        {selectedVideo && isStreamLoading && (
+          <div className="absolute inset-0 flex items-center justify-center bg-black">
+            <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+          </div>
+        )}
 
-            {/* Thumbnail fallback */}
-            {selectedVideo?.thumbnailUrl && !streamAccess?.token && !isStreamLoading && (
-              <div className="absolute inset-0 flex items-center justify-center overflow-hidden">
-                <img
-                  src={selectedVideo.thumbnailUrl}
-                  alt="Preview"
-                  className="max-w-full max-h-full"
-                  style={getVideoStyle()}
-                />
-              </div>
-            )}
+        {/* Thumbnail fallback */}
+        {selectedVideo?.thumbnailUrl && !streamAccess?.token && !isStreamLoading && (
+          <div className={`absolute inset-0 flex overflow-hidden ${layout.containerClass}`}>
+            <img
+              src={selectedVideo.thumbnailUrl}
+              alt="Preview"
+              className="max-w-full max-h-full"
+              style={layout.videoStyle}
+            />
+          </div>
+        )}
 
-            {/* Empty state */}
-            {!selectedVideo && (
-              <div className="absolute inset-0 flex items-center justify-center">
-                <Film className="h-16 w-16 text-muted-foreground/30" />
-              </div>
-            )}
+        {/* Empty state */}
+        {!selectedVideo && (
+          <div className="absolute inset-0 flex items-center justify-center">
+            <Film className="h-16 w-16 text-muted-foreground/30" />
+          </div>
+        )}
 
-            {/* Play/Pause Overlay */}
-            {selectedVideo && streamAccess?.token && (
-              <div
-                className="absolute inset-0 flex items-center justify-center cursor-pointer bg-black/20 opacity-0 hover:opacity-100 transition-opacity"
-                onClick={togglePlayback}
-              >
-                {isPlaying ? (
-                  <Pause className="h-12 w-12 text-white drop-shadow-lg" />
-                ) : (
-                  <Play className="h-12 w-12 text-white drop-shadow-lg" />
-                )}
-              </div>
-            )}
-
-            {/* Gradient Overlay */}
-            {showGradient && (
-              <div
-                className="absolute inset-0 pointer-events-none"
-                style={{
-                  background: 'linear-gradient(to bottom, rgba(0,0,0,0.3) 0%, transparent 30%, transparent 60%, rgba(0,0,0,0.7) 100%)',
-                }}
-              />
-            )}
-
-            {/* Title Preview */}
-            {showTitle && title && (
-              <div
-                className="absolute left-0 right-0 text-center pointer-events-none px-4"
-                style={{ top: getTitleY(), transform: 'translateY(-50%)' }}
-              >
-                <span className="text-white font-bold drop-shadow-lg" style={{ fontSize: `${titleFontSize * 0.5}px` }}>
-                  {title}
-                </span>
-              </div>
-            )}
-
-            {/* Description Preview */}
-            {showDescription && description && (
-              <div
-                className="absolute left-0 right-0 text-center pointer-events-none px-4"
-                style={{
-                  top: titlePosition === 'bottom' ? '78%' : '88%',
-                  transform: 'translateY(-50%)'
-                }}
-              >
-                <span
-                  className="text-white/90 drop-shadow-lg"
-                  style={{
-                    fontSize: `${descriptionFontSize * 0.6}px`,
-                    whiteSpace: 'pre-line'
-                  }}
-                >
-                  {description}
-                </span>
-              </div>
-            )}
-
-            {/* Current Time Indicator */}
-            {selectedVideo && (
-              <div className="absolute bottom-2 left-2 right-2">
-                <div className="bg-black/60 rounded px-2 py-1 text-sm text-white text-center">
-                  {formatTime(currentTime)} ({formatTime(segmentStart)} - {formatTime(segmentEnd)})
-                </div>
-              </div>
+        {/* Play/Pause Overlay */}
+        {selectedVideo && streamAccess?.token && (
+          <div
+            className="absolute inset-0 flex items-center justify-center cursor-pointer bg-black/20 opacity-0 hover:opacity-100 transition-opacity"
+            onClick={togglePlayback}
+          >
+            {isPlaying ? (
+              <Pause className="h-12 w-12 text-white drop-shadow-lg" />
+            ) : (
+              <Play className="h-12 w-12 text-white drop-shadow-lg" />
             )}
           </div>
+        )}
+
+        {/* Gradient Overlay (for fullcover style) */}
+        {layout.hasGradient && (
+          <div
+            className="absolute inset-0 pointer-events-none"
+            style={{
+              background: 'linear-gradient(to top, rgba(0,0,0,0.8) 0%, rgba(0,0,0,0.4) 30%, transparent 60%)',
+            }}
+          />
+        )}
+
+        {/* Logo Preview */}
+        {showLogo && (
+          <div
+            className="absolute pointer-events-none"
+            style={{ top: layout.logoPos.top, left: layout.logoPos.left }}
+          >
+            <div className="bg-white/30 rounded px-2 py-1 text-[8px] text-white font-bold">
+              LOGO
+            </div>
+          </div>
+        )}
+
+        {/* Title Preview */}
+        {title && (
+          <div
+            className="absolute left-0 right-0 text-center pointer-events-none px-4"
+            style={{ top: layout.titleY, ...textShadowStyle }}
+          >
+            <span className="text-white font-bold drop-shadow-lg text-lg">
+              {title}
+            </span>
+          </div>
+        )}
+
+        {/* Line1 Preview */}
+        {line1 && (
+          <div
+            className="absolute left-0 right-0 text-center pointer-events-none px-4"
+            style={{ top: layout.line1Y, ...textShadowStyle }}
+          >
+            <span className="text-white/90 drop-shadow-lg text-sm">
+              {line1}
+            </span>
+          </div>
+        )}
+
+        {/* Line2 Preview */}
+        {line2 && (
+          <div
+            className="absolute left-0 right-0 text-center pointer-events-none px-4"
+            style={{ top: layout.line2Y, ...textShadowStyle }}
+          >
+            <span className="text-white/90 drop-shadow-lg text-sm">
+              {line2}
+            </span>
+          </div>
+        )}
+
+        {/* Current Time Indicator */}
+        {selectedVideo && (
+          <div className="absolute bottom-2 left-2 right-2">
+            <div className="bg-black/60 rounded px-2 py-1 text-xs text-white text-center">
+              {formatTime(currentTime)} ({formatTime(segmentStart)} - {formatTime(segmentEnd)})
+            </div>
+          </div>
+        )}
+      </div>
 
       {/* Playback Controls */}
       {selectedVideo && streamAccess?.token && (
         <div className="space-y-2">
-          {/* Play/Seek Controls */}
           <div className="flex items-center justify-center gap-2">
             <Button
               variant="outline"
@@ -373,7 +375,6 @@ export function ReelPreviewCanvas({
             </Button>
           </div>
 
-          {/* Mark In/Out Controls */}
           <div className="flex items-center justify-center gap-2">
             <Button
               variant="secondary"
@@ -387,7 +388,7 @@ export function ReelPreviewCanvas({
               disabled={!isVideoReady}
             >
               <Flag className="h-3 w-3 mr-1" />
-              จุดเริ่ม [{formatTime(currentTime)}]
+              จุดเริ่ม
             </Button>
             <Button
               variant="secondary"
@@ -400,7 +401,7 @@ export function ReelPreviewCanvas({
               disabled={!isVideoReady || currentTime <= segmentStart}
             >
               <Scissors className="h-3 w-3 mr-1" />
-              จุดจบ [{formatTime(currentTime)}]
+              จุดจบ
             </Button>
           </div>
         </div>
