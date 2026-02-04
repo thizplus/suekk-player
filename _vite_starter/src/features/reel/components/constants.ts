@@ -44,11 +44,42 @@ export const VIDEO_FIT_OPTIONS: VideoFitOption[] = [
   { value: 'crop-4:5', label: '4:5', description: 'IG', aspectRatio: '4/5' },
 ]
 
+// ขนาด chunk สำหรับแบ่ง timeline (10 นาที = 600 วินาที)
+export const CHUNK_SIZE = 600
+
 // จำกัด duration สูงสุด 10 นาที (600 วินาที) สำหรับทำ reel
 export const MAX_REEL_DURATION = 600
 
 // Quick duration presets (seconds)
 export const QUICK_DURATIONS = [15, 30, 45, 60, 90]
+
+// สร้าง chunk options จาก video duration
+export interface ChunkOption {
+  value: number // chunk index (0, 1, 2, ...)
+  label: string // "0:00 - 10:00"
+  start: number // seconds
+  end: number   // seconds
+}
+
+export const generateChunkOptions = (totalDuration: number): ChunkOption[] => {
+  const chunks: ChunkOption[] = []
+  let chunkIndex = 0
+  let start = 0
+
+  while (start < totalDuration) {
+    const end = Math.min(start + CHUNK_SIZE, totalDuration)
+    chunks.push({
+      value: chunkIndex,
+      label: `${formatTime(start)} - ${formatTime(end)}`,
+      start,
+      end,
+    })
+    start = end
+    chunkIndex++
+  }
+
+  return chunks
+}
 
 // Helper functions
 export const getAspectClass = (format: OutputFormat): string => {

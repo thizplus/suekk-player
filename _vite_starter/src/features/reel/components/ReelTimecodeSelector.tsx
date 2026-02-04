@@ -2,7 +2,14 @@ import { Play, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { Slider } from '@/components/ui/slider'
-import { formatTime, QUICK_DURATIONS, MAX_REEL_DURATION } from './constants'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import { formatTime, QUICK_DURATIONS, type ChunkOption } from './constants'
 
 interface ReelTimecodeSelectorProps {
   videoDuration: number
@@ -11,6 +18,9 @@ interface ReelTimecodeSelectorProps {
   segmentEnd: number
   currentTime: number
   isVideoReady: boolean
+  selectedChunk: ChunkOption | null
+  chunkOptions: ChunkOption[]
+  onChunkChange: (chunk: ChunkOption) => void
   onSegmentStartChange: (time: number) => void
   onSegmentEndChange: (time: number) => void
   onSeekTo: (time: number) => void
@@ -24,20 +34,49 @@ export function ReelTimecodeSelector({
   segmentEnd,
   currentTime,
   isVideoReady,
+  selectedChunk,
+  chunkOptions,
+  onChunkChange,
   onSegmentStartChange,
   onSegmentEndChange,
   onSeekTo,
   onPreviewSegment,
 }: ReelTimecodeSelectorProps) {
-  const isVideoCapped = rawDuration > MAX_REEL_DURATION
   const segmentDuration = segmentEnd - segmentStart
+  const hasMultipleChunks = chunkOptions.length > 1
+
+  // Chunk-relative values for timeline display
+  const chunkStart = selectedChunk?.start ?? 0
+  const chunkEnd = selectedChunk?.end ?? videoDuration
+  const chunkDuration = chunkEnd - chunkStart
 
   return (
     <div className="space-y-4">
-      {/* แจ้งเตือนถ้าวิดีโอยาวเกิน */}
-      {isVideoCapped && (
-        <div className="p-2 bg-yellow-500/10 border border-yellow-500/30 rounded text-sm text-yellow-600 dark:text-yellow-400">
-          วิดีโอยาว {formatTime(rawDuration)} - ใช้ได้แค่ 10 นาทีแรก
+      {/* Chunk selector - แสดงเมื่อ video ยาวกว่า 1 chunk */}
+      {hasMultipleChunks && (
+        <div className="space-y-2">
+          <Label className="text-muted-foreground">เลือกช่วงเวลา (วิดีโอยาว {formatTime(rawDuration)})</Label>
+          <Select
+            value={selectedChunk?.value.toString() ?? '0'}
+            onValueChange={(value) => {
+              const chunk = chunkOptions.find(c => c.value === parseInt(value))
+              if (chunk) {
+                onChunkChange(chunk)
+                onSeekTo(chunk.start)
+              }
+            }}
+          >
+            <SelectTrigger>
+              <SelectValue placeholder="เลือกช่วงเวลา" />
+            </SelectTrigger>
+            <SelectContent>
+              {chunkOptions.map((chunk) => (
+                <SelectItem key={chunk.value} value={chunk.value.toString()}>
+                  {chunk.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
       )}
 
@@ -61,7 +100,8 @@ export function ReelTimecodeSelector({
                   variant={Math.round(segmentDuration) === duration ? 'default' : 'outline'}
                   size="sm"
                   onClick={() => {
-                    const newEnd = Math.min(segmentStart + duration, videoDuration)
+                    // จำกัดไม่ให้เกิน chunk end
+                    const newEnd = Math.min(segmentStart + duration, chunkEnd)
                     onSegmentEndChange(newEnd)
                   }}
                 >
@@ -92,44 +132,49 @@ export function ReelTimecodeSelector({
             </div>
           </div>
 
-          {/* Timeline */}
+          {/* Timeline - แสดงเฉพาะช่วง chunk ที่เลือก */}
           <div className="space-y-1">
-            <Label className="text-muted-foreground">เลือกช่วงเวลา (คลิกเพื่อ seek)</Label>
+            <Label className="text-muted-foreground">Timeline (คลิกเพื่อ seek)</Label>
             <div
               className={`relative h-14 bg-muted rounded-lg overflow-hidden ${isVideoReady ? 'cursor-pointer' : 'cursor-not-allowed opacity-50'}`}
               onClick={(e) => {
                 if (!isVideoReady) return
                 const rect = e.currentTarget.getBoundingClientRect()
                 const x = e.clientX - rect.left
-                const time = (x / rect.width) * videoDuration
+                // คำนวณเวลาภายใน chunk
+                const time = chunkStart + (x / rect.width) * chunkDuration
                 onSeekTo(time)
               }}
             >
-              {/* ช่วงที่เลือก */}
-              <div
-                className="absolute top-0 bottom-0 bg-primary/30 border-x-2 border-primary"
-                style={{
-                  left: `${(segmentStart / videoDuration) * 100}%`,
-                  width: `${((segmentEnd - segmentStart) / videoDuration) * 100}%`,
-                }}
-              />
+              {/* ช่วงที่เลือก (relative to chunk) */}
+              {segmentStart >= chunkStart && segmentStart < chunkEnd && (
+                <div
+                  className="absolute top-0 bottom-0 bg-primary/30 border-x-2 border-primary"
+                  style={{
+                    left: `${((segmentStart - chunkStart) / chunkDuration) * 100}%`,
+                    width: `${((Math.min(segmentEnd, chunkEnd) - segmentStart) / chunkDuration) * 100}%`,
+                  }}
+                />
+              )}
 
-              {/* ตำแหน่งปัจจุบัน */}
-              <div
-                className="absolute top-0 bottom-0 w-0.5 bg-red-500 z-10"
-                style={{ left: `${(currentTime / videoDuration) * 100}%` }}
-              >
-                <div className="absolute top-1 left-1/2 -translate-x-1/2 text-sm font-mono bg-red-500 text-white px-1.5 py-0.5 rounded whitespace-nowrap">
-                  {formatTime(currentTime)}
+              {/* ตำแหน่งปัจจุบัน (relative to chunk) */}
+              {currentTime >= chunkStart && currentTime <= chunkEnd && (
+                <div
+                  className="absolute top-0 bottom-0 w-0.5 bg-red-500 z-10"
+                  style={{ left: `${((currentTime - chunkStart) / chunkDuration) * 100}%` }}
+                >
+                  <div className="absolute top-1 left-1/2 -translate-x-1/2 text-sm font-mono bg-red-500 text-white px-1.5 py-0.5 rounded whitespace-nowrap">
+                    {formatTime(currentTime)}
+                  </div>
                 </div>
-              </div>
+              )}
 
-              {/* เวลาเริ่มต้น-สิ้นสุดของวิดีโอ */}
+              {/* เวลาเริ่มต้น-สิ้นสุดของ chunk */}
               <div className="absolute bottom-1 left-2 text-sm text-muted-foreground">
-                0:00
+                {formatTime(chunkStart)}
               </div>
               <div className="absolute bottom-1 right-2 text-sm text-muted-foreground">
-                {formatTime(videoDuration)}
+                {formatTime(chunkEnd)}
               </div>
 
               {/* กำลังโหลด */}
@@ -141,7 +186,7 @@ export function ReelTimecodeSelector({
             </div>
           </div>
 
-          {/* Slider จุดเริ่มต้น */}
+          {/* Slider จุดเริ่มต้น - ทำงานภายใน chunk */}
           <div className="space-y-1">
             <div className="flex items-center justify-between">
               <Label>จุดเริ่มต้น</Label>
@@ -151,20 +196,20 @@ export function ReelTimecodeSelector({
             </div>
             <Slider
               value={[segmentStart]}
-              min={0}
-              max={Math.max(0, videoDuration - 1)}
+              min={chunkStart}
+              max={Math.max(chunkStart, chunkEnd - 1)}
               step={0.5}
               onValueChange={([value]) => {
                 onSegmentStartChange(value)
                 if (value >= segmentEnd) {
-                  onSegmentEndChange(Math.min(value + 15, videoDuration))
+                  onSegmentEndChange(Math.min(value + 15, chunkEnd))
                 }
                 onSeekTo(value)
               }}
             />
           </div>
 
-          {/* Slider จุดสิ้นสุด */}
+          {/* Slider จุดสิ้นสุด - ทำงานภายใน chunk */}
           <div className="space-y-1">
             <div className="flex items-center justify-between">
               <Label>จุดสิ้นสุด</Label>
@@ -174,8 +219,8 @@ export function ReelTimecodeSelector({
             </div>
             <Slider
               value={[segmentEnd]}
-              min={segmentStart + 1}
-              max={videoDuration}
+              min={Math.max(chunkStart, segmentStart + 1)}
+              max={chunkEnd}
               step={0.5}
               onValueChange={([value]) => {
                 onSegmentEndChange(value)

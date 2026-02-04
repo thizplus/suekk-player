@@ -15,7 +15,8 @@ import {
   ReelVideoSelector,
   ReelTimecodeSelector,
   ReelTextOverlay,
-  MAX_REEL_DURATION,
+  generateChunkOptions,
+  type ChunkOption,
 } from '../components'
 
 export function ReelGeneratorPage() {
@@ -58,13 +59,22 @@ export function ReelGeneratorPage() {
   const [isVideoReady, setIsVideoReady] = useState(false)
   const [seekRequest, setSeekRequest] = useState<{ time: number; id: number } | null>(null)
 
+  // Chunk state สำหรับ video ยาว
+  const [selectedChunk, setSelectedChunk] = useState<ChunkOption | null>(null)
+
   // Tab state
   const [activeTab, setActiveTab] = useState('video')
 
   // === Derived State ===
   const activeVideo = selectedVideo || videoByCode
   const rawDuration = actualDuration || activeVideo?.duration || 0
-  const videoDuration = Math.min(rawDuration, MAX_REEL_DURATION)
+
+  // สร้าง chunk options จาก duration จริง
+  const chunkOptions = generateChunkOptions(rawDuration)
+
+  // videoDuration สำหรับ chunk ที่เลือก (หรือ chunk แรกถ้ายังไม่เลือก)
+  const currentChunk = selectedChunk || chunkOptions[0] || { start: 0, end: rawDuration }
+  const videoDuration = currentChunk.end
 
   // === Initialize form when data loads ===
   useEffect(() => {
@@ -103,10 +113,24 @@ export function ReelGeneratorPage() {
 
   const handleDurationChange = useCallback((duration: number) => {
     setActualDuration(duration)
-    if (segmentEnd === 60 || segmentEnd > duration) {
-      setSegmentEnd(Math.min(60, duration))
+
+    // สร้าง chunks และ set chunk แรกถ้ายังไม่มี
+    const chunks = generateChunkOptions(duration)
+    if (!selectedChunk && chunks.length > 0) {
+      setSelectedChunk(chunks[0])
+      // ตั้งค่า segment ภายใน chunk แรก
+      if (segmentEnd === 60 || segmentEnd > chunks[0].end) {
+        setSegmentEnd(Math.min(60, chunks[0].end))
+      }
     }
-  }, [segmentEnd])
+  }, [segmentEnd, selectedChunk])
+
+  const handleChunkChange = useCallback((chunk: ChunkOption) => {
+    setSelectedChunk(chunk)
+    // Reset segment to beginning of new chunk
+    setSegmentStart(chunk.start)
+    setSegmentEnd(Math.min(chunk.start + 60, chunk.end))
+  }, [])
 
   const handleSegmentStartChange = useCallback((time: number) => {
     setSegmentStart(time)
@@ -322,6 +346,9 @@ export function ReelGeneratorPage() {
                   segmentEnd={segmentEnd}
                   currentTime={currentTime}
                   isVideoReady={isVideoReady}
+                  selectedChunk={selectedChunk}
+                  chunkOptions={chunkOptions}
+                  onChunkChange={handleChunkChange}
                   onSegmentStartChange={handleSegmentStartChange}
                   onSegmentEndChange={handleSegmentEndChange}
                   onSeekTo={triggerSeek}
