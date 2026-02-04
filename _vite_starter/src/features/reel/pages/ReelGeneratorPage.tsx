@@ -52,6 +52,7 @@ export function ReelGeneratorPage() {
   const [showLogo, setShowLogo] = useState(true)
   const [cropX, setCropX] = useState(50) // 0-100, center default
   const [cropY, setCropY] = useState(50) // 0-100, center default
+  const [coverTime, setCoverTime] = useState(-1) // -1 = auto middle
 
   // Video state (from preview canvas)
   const [actualDuration, setActualDuration] = useState(0)
@@ -94,6 +95,7 @@ export function ReelGeneratorPage() {
       setShowLogo(existingReel.showLogo ?? true)
       setCropX(existingReel.cropX ?? 50)
       setCropY(existingReel.cropY ?? 50)
+      setCoverTime(existingReel.coverTime ?? -1)
     } else if (videoByCode) {
       setSelectedVideoId(videoByCode.id)
       setSelectedVideo(videoByCode)
@@ -179,6 +181,7 @@ export function ReelGeneratorPage() {
         const data: UpdateReelRequest = {
           segmentStart,
           segmentEnd,
+          coverTime,
           style,
           title,
           line1,
@@ -194,6 +197,7 @@ export function ReelGeneratorPage() {
           videoId: selectedVideoId,
           segmentStart,
           segmentEnd,
+          coverTime,
           style,
           title,
           line1,
@@ -355,11 +359,13 @@ export function ReelGeneratorPage() {
                   isVideoReady={isVideoReady}
                   selectedChunk={selectedChunk}
                   chunkOptions={chunkOptions}
+                  coverTime={coverTime}
                   onChunkChange={handleChunkChange}
                   onSegmentStartChange={handleSegmentStartChange}
                   onSegmentEndChange={handleSegmentEndChange}
                   onSeekTo={triggerSeek}
                   onPreviewSegment={handlePreviewSegment}
+                  onCoverTimeChange={setCoverTime}
                 />
               )}
             </TabsContent>

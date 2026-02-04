@@ -135,6 +135,7 @@ type Reel struct {
 	// Video Segment
 	SegmentStart float64 `gorm:"default:0"`  // start time (seconds)
 	SegmentEnd   float64 `gorm:"default:60"` // end time (seconds)
+	CoverTime    float64 `gorm:"default:-1"` // cover/thumbnail time (-1 = auto middle)
 
 	// NEW: Style-based display (simplified)
 	Style    ReelStyle `gorm:"size:20;default:'letterbox'"` // letterbox, square, fullcover

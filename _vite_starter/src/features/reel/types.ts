@@ -76,6 +76,7 @@ export interface Reel {
   id: string
   segmentStart: number
   segmentEnd: number
+  coverTime: number // -1 = auto middle
   duration: number
   status: ReelStatus
 
@@ -130,6 +131,7 @@ export interface CreateReelRequest {
   videoId: string
   segmentStart: number
   segmentEnd: number
+  coverTime?: number // -1 = auto middle, or absolute time from video
 
   // NEW: Style-based fields (preferred)
   style?: ReelStyle
@@ -151,6 +153,7 @@ export interface CreateReelRequest {
 export interface UpdateReelRequest {
   segmentStart?: number
   segmentEnd?: number
+  coverTime?: number // -1 = auto middle, or absolute time from video
 
   // NEW: Style-based fields
   style?: ReelStyle

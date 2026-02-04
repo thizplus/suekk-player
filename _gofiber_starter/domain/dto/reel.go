@@ -14,6 +14,7 @@ type CreateReelRequest struct {
 	VideoID      uuid.UUID `json:"videoId" validate:"required,uuid"`
 	SegmentStart float64   `json:"segmentStart" validate:"min=0"`
 	SegmentEnd   float64   `json:"segmentEnd" validate:"required,gtfield=SegmentStart"`
+	CoverTime    *float64  `json:"coverTime"` // nil = auto middle of segment
 
 	// NEW: Style-based fields (preferred)
 	Style    string `json:"style" validate:"omitempty,oneof=letterbox square fullcover"`
@@ -36,6 +37,7 @@ type CreateReelRequest struct {
 type UpdateReelRequest struct {
 	SegmentStart *float64 `json:"segmentStart" validate:"omitempty,min=0"`
 	SegmentEnd   *float64 `json:"segmentEnd" validate:"omitempty"`
+	CoverTime    *float64 `json:"coverTime"` // nil = no change, -1 = auto middle
 
 	// NEW: Style-based fields (preferred)
 	Style    *string `json:"style" validate:"omitempty,oneof=letterbox square fullcover"`
@@ -89,6 +91,7 @@ type ReelResponse struct {
 	ID           uuid.UUID         `json:"id"`
 	SegmentStart float64           `json:"segmentStart"`
 	SegmentEnd   float64           `json:"segmentEnd"`
+	CoverTime    float64           `json:"coverTime"` // -1 = auto middle
 	Duration     int               `json:"duration"`
 	Status       models.ReelStatus `json:"status"`
 
@@ -195,6 +198,7 @@ func ReelToResponse(reel *models.Reel) *ReelResponse {
 		ID:           reel.ID,
 		SegmentStart: reel.SegmentStart,
 		SegmentEnd:   reel.SegmentEnd,
+		CoverTime:    reel.CoverTime,
 		Duration:     reel.Duration,
 		Status:       reel.Status,
 

@@ -81,12 +81,18 @@ func (s *ReelServiceImpl) Create(ctx context.Context, userID uuid.UUID, req *dto
 	}
 
 	// 6. สร้าง reel record
+	coverTime := -1.0 // default: auto middle
+	if req.CoverTime != nil {
+		coverTime = *req.CoverTime
+	}
+
 	reel := &models.Reel{
 		UserID:       userID,
 		VideoID:      req.VideoID,
 		Title:        req.Title,
 		SegmentStart: req.SegmentStart,
 		SegmentEnd:   req.SegmentEnd,
+		CoverTime:    coverTime,
 		Status:       models.ReelStatusDraft,
 	}
 
@@ -217,6 +223,9 @@ func (s *ReelServiceImpl) Update(ctx context.Context, id, userID uuid.UUID, req 
 			return nil, fmt.Errorf("segment end (%v) exceeds video duration (%v)", *req.SegmentEnd, reel.Video.Duration)
 		}
 		reel.SegmentEnd = *req.SegmentEnd
+	}
+	if req.CoverTime != nil {
+		reel.CoverTime = *req.CoverTime
 	}
 
 	// NEW: Style-based fields
@@ -412,6 +421,7 @@ func (s *ReelServiceImpl) Export(ctx context.Context, id, userID uuid.UUID) erro
 			VideoQuality: reel.Video.Quality,
 			SegmentStart: reel.SegmentStart,
 			SegmentEnd:   reel.SegmentEnd,
+			CoverTime:    reel.CoverTime,
 			OutputPath:   fmt.Sprintf("reels/%s/output.mp4", reel.ID.String()),
 		}
 

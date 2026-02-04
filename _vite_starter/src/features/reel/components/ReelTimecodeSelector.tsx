@@ -1,4 +1,4 @@
-import { Play, Loader2 } from 'lucide-react'
+import { Play, Loader2, Image } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { Slider } from '@/components/ui/slider'
@@ -20,11 +20,13 @@ interface ReelTimecodeSelectorProps {
   isVideoReady: boolean
   selectedChunk: ChunkOption | null
   chunkOptions: ChunkOption[]
+  coverTime: number // -1 = auto middle
   onChunkChange: (chunk: ChunkOption) => void
   onSegmentStartChange: (time: number) => void
   onSegmentEndChange: (time: number) => void
   onSeekTo: (time: number) => void
   onPreviewSegment: () => void
+  onCoverTimeChange: (time: number) => void
 }
 
 export function ReelTimecodeSelector({
@@ -36,11 +38,13 @@ export function ReelTimecodeSelector({
   isVideoReady,
   selectedChunk,
   chunkOptions,
+  coverTime,
   onChunkChange,
   onSegmentStartChange,
   onSegmentEndChange,
   onSeekTo,
   onPreviewSegment,
+  onCoverTimeChange,
 }: ReelTimecodeSelectorProps) {
   const segmentDuration = segmentEnd - segmentStart
   const hasMultipleChunks = chunkOptions.length > 1
@@ -132,6 +136,55 @@ export function ReelTimecodeSelector({
             </div>
           </div>
 
+          {/* Cover/Thumbnail Frame Selection */}
+          <div className="p-3 bg-muted/50 rounded-lg space-y-2">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Image className="h-4 w-4 text-muted-foreground" />
+                <span className="text-muted-foreground">ภาพปก</span>
+              </div>
+              <span className="text-sm font-mono">
+                {coverTime < 0 ? (
+                  <span className="text-muted-foreground">อัตโนมัติ (กลางคลิป)</span>
+                ) : (
+                  <span className="text-primary font-medium">{formatTime(coverTime)}</span>
+                )}
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button
+                variant={coverTime < 0 ? 'default' : 'outline'}
+                size="sm"
+                className="flex-1"
+                onClick={() => onCoverTimeChange(-1)}
+              >
+                อัตโนมัติ
+              </Button>
+              <Button
+                variant={coverTime >= 0 ? 'default' : 'outline'}
+                size="sm"
+                className="flex-1"
+                onClick={() => {
+                  // ใช้ตำแหน่งปัจจุบันเป็น cover time
+                  if (currentTime >= segmentStart && currentTime <= segmentEnd) {
+                    onCoverTimeChange(currentTime)
+                  } else {
+                    // ถ้าอยู่นอกช่วง segment ให้ใช้กลาง segment
+                    onCoverTimeChange(segmentStart + segmentDuration / 2)
+                  }
+                }}
+                disabled={!isVideoReady}
+              >
+                ใช้ frame ปัจจุบัน
+              </Button>
+            </div>
+            {coverTime >= 0 && (
+              <p className="text-xs text-muted-foreground">
+                เลื่อน video ไปที่ตำแหน่งที่ต้องการแล้วกด "ใช้ frame ปัจจุบัน"
+              </p>
+            )}
+          </div>
+
           {/* Timeline - แสดงเฉพาะช่วง chunk ที่เลือก */}
           <div className="space-y-1">
             <Label className="text-muted-foreground">Timeline (คลิกเพื่อ seek)</Label>
@@ -155,6 +208,17 @@ export function ReelTimecodeSelector({
                     width: `${((Math.min(segmentEnd, chunkEnd) - segmentStart) / chunkDuration) * 100}%`,
                   }}
                 />
+              )}
+
+              {/* Cover time marker (relative to chunk) */}
+              {coverTime >= chunkStart && coverTime <= chunkEnd && (
+                <div
+                  className="absolute top-0 bottom-0 w-1 bg-amber-500 z-5"
+                  style={{ left: `${((coverTime - chunkStart) / chunkDuration) * 100}%` }}
+                  title={`ภาพปก: ${formatTime(coverTime)}`}
+                >
+                  <div className="absolute -top-1 left-1/2 -translate-x-1/2 w-3 h-3 bg-amber-500 rotate-45" />
+                </div>
               )}
 
               {/* ตำแหน่งปัจจุบัน (relative to chunk) */}
