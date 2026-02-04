@@ -122,9 +122,12 @@ func (r *reelRepository) ListWithFilters(ctx context.Context, userID uuid.UUID, 
 		query = query.Where("status = ?", params.Status)
 	}
 
-	// Search by title
+	// Search by reel title, video title, or video code
 	if params.Search != "" {
-		query = query.Where("title ILIKE ?", "%"+params.Search+"%")
+		searchPattern := "%" + params.Search + "%"
+		query = query.Joins("LEFT JOIN videos ON videos.id = reels.video_id").
+			Where("reels.title ILIKE ? OR videos.title ILIKE ? OR videos.code ILIKE ?",
+				searchPattern, searchPattern, searchPattern)
 	}
 
 	// Count total

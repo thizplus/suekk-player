@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { useSearchParams, useNavigate } from 'react-router-dom'
 import { Plus, Eye, Trash2, RefreshCw, Copy, MoreVertical, Loader2, Video, Clock, Files, HardDrive, Languages, CheckCircle2, AlertCircle, Sparkles, Folder, Film } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -55,6 +55,7 @@ interface DeleteTarget {
 }
 
 export function VideoListPage() {
+  const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
   const [filters, setFilters] = useState<VideoFilterParams>({
     page: 1,
@@ -305,10 +306,17 @@ export function VideoListPage() {
                   ) : null}
                   {/* Reel Count */}
                   {video.status === 'ready' && video.reelCount !== undefined && video.reelCount > 0 && (
-                    <span className="inline-flex items-center gap-1" title={`${video.reelCount} Reels`}>
+                    <button
+                      className="inline-flex items-center gap-1 hover:text-primary transition-colors"
+                      title={`ดู ${video.reelCount} Reels`}
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        navigate(`/reels?videoId=${video.id}`)
+                      }}
+                    >
                       <Film className="h-3 w-3" />
                       {video.reelCount}
-                    </span>
+                    </button>
                   )}
                   {/* Subtitle Status */}
                   {video.status === 'ready' && video.subtitleSummary && (

@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { Plus, Trash2, MoreVertical, Loader2, Film, Download, Eye, Pencil } from 'lucide-react'
+import { useNavigate, useSearchParams } from 'react-router-dom'
+import { Plus, Trash2, MoreVertical, Loader2, Film, Download, Eye, Pencil, X, Search } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
+import { Input } from '@/components/ui/input'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -79,12 +80,45 @@ interface PreviewTarget {
 
 export function ReelListPage() {
   const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
+  const videoIdParam = searchParams.get('videoId')
+
   const [filters, setFilters] = useState<ReelFilterParams>({
     page: 1,
     limit: 20,
     sortBy: 'created_at',
     sortOrder: 'desc',
+    videoId: videoIdParam || undefined,
   })
+
+  // Update filters when URL param changes
+  useEffect(() => {
+    if (videoIdParam) {
+      setFilters(prev => ({ ...prev, videoId: videoIdParam }))
+    }
+  }, [videoIdParam])
+
+  // Clear videoId filter
+  const clearVideoFilter = () => {
+    setSearchParams({})
+    setFilters(prev => ({ ...prev, videoId: undefined, page: 1 }))
+  }
+
+  // Search state
+  const [searchInput, setSearchInput] = useState('')
+
+  // Handle search
+  const handleSearch = (e: React.FormEvent) => {
+    e.preventDefault()
+    setFilters(prev => ({ ...prev, search: searchInput || undefined, page: 1 }))
+  }
+
+  // Clear search
+  const clearSearch = () => {
+    setSearchInput('')
+    setFilters(prev => ({ ...prev, search: undefined, page: 1 }))
+  }
+
   const [deleteTarget, setDeleteTarget] = useState<DeleteTarget | null>(null)
   const [preview, setPreview] = useState<PreviewTarget | null>(null)
 
@@ -201,6 +235,58 @@ export function ReelListPage() {
           <Plus className="h-4 w-4 mr-2" />
           สร้าง Reel ใหม่
         </Button>
+      </div>
+
+      {/* Search & Filters */}
+      <div className="flex items-center gap-3">
+        <form onSubmit={handleSearch} className="relative flex-1 max-w-sm">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input
+            placeholder="ค้นหา reel, video title, code..."
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
+            className="pl-9 pr-9"
+          />
+          {searchInput && (
+            <button
+              type="button"
+              onClick={clearSearch}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          )}
+        </form>
+
+        {/* Active Filters */}
+        {(filters.videoId || filters.search) && (
+          <div className="flex items-center gap-2">
+            {filters.videoId && (
+              <Badge variant="secondary" className="gap-1.5 py-1.5 px-3">
+                <Film className="h-3.5 w-3.5" />
+                Video: {filters.videoId.slice(0, 8)}...
+                <button
+                  onClick={clearVideoFilter}
+                  className="ml-1 hover:bg-muted rounded-full p-0.5"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </Badge>
+            )}
+            {filters.search && (
+              <Badge variant="secondary" className="gap-1.5 py-1.5 px-3">
+                <Search className="h-3.5 w-3.5" />
+                "{filters.search}"
+                <button
+                  onClick={clearSearch}
+                  className="ml-1 hover:bg-muted rounded-full p-0.5"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </Badge>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Content */}
