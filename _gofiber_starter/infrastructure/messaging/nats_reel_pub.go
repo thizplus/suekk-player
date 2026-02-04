@@ -30,6 +30,7 @@ func (p *NATSReelPublisher) PublishReelExportJob(ctx context.Context, job *servi
 		VideoQuality: job.VideoQuality,
 		SegmentStart: job.SegmentStart,
 		SegmentEnd:   job.SegmentEnd,
+		CoverTime:    job.CoverTime,
 
 		// NEW: Style-based fields
 		Style:        job.Style,

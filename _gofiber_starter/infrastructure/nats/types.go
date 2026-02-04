@@ -143,6 +143,7 @@ type ReelExportJob struct {
 	VideoQuality string  `json:"video_quality"`  // Best available quality: 1080p, 720p, etc.
 	SegmentStart float64 `json:"segment_start"`  // Start time in seconds
 	SegmentEnd   float64 `json:"segment_end"`    // End time in seconds
+	CoverTime    float64 `json:"cover_time"`     // Cover/thumbnail time (-1 = auto middle)
 
 	// ═══ NEW: Style-based composition (simplified) ═══
 	Style        string  `json:"style"`         // letterbox, square, fullcover
