@@ -35,6 +35,7 @@ export interface Video {
   detectedLanguage?: string
   subtitleSummary?: SubtitleSummary  // สรุป subtitle
   subtitles?: Subtitle[]             // Full subtitle list (สำหรับ embed/preview)
+  reelCount?: number                 // จำนวน reels ที่สร้างจาก video นี้
   createdAt: string
   updatedAt: string
 }

@@ -225,6 +225,45 @@ func (r *reelRepository) CountByVideoID(ctx context.Context, videoID uuid.UUID) 
 	return count, nil
 }
 
+// CountByVideoIDs นับ reels สำหรับหลาย videos พร้อมกัน (batch query)
+func (r *reelRepository) CountByVideoIDs(ctx context.Context, videoIDs []uuid.UUID) (map[uuid.UUID]int64, error) {
+	result := make(map[uuid.UUID]int64)
+
+	if len(videoIDs) == 0 {
+		return result, nil
+	}
+
+	// Query: SELECT video_id, COUNT(*) FROM reels WHERE video_id IN (...) GROUP BY video_id
+	type countResult struct {
+		VideoID uuid.UUID `gorm:"column:video_id"`
+		Count   int64     `gorm:"column:count"`
+	}
+
+	var counts []countResult
+	if err := r.db.WithContext(ctx).
+		Model(&models.Reel{}).
+		Select("video_id, COUNT(*) as count").
+		Where("video_id IN ?", videoIDs).
+		Group("video_id").
+		Scan(&counts).Error; err != nil {
+		return nil, err
+	}
+
+	// Convert to map
+	for _, c := range counts {
+		result[c.VideoID] = c.Count
+	}
+
+	// Initialize missing video IDs with 0
+	for _, id := range videoIDs {
+		if _, exists := result[id]; !exists {
+			result[id] = 0
+		}
+	}
+
+	return result, nil
+}
+
 // === Reel Template Repository ===
 
 type reelTemplateRepository struct {

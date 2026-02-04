@@ -376,13 +376,14 @@ func (c *Container) initServices() error {
 			c.CategoryRepository,
 			c.UserRepository,
 			c.SubtitleRepository,
+			c.ReelRepository,
 			c.Storage,
 			c.RedisClient,
 			c.Config,
 		)
 		logger.Info("Video service initialized with Redis cache")
 	} else {
-		c.VideoService = serviceimpl.NewVideoService(c.VideoRepository, c.CategoryRepository, c.UserRepository, c.SubtitleRepository, c.Storage, c.Config)
+		c.VideoService = serviceimpl.NewVideoService(c.VideoRepository, c.CategoryRepository, c.UserRepository, c.SubtitleRepository, c.ReelRepository, c.Storage, c.Config)
 		logger.Info("Video service initialized without cache")
 	}
 

@@ -34,6 +34,9 @@ type VideoService interface {
 	// ListWithFilters ดึง videos พร้อม filter, search, sort, pagination
 	ListWithFilters(ctx context.Context, params *dto.VideoFilterRequest) ([]*models.Video, int64, error)
 
+	// GetReelCountsForVideos นับจำนวน reels สำหรับแต่ละ video
+	GetReelCountsForVideos(ctx context.Context, videos []*models.Video) (map[uuid.UUID]int64, error)
+
 	// ListVideosByStatus ดึง videos ตาม status (pending, processing, ready, failed)
 	ListVideosByStatus(ctx context.Context, status models.VideoStatus, page, limit int) ([]*models.Video, int64, error)
 

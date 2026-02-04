@@ -59,6 +59,9 @@ type VideoResponse struct {
 	SubtitleSummary  *SubtitleSummary   `json:"subtitleSummary,omitempty"`  // สรุป subtitle
 	Subtitles        []SubtitleResponse `json:"subtitles,omitempty"`        // Full subtitle list (สำหรับ embed/preview)
 
+	// Reel info
+	ReelCount int64 `json:"reelCount"` // จำนวน reels ที่สร้างจาก video นี้
+
 	CreatedAt time.Time `json:"createdAt"`
 	UpdatedAt time.Time `json:"updatedAt"`
 }
@@ -204,6 +207,19 @@ func VideosToVideoResponses(videos []*models.Video) []VideoResponse {
 	responses := make([]VideoResponse, len(videos))
 	for i, video := range videos {
 		responses[i] = *VideoToVideoResponse(video)
+	}
+	return responses
+}
+
+// VideosToVideoResponsesWithReelCounts แปลง videos พร้อม reel counts
+func VideosToVideoResponsesWithReelCounts(videos []*models.Video, reelCounts map[uuid.UUID]int64) []VideoResponse {
+	responses := make([]VideoResponse, len(videos))
+	for i, video := range videos {
+		resp := VideoToVideoResponse(video)
+		if reelCounts != nil {
+			resp.ReelCount = reelCounts[video.ID]
+		}
+		responses[i] = *resp
 	}
 	return responses
 }

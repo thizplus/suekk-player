@@ -39,9 +39,10 @@ type VideoServiceImpl struct {
 	categoryRepo repositories.CategoryRepository
 	userRepo     repositories.UserRepository
 	subtitleRepo repositories.SubtitleRepository
+	reelRepo     repositories.ReelRepository // สำหรับนับ reel count
 	storage      ports.StoragePort
-	redisClient  *redis.Client   // optional - ถ้าไม่มีจะ query DB ตลอด
-	config       *config.Config  // for storage quota
+	redisClient  *redis.Client  // optional - ถ้าไม่มีจะ query DB ตลอด
+	config       *config.Config // for storage quota
 }
 
 func NewVideoService(
@@ -49,6 +50,7 @@ func NewVideoService(
 	categoryRepo repositories.CategoryRepository,
 	userRepo repositories.UserRepository,
 	subtitleRepo repositories.SubtitleRepository,
+	reelRepo repositories.ReelRepository,
 	storage ports.StoragePort,
 	cfg *config.Config,
 ) services.VideoService {
@@ -57,6 +59,7 @@ func NewVideoService(
 		categoryRepo: categoryRepo,
 		userRepo:     userRepo,
 		subtitleRepo: subtitleRepo,
+		reelRepo:     reelRepo,
 		storage:      storage,
 		config:       cfg,
 		redisClient:  nil,
@@ -69,6 +72,7 @@ func NewVideoServiceWithCache(
 	categoryRepo repositories.CategoryRepository,
 	userRepo repositories.UserRepository,
 	subtitleRepo repositories.SubtitleRepository,
+	reelRepo repositories.ReelRepository,
 	storage ports.StoragePort,
 	redisClient *redis.Client,
 	cfg *config.Config,
@@ -78,6 +82,7 @@ func NewVideoServiceWithCache(
 		categoryRepo: categoryRepo,
 		userRepo:     userRepo,
 		subtitleRepo: subtitleRepo,
+		reelRepo:     reelRepo,
 		storage:      storage,
 		redisClient:  redisClient,
 		config:       cfg,
@@ -281,6 +286,28 @@ func (s *VideoServiceImpl) ListWithFilters(ctx context.Context, params *dto.Vide
 		return nil, 0, err
 	}
 	return videos, total, nil
+}
+
+// GetReelCountsForVideos นับจำนวน reels สำหรับแต่ละ video (batch query)
+func (s *VideoServiceImpl) GetReelCountsForVideos(ctx context.Context, videos []*models.Video) (map[uuid.UUID]int64, error) {
+	if s.reelRepo == nil || len(videos) == 0 {
+		return make(map[uuid.UUID]int64), nil
+	}
+
+	// Extract video IDs
+	videoIDs := make([]uuid.UUID, len(videos))
+	for i, v := range videos {
+		videoIDs[i] = v.ID
+	}
+
+	// Batch query reel counts
+	counts, err := s.reelRepo.CountByVideoIDs(ctx, videoIDs)
+	if err != nil {
+		logger.WarnContext(ctx, "Failed to get reel counts", "error", err)
+		return make(map[uuid.UUID]int64), nil // ไม่ fail ทั้งหมด แค่ return empty
+	}
+
+	return counts, nil
 }
 
 func (s *VideoServiceImpl) ListVideosByStatus(ctx context.Context, status models.VideoStatus, page, limit int) ([]*models.Video, int64, error) {

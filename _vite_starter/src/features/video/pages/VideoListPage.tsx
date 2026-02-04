@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { Plus, Eye, Trash2, RefreshCw, Copy, MoreVertical, Loader2, Video, Clock, Files, HardDrive, Languages, CheckCircle2, AlertCircle, Sparkles, Folder } from 'lucide-react'
+import { Plus, Eye, Trash2, RefreshCw, Copy, MoreVertical, Loader2, Video, Clock, Files, HardDrive, Languages, CheckCircle2, AlertCircle, Sparkles, Folder, Film } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import {
@@ -303,6 +303,13 @@ export function VideoListPage() {
                       )}
                     </span>
                   ) : null}
+                  {/* Reel Count */}
+                  {video.status === 'ready' && video.reelCount !== undefined && video.reelCount > 0 && (
+                    <span className="inline-flex items-center gap-1" title={`${video.reelCount} Reels`}>
+                      <Film className="h-3 w-3" />
+                      {video.reelCount}
+                    </span>
+                  )}
                   {/* Subtitle Status */}
                   {video.status === 'ready' && video.subtitleSummary && (
                     <span className="inline-flex items-center gap-1" title={getSubtitleTooltip(video.subtitleSummary)}>

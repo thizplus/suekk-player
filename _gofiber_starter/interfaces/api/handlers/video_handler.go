@@ -313,7 +313,10 @@ func (h *VideoHandler) List(c *fiber.Ctx) error {
 		return utils.InternalServerErrorResponse(c)
 	}
 
-	return utils.PaginatedSuccessResponse(c, dto.VideosToVideoResponses(videos), total, page, limit)
+	// Get reel counts for all videos (batch query)
+	reelCounts, _ := h.videoService.GetReelCountsForVideos(ctx, videos)
+
+	return utils.PaginatedSuccessResponse(c, dto.VideosToVideoResponsesWithReelCounts(videos, reelCounts), total, page, limit)
 }
 
 // ListReady ดึงเฉพาะ videos ที่พร้อม stream
