@@ -250,8 +250,20 @@ export function ReelPreviewCanvas({
       if (video.currentTime < segmentStart || video.currentTime >= segmentEnd) {
         video.currentTime = segmentStart
       }
-      video.play()
-      setIsPlaying(true)
+      // รอให้ buffer พร้อมก่อน play
+      const playWhenReady = () => {
+        video.play().catch(() => {
+          // Retry after short delay if play fails
+          setTimeout(() => video.play().catch(() => {}), 100)
+        })
+        setIsPlaying(true)
+      }
+      // ถ้า buffer พร้อมแล้วเล่นเลย ถ้าไม่รอ canplay
+      if (video.readyState >= 3) {
+        playWhenReady()
+      } else {
+        video.addEventListener('canplay', playWhenReady, { once: true })
+      }
     } else {
       video.pause()
       setIsPlaying(false)
