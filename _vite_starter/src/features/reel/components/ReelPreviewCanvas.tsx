@@ -164,10 +164,25 @@ export function ReelPreviewCanvas({
         xhrSetup: (xhr) => {
           xhr.setRequestHeader('X-Stream-Token', streamAccess.token)
         },
+        // จำกัด buffer เพื่อลด segment ที่โหลด
+        maxBufferLength: 10,        // buffer แค่ 10 วินาที (default 30)
+        maxMaxBufferLength: 30,     // max buffer 30 วินาที (default 600!)
+        maxBufferSize: 10 * 1000 * 1000, // 10MB max buffer
+        startLevel: -1,             // auto select quality
+        autoStartLoad: false,       // ไม่โหลดทันที รอ user กด play
       })
       hls.loadSource(hlsUrl)
       hls.attachMedia(video)
       hlsRef.current = hls
+
+      // โหลด manifest เพื่อดึง duration แต่ยังไม่โหลด segments
+      hls.on(Hls.Events.MANIFEST_PARSED, () => {
+        if (video.duration && isFinite(video.duration)) {
+          onDurationChange(video.duration)
+        }
+        setIsVideoReady(true)
+        onVideoReady(true)
+      })
 
       video.addEventListener('loadedmetadata', handleLoadedMetadata, { once: true })
 
@@ -214,6 +229,10 @@ export function ReelPreviewCanvas({
     const video = videoRef.current
     if (!video || !isVideoReady || seekToTime === undefined || !seekRequestId) return
 
+    // เริ่มโหลด segments ที่ตำแหน่งที่ต้องการ
+    if (hlsRef.current) {
+      hlsRef.current.startLoad(seekToTime)
+    }
     video.currentTime = seekToTime
     setCurrentTime(seekToTime)
     onTimeUpdate(seekToTime)
@@ -224,6 +243,10 @@ export function ReelPreviewCanvas({
     if (!video) return
 
     if (video.paused) {
+      // เริ่มโหลด segments เมื่อกด play (ถ้ายังไม่โหลด)
+      if (hlsRef.current) {
+        hlsRef.current.startLoad(segmentStart)
+      }
       if (video.currentTime < segmentStart || video.currentTime >= segmentEnd) {
         video.currentTime = segmentStart
       }
@@ -238,6 +261,10 @@ export function ReelPreviewCanvas({
   const seekTo = useCallback((time: number) => {
     const video = videoRef.current
     if (!video || !isVideoReady) return
+    // เริ่มโหลด segments ที่ตำแหน่งที่ต้องการ (ถ้ายังไม่โหลด)
+    if (hlsRef.current) {
+      hlsRef.current.startLoad(time)
+    }
     video.currentTime = time
     setCurrentTime(time)
     onTimeUpdate(time)
