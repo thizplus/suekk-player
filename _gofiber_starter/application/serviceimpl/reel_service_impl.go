@@ -8,6 +8,7 @@ import (
 	"github.com/google/uuid"
 	"gofiber-template/domain/dto"
 	"gofiber-template/domain/models"
+	"gofiber-template/domain/ports"
 	"gofiber-template/domain/repositories"
 	"gofiber-template/domain/services"
 	"gofiber-template/pkg/logger"
@@ -18,6 +19,7 @@ type ReelServiceImpl struct {
 	templateRepo repositories.ReelTemplateRepository
 	videoRepo    repositories.VideoRepository
 	jobPublisher services.ReelJobPublisher
+	storage      ports.StoragePort
 }
 
 func NewReelService(
@@ -25,12 +27,14 @@ func NewReelService(
 	templateRepo repositories.ReelTemplateRepository,
 	videoRepo repositories.VideoRepository,
 	jobPublisher services.ReelJobPublisher,
+	storage ports.StoragePort,
 ) services.ReelService {
 	return &ReelServiceImpl{
 		reelRepo:     reelRepo,
 		templateRepo: templateRepo,
 		videoRepo:    videoRepo,
 		jobPublisher: jobPublisher,
+		storage:      storage,
 	}
 }
 
@@ -300,9 +304,27 @@ func (s *ReelServiceImpl) Delete(ctx context.Context, id, userID uuid.UUID) erro
 		return errors.New("cannot delete reel that is being exported")
 	}
 
-	// TODO: ลบไฟล์ output จาก S3 ถ้ามี
+	// 3. ลบไฟล์จาก storage (E2/S3)
+	if s.storage != nil && reel.Status == models.ReelStatusReady {
+		// ใช้ DeleteFolder เพื่อลบ prefix reels/{reel_id}/ ทั้งหมด
+		// รวมถึง output.mp4, thumb.jpg, cover.jpg
+		folderPath := fmt.Sprintf("reels/%s", id.String())
+		if err := s.storage.DeleteFolder(folderPath); err != nil {
+			logger.WarnContext(ctx, "Failed to delete reel files from storage",
+				"reel_id", id,
+				"folder", folderPath,
+				"error", err,
+			)
+			// ไม่ return error เพราะยังต้องลบ record
+		} else {
+			logger.InfoContext(ctx, "Reel files deleted from storage",
+				"reel_id", id,
+				"folder", folderPath,
+			)
+		}
+	}
 
-	// 3. ลบ record
+	// 4. ลบ record
 	if err := s.reelRepo.Delete(ctx, id); err != nil {
 		logger.ErrorContext(ctx, "Failed to delete reel", "reel_id", id, "error", err)
 		return err
@@ -390,7 +412,7 @@ func (s *ReelServiceImpl) Export(ctx context.Context, id, userID uuid.UUID) erro
 			VideoQuality: reel.Video.Quality,
 			SegmentStart: reel.SegmentStart,
 			SegmentEnd:   reel.SegmentEnd,
-			OutputPath:   fmt.Sprintf("reels/%s/%s.mp4", reel.Video.Code, reel.ID.String()),
+			OutputPath:   fmt.Sprintf("reels/%s/output.mp4", reel.ID.String()),
 		}
 
 		// Check if using style-based or legacy layer-based

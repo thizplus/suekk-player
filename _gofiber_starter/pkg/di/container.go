@@ -417,13 +417,13 @@ func (c *Container) initServices() error {
 	c.SubtitleService = serviceimpl.NewSubtitleService(c.VideoRepository, c.SubtitleRepository, c.NATSPublisher, c.Storage)
 	logger.Info("Subtitle service initialized", "has_publisher", c.NATSPublisher != nil)
 
-	// Reel Service with NATS job publisher
+	// Reel Service with NATS job publisher and storage (for delete files)
 	var reelPublisher services.ReelJobPublisher
 	if c.NATSPublisher != nil {
 		reelPublisher = messaging.NewNATSReelPublisher(c.NATSPublisher)
 	}
-	c.ReelService = serviceimpl.NewReelService(c.ReelRepository, c.ReelTemplateRepository, c.VideoRepository, reelPublisher)
-	logger.Info("Reel service initialized", "has_publisher", reelPublisher != nil)
+	c.ReelService = serviceimpl.NewReelService(c.ReelRepository, c.ReelTemplateRepository, c.VideoRepository, reelPublisher, c.Storage)
+	logger.Info("Reel service initialized", "has_publisher", reelPublisher != nil, "has_storage", c.Storage != nil)
 
 	// Queue Service (unified queue management)
 	// Note: TranscodingService ต้องถูก init ก่อนใน initTranscoding()
