@@ -114,16 +114,23 @@ export function ReelGeneratorPage() {
   const handleDurationChange = useCallback((duration: number) => {
     setActualDuration(duration)
 
-    // สร้าง chunks และ set chunk แรกถ้ายังไม่มี
+    // สร้าง chunks และ set chunk ที่ตรงกับ segmentStart (สำหรับ edit mode)
     const chunks = generateChunkOptions(duration)
     if (!selectedChunk && chunks.length > 0) {
-      setSelectedChunk(chunks[0])
-      // ตั้งค่า segment ภายใน chunk แรก
-      if (segmentEnd === 60 || segmentEnd > chunks[0].end) {
-        setSegmentEnd(Math.min(60, chunks[0].end))
+      // หา chunk ที่ segmentStart อยู่ในช่วง (สำหรับ edit reel ที่มี segment อยู่แล้ว)
+      const matchingChunk = chunks.find(c => segmentStart >= c.start && segmentStart < c.end)
+      if (matchingChunk) {
+        setSelectedChunk(matchingChunk)
+      } else {
+        // ถ้าไม่เจอ ใช้ chunk แรก
+        setSelectedChunk(chunks[0])
+        // ตั้งค่า segment ภายใน chunk แรก (สำหรับ create mode)
+        if (segmentEnd === 60 || segmentEnd > chunks[0].end) {
+          setSegmentEnd(Math.min(60, chunks[0].end))
+        }
       }
     }
-  }, [segmentEnd, selectedChunk])
+  }, [segmentStart, segmentEnd, selectedChunk])
 
   const handleChunkChange = useCallback((chunk: ChunkOption) => {
     setSelectedChunk(chunk)
