@@ -87,6 +87,9 @@ export interface Reel {
   line2?: string
   showLogo: boolean
 
+  // TTS (Text-to-Speech)
+  ttsText?: string // ข้อความพากย์เสียง
+
   // Output
   outputUrl?: string
   thumbnailUrl?: string
@@ -140,6 +143,9 @@ export interface CreateReelRequest {
   line2?: string
   showLogo?: boolean
 
+  // TTS (Text-to-Speech)
+  ttsText?: string // ข้อความพากย์เสียง (max 5000 chars)
+
   // LEGACY: Layer-based fields (deprecated but still supported)
   description?: string
   outputFormat?: OutputFormat
@@ -161,6 +167,9 @@ export interface UpdateReelRequest {
   line1?: string
   line2?: string
   showLogo?: boolean
+
+  // TTS (Text-to-Speech)
+  ttsText?: string // ข้อความพากย์เสียง (max 5000 chars)
 
   // LEGACY: Layer-based fields
   description?: string

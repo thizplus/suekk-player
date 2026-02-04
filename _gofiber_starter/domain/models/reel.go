@@ -132,6 +132,9 @@ type Reel struct {
 	Line1 string `gorm:"size:255"` // Secondary line 1
 	Line2 string `gorm:"size:255"` // Secondary line 2
 
+	// TTS (Text-to-Speech)
+	TTSText string `gorm:"type:text"` // ข้อความสำหรับพากย์เสียง (ถ้าว่าง = ไม่มีเสียง)
+
 	// Video Segment
 	SegmentStart float64 `gorm:"default:0"`  // start time (seconds)
 	SegmentEnd   float64 `gorm:"default:60"` // end time (seconds)

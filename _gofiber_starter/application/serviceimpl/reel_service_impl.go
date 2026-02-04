@@ -96,6 +96,9 @@ func (s *ReelServiceImpl) Create(ctx context.Context, userID uuid.UUID, req *dto
 		Status:       models.ReelStatusDraft,
 	}
 
+	// TTS Text (สำหรับทุก style)
+	reel.TTSText = req.TTSText
+
 	// Check if using new style-based system
 	if req.Style != "" {
 		// NEW: Style-based composition
@@ -120,6 +123,7 @@ func (s *ReelServiceImpl) Create(ctx context.Context, userID uuid.UUID, req *dto
 			"title", req.Title,
 			"crop_x", reel.CropX,
 			"crop_y", reel.CropY,
+			"has_tts", req.TTSText != "",
 		)
 	} else {
 		// LEGACY: Layer-based composition
@@ -240,6 +244,11 @@ func (s *ReelServiceImpl) Update(ctx context.Context, id, userID uuid.UUID, req 
 	}
 	if req.ShowLogo != nil {
 		reel.ShowLogo = *req.ShowLogo
+	}
+
+	// TTS Text
+	if req.TTSText != nil {
+		reel.TTSText = *req.TTSText
 	}
 
 	// LEGACY: Layer-based fields
@@ -425,6 +434,9 @@ func (s *ReelServiceImpl) Export(ctx context.Context, id, userID uuid.UUID) erro
 			OutputPath:   fmt.Sprintf("reels/%s/output.mp4", reel.ID.String()),
 		}
 
+		// TTS Text (สำหรับทุก style)
+		job.TTSText = reel.TTSText
+
 		// Check if using style-based or legacy layer-based
 		if reel.IsStyleBased() {
 			// NEW: Style-based job
@@ -440,6 +452,7 @@ func (s *ReelServiceImpl) Export(ctx context.Context, id, userID uuid.UUID) erro
 				"style", reel.Style,
 				"crop_x", reel.CropX,
 				"crop_y", reel.CropY,
+				"has_tts", reel.TTSText != "",
 			)
 		} else {
 			// LEGACY: Layer-based job

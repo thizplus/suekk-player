@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
-import { ArrowLeft, Save, Download, Loader2, Film, Clock, Type } from 'lucide-react'
+import { ArrowLeft, Save, Download, Loader2, Film, Clock, Type, Volume2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -53,6 +53,7 @@ export function ReelGeneratorPage() {
   const [cropX, setCropX] = useState(50) // 0-100, center default
   const [cropY, setCropY] = useState(50) // 0-100, center default
   const [coverTime, setCoverTime] = useState(-1) // -1 = auto middle
+  const [ttsText, setTtsText] = useState('') // TTS text
 
   // Video state (from preview canvas)
   const [actualDuration, setActualDuration] = useState(0)
@@ -96,6 +97,7 @@ export function ReelGeneratorPage() {
       setCropX(existingReel.cropX ?? 50)
       setCropY(existingReel.cropY ?? 50)
       setCoverTime(existingReel.coverTime ?? -1)
+      setTtsText(existingReel.ttsText || '')
     } else if (videoByCode) {
       setSelectedVideoId(videoByCode.id)
       setSelectedVideo(videoByCode)
@@ -189,6 +191,7 @@ export function ReelGeneratorPage() {
           showLogo,
           cropX,
           cropY,
+          ttsText: ttsText || undefined,
         }
         await updateReel.mutateAsync({ id, data })
         toast.success('บันทึกสำเร็จ')
@@ -205,6 +208,7 @@ export function ReelGeneratorPage() {
           showLogo,
           cropX,
           cropY,
+          ttsText: ttsText || undefined,
         }
         const newReel = await createReel.mutateAsync(data)
         toast.success('สร้าง Reel สำเร็จ')
@@ -318,7 +322,7 @@ export function ReelGeneratorPage() {
         {/* Settings Panel with Tabs */}
         <div>
           <Tabs value={activeTab} onValueChange={setActiveTab}>
-            <TabsList className="w-full grid grid-cols-3">
+            <TabsList className="w-full grid grid-cols-4">
               <TabsTrigger value="video" className="gap-2">
                 <Film className="h-4 w-4" />
                 วิดีโอ
@@ -330,6 +334,10 @@ export function ReelGeneratorPage() {
               <TabsTrigger value="text" className="gap-2" disabled={!activeVideo}>
                 <Type className="h-4 w-4" />
                 ข้อความ
+              </TabsTrigger>
+              <TabsTrigger value="tts" className="gap-2" disabled={!activeVideo}>
+                <Volume2 className="h-4 w-4" />
+                เสียง
               </TabsTrigger>
             </TabsList>
 
@@ -383,6 +391,35 @@ export function ReelGeneratorPage() {
                   onLine2Change={setLine2}
                   onShowLogoChange={setShowLogo}
                 />
+              )}
+            </TabsContent>
+
+            <TabsContent value="tts" className="mt-4">
+              {activeVideo && (
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">เสียงพากย์ (TTS)</label>
+                    <textarea
+                      value={ttsText}
+                      onChange={(e) => setTtsText(e.target.value)}
+                      placeholder="ใส่ข้อความที่ต้องการให้ AI พากย์... (เว้นว่างถ้าไม่ต้องการเสียง)"
+                      rows={6}
+                      maxLength={5000}
+                      className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 resize-none"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      {ttsText.length.toLocaleString()}/5,000 ตัวอักษร
+                    </p>
+                  </div>
+                  <div className="rounded-lg bg-muted p-3 text-sm text-muted-foreground">
+                    <p className="font-medium mb-1">💡 คำแนะนำ:</p>
+                    <ul className="list-disc list-inside space-y-1">
+                      <li>ใส่ข้อความภาษาไทยหรืออังกฤษได้</li>
+                      <li>เว้นว่างถ้าไม่ต้องการเสียงพากย์</li>
+                      <li>เสียงจะถูกสร้างอัตโนมัติเมื่อ Export</li>
+                    </ul>
+                  </div>
+                </div>
               )}
             </TabsContent>
           </Tabs>

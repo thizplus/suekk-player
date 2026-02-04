@@ -23,6 +23,9 @@ type CreateReelRequest struct {
 	Line2    string `json:"line2" validate:"omitempty,max=255"`
 	ShowLogo *bool  `json:"showLogo"` // nil = true (default)
 
+	// TTS (Text-to-Speech)
+	TTSText string `json:"ttsText" validate:"omitempty,max=5000"` // ข้อความพากย์เสียง
+
 	// LEGACY: Layer-based fields (deprecated but still supported)
 	Description  string             `json:"description" validate:"omitempty,max=1000"` // deprecated, use line1
 	OutputFormat string             `json:"outputFormat" validate:"omitempty,oneof=9:16 1:1 4:5 16:9"`
@@ -45,6 +48,9 @@ type UpdateReelRequest struct {
 	Line1    *string `json:"line1" validate:"omitempty,max=255"`
 	Line2    *string `json:"line2" validate:"omitempty,max=255"`
 	ShowLogo *bool   `json:"showLogo"`
+
+	// TTS (Text-to-Speech)
+	TTSText *string `json:"ttsText" validate:"omitempty,max=5000"` // ข้อความพากย์เสียง
 
 	// LEGACY: Layer-based fields (deprecated but still supported)
 	Description  *string             `json:"description" validate:"omitempty,max=1000"`
@@ -101,6 +107,9 @@ type ReelResponse struct {
 	Line1    string `json:"line1,omitempty"`
 	Line2    string `json:"line2,omitempty"`
 	ShowLogo bool   `json:"showLogo"`
+
+	// TTS (Text-to-Speech)
+	TTSText string `json:"ttsText,omitempty"` // ข้อความพากย์เสียง
 
 	// Output
 	OutputURL    string     `json:"outputUrl,omitempty"`
@@ -208,6 +217,9 @@ func ReelToResponse(reel *models.Reel) *ReelResponse {
 		Line1:    reel.Line1,
 		Line2:    reel.Line2,
 		ShowLogo: reel.ShowLogo,
+
+		// TTS
+		TTSText: reel.TTSText,
 
 		// Output
 		OutputURL:    reel.OutputPath,

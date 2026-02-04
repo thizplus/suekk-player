@@ -71,6 +71,9 @@ type ReelExportJob struct {
 	CropX        float64 `json:"crop_x"`        // 0-100 crop position X (for square/fullcover)
 	CropY        float64 `json:"crop_y"`        // 0-100 crop position Y (for square)
 
+	// TTS (Text-to-Speech)
+	TTSText string `json:"tts_text"` // ข้อความพากย์เสียง (ถ้าว่าง = ไม่มีเสียง)
+
 	// LEGACY: Layer-based composition (deprecated)
 	OutputFormat string         `json:"output_format"` // 9:16, 1:1, 4:5, 16:9
 	VideoFit     string         `json:"video_fit"`     // fill, fit, crop-1:1, crop-4:3, crop-4:5
