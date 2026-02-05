@@ -14,7 +14,8 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
-import { Dialog, DialogContent } from '@/components/ui/dialog'
+import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
+import { VisuallyHidden } from '@radix-ui/react-visually-hidden'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -557,6 +558,9 @@ export function ReelListPage() {
       {/* Preview Dialog */}
       <Dialog open={!!preview} onOpenChange={(open) => !open && closePreview()}>
         <DialogContent className="w-auto max-w-[90vw] p-0 overflow-hidden max-h-[85vh] [&>button]:hidden">
+          <VisuallyHidden>
+            <DialogTitle>ดูตัวอย่าง Reel</DialogTitle>
+          </VisuallyHidden>
           <div className="aspect-[9/16] h-[75vh] bg-black flex items-center justify-center">
             {preview?.isLoading ? (
               <div className="flex flex-col items-center gap-2 text-white">
@@ -572,21 +576,6 @@ export function ReelListPage() {
               />
             ) : null}
           </div>
-          {preview?.reel && !preview.isLoading && (
-            <div className="p-3 flex justify-end border-t">
-              <Button
-                size="sm"
-                onClick={() => {
-                  if (preview.reel.video?.code && preview.reel.outputUrl) {
-                    downloadReel(preview.reel.video.code, preview.reel.outputUrl, preview.reel.title)
-                  }
-                }}
-              >
-                <Download className="h-4 w-4 mr-2" />
-                ดาวน์โหลด
-              </Button>
-            </div>
-          )}
         </DialogContent>
       </Dialog>
     </div>
