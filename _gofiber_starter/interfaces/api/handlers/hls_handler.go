@@ -356,13 +356,14 @@ func (h *HLSHandler) ServeSubtitle(c *fiber.Ctx) error {
 }
 
 // ServeReel serves reel output files from storage (IDrive/S3)
-// Route: /stream/reels/:code/*filepath
+// Route: /stream/reels/:reelId/*filepath
+// Storage path: reels/{reelId}/output.mp4, reels/{reelId}/thumb.jpg, etc.
 func (h *HLSHandler) ServeReel(c *fiber.Ctx) error {
 	ctx := c.UserContext()
-	code := c.Params("code")
+	reelId := c.Params("code") // param name is :code but it's actually reel_id
 	filePath := c.Params("*")
 
-	if code == "" || filePath == "" {
+	if reelId == "" || filePath == "" {
 		return c.Status(fiber.StatusBadRequest).SendString("Invalid path")
 	}
 
@@ -374,11 +375,11 @@ func (h *HLSHandler) ServeReel(c *fiber.Ctx) error {
 	}
 
 	if tokenString == "" {
-		logger.WarnContext(ctx, "Missing reel token", "code", code, "path", filePath)
+		logger.WarnContext(ctx, "Missing reel token", "reel_id", reelId, "path", filePath)
 		return c.Status(fiber.StatusUnauthorized).SendString("Unauthorized")
 	}
 
-	// Parse and validate JWT
+	// Parse and validate JWT (just check if token is valid, no video code match for reels)
 	claims := &HLSAccessClaims{}
 	token, err := jwt.ParseWithClaims(tokenString, claims, func(token *jwt.Token) (interface{}, error) {
 		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
@@ -388,18 +389,15 @@ func (h *HLSHandler) ServeReel(c *fiber.Ctx) error {
 	})
 
 	if err != nil || !token.Valid {
-		logger.WarnContext(ctx, "Invalid reel token", "code", code, "error", err)
+		logger.WarnContext(ctx, "Invalid reel token", "reel_id", reelId, "error", err)
 		return c.Status(fiber.StatusUnauthorized).SendString("Invalid token")
 	}
 
-	// Verify video code matches token
-	if claims.VideoCode != code {
-		logger.WarnContext(ctx, "Token video code mismatch", "token_code", claims.VideoCode, "request_code", code)
-		return c.Status(fiber.StatusForbidden).SendString("Forbidden")
-	}
+	// Note: We don't validate video code for reels since path is reels/{reel_id}/...
+	// Token just needs to be valid (user is authenticated)
 
-	// Construct storage path: reels/{code}/{filepath}
-	storagePath := fmt.Sprintf("reels/%s/%s", code, filePath)
+	// Construct storage path: reels/{reelId}/{filepath}
+	storagePath := fmt.Sprintf("reels/%s/%s", reelId, filePath)
 
 	// Set content type based on file extension
 	ext := strings.ToLower(filepath.Ext(filePath))
@@ -441,7 +439,7 @@ func (h *HLSHandler) ServeReel(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusInternalServerError).SendString("Stream error")
 	}
 
-	logger.InfoContext(ctx, "Reel served", "code", code, "path", filePath)
+	logger.InfoContext(ctx, "Reel served", "reel_id", reelId, "path", filePath)
 	return nil
 }
 

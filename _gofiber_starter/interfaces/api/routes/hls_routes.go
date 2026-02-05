@@ -28,7 +28,8 @@ func SetupHLSRoutes(app *fiber.App, h *handlers.HLSHandler) {
 	app.Get("/subtitles/:code/*", h.ServeSubtitle)
 
 	// Reel Streaming - CDN จะ proxy มาที่นี่
-	// URL: cdn.suekk.com/stream/reels/{code}/* → api:8080/stream/reels/{code}/*
-	// GET /stream/reels/:code/{reelId}.mp4, /stream/reels/:code/{reelId}_thumb.jpg
-	app.Get("/stream/reels/:code/*", h.ServeReel)
+	// URL: cdn.suekk.com/stream/reels/{reelId}/* → api:8080/stream/reels/{reelId}/*
+	// GET /stream/reels/:reelId/output.mp4, /stream/reels/:reelId/thumb.jpg
+	// Storage: reels/{reelId}/output.mp4
+	app.Get("/stream/reels/:code/*", h.ServeReel) // :code is actually reel_id
 }

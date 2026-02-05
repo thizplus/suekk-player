@@ -183,13 +183,13 @@ export function ReelListPage() {
   }
 
   const handlePreview = async (reel: Reel) => {
-    if (!reel.video?.code) return
+    if (!reel.video?.code || !reel.outputUrl) return
 
     // Set loading state
     setPreview({ reel, blobUrl: null, isLoading: true })
 
-    // Fetch blob URL
-    const blobUrl = await getReelBlobUrl(reel.video.code, reel.id)
+    // Fetch blob URL using outputUrl from API
+    const blobUrl = await getReelBlobUrl(reel.video.code, reel.outputUrl)
     if (blobUrl) {
       setPreview({ reel, blobUrl, isLoading: false })
     } else {
@@ -441,7 +441,7 @@ export function ReelListPage() {
                             </DropdownMenuItem>
                           )}
 
-                          {reel.status === 'ready' && reel.video?.code && (
+                          {reel.status === 'ready' && reel.video?.code && reel.outputUrl && (
                             <>
                               <DropdownMenuItem
                                 onClick={(e) => {
@@ -455,7 +455,7 @@ export function ReelListPage() {
                               <DropdownMenuItem
                                 onClick={(e) => {
                                   e.stopPropagation()
-                                  downloadReel(reel.video!.code, reel.id, reel.title)
+                                  downloadReel(reel.video!.code, reel.outputUrl!, reel.title)
                                 }}
                               >
                                 <Download className="h-4 w-4 mr-2" />
@@ -577,8 +577,8 @@ export function ReelListPage() {
               <Button
                 size="sm"
                 onClick={() => {
-                  if (preview.reel.video?.code) {
-                    downloadReel(preview.reel.video.code, preview.reel.id, preview.reel.title)
+                  if (preview.reel.video?.code && preview.reel.outputUrl) {
+                    downloadReel(preview.reel.video.code, preview.reel.outputUrl, preview.reel.title)
                   }
                 }}
               >
