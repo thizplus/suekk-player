@@ -165,3 +165,33 @@ func (s *CategoryServiceImpl) GetVideoCounts(ctx context.Context) (map[uuid.UUID
 	}
 	return counts, nil
 }
+
+func (s *CategoryServiceImpl) GetOrCreateByName(ctx context.Context, name string) (*models.Category, error) {
+	// ลองหาจากชื่อก่อน
+	category, err := s.categoryRepo.GetByName(ctx, name)
+	if err == nil && category != nil {
+		return category, nil
+	}
+
+	// ถ้าไม่มี ก็สร้างใหม่
+	logger.InfoContext(ctx, "Creating new category", "name", name)
+
+	// หา max sort order
+	maxOrder, _ := s.categoryRepo.GetMaxSortOrder(ctx, nil)
+
+	newCategory := &models.Category{
+		ID:        uuid.New(),
+		Name:      name,
+		Slug:      slug.Make(name),
+		SortOrder: maxOrder + 1,
+		CreatedAt: time.Now(),
+	}
+
+	if err := s.categoryRepo.Create(ctx, newCategory); err != nil {
+		logger.ErrorContext(ctx, "Failed to create category", "name", name, "error", err)
+		return nil, err
+	}
+
+	logger.InfoContext(ctx, "Category created", "category_id", newCategory.ID, "name", name)
+	return newCategory, nil
+}

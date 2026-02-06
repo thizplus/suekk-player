@@ -11,6 +11,7 @@ type CategoryRepository interface {
 	Create(ctx context.Context, category *models.Category) error
 	GetByID(ctx context.Context, id uuid.UUID) (*models.Category, error)
 	GetBySlug(ctx context.Context, slug string) (*models.Category, error)
+	GetByName(ctx context.Context, name string) (*models.Category, error)
 	Update(ctx context.Context, category *models.Category) error
 	Delete(ctx context.Context, id uuid.UUID) error
 	List(ctx context.Context) ([]*models.Category, error)

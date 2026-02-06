@@ -22,10 +22,11 @@ import (
 
 // DirectUploadHandler จัดการ Direct Upload ผ่าน Presigned URL
 type DirectUploadHandler struct {
-	storage        ports.StoragePort
-	videoService   services.VideoService
-	settingService services.SettingService
-	natsPublisher  *natspkg.Publisher
+	storage         ports.StoragePort
+	videoService    services.VideoService
+	settingService  services.SettingService
+	categoryService services.CategoryService
+	natsPublisher   *natspkg.Publisher
 }
 
 // NewDirectUploadHandler สร้าง DirectUploadHandler
@@ -33,13 +34,15 @@ func NewDirectUploadHandler(
 	storage ports.StoragePort,
 	videoService services.VideoService,
 	settingService services.SettingService,
+	categoryService services.CategoryService,
 	natsPublisher *natspkg.Publisher,
 ) *DirectUploadHandler {
 	return &DirectUploadHandler{
-		storage:        storage,
-		videoService:   videoService,
-		settingService: settingService,
-		natsPublisher:  natsPublisher,
+		storage:         storage,
+		videoService:    videoService,
+		settingService:  settingService,
+		categoryService: categoryService,
+		natsPublisher:   natsPublisher,
 	}
 }
 
@@ -228,6 +231,17 @@ func (h *DirectUploadHandler) CompleteUpload(c *fiber.Ctx) error {
 		UserID:       user.ID,
 		Status:       models.VideoStatusPending, // จะเปลี่ยนเป็น queued ถ้า auto-queue สำเร็จ
 		OriginalPath: req.Path,
+	}
+
+	// Set CategoryID if category name provided (find or create)
+	if req.Category != "" && h.categoryService != nil {
+		category, err := h.categoryService.GetOrCreateByName(ctx, req.Category)
+		if err != nil {
+			logger.WarnContext(ctx, "Failed to get/create category", "category", req.Category, "error", err)
+		} else {
+			video.CategoryID = &category.ID
+			logger.InfoContext(ctx, "Category assigned", "category_id", category.ID, "category_name", req.Category)
+		}
 	}
 
 	if err := h.videoService.CreateVideo(ctx, video); err != nil {

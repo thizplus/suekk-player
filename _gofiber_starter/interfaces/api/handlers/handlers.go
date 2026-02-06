@@ -80,7 +80,7 @@ func NewHandlers(services *Services) *Handlers {
 		SettingHandler:       NewSettingHandler(services.SettingService),
 		SubtitleHandler:      NewSubtitleHandler(services.SubtitleService, services.VideoRepository),
 		QueueHandler:         NewQueueHandler(services.QueueService),
-		DirectUploadHandler:  NewDirectUploadHandler(services.StoragePort, services.VideoService, services.SettingService, services.NATSPublisher),
+		DirectUploadHandler:  NewDirectUploadHandler(services.StoragePort, services.VideoService, services.SettingService, services.CategoryService, services.NATSPublisher),
 		ReelHandler:          NewReelHandler(services.ReelService),
 		StreamCookieService:  services.StreamCookieService,
 	}

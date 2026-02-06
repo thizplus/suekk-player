@@ -18,6 +18,9 @@ type CategoryService interface {
 	// GetBySlug ดึง category ตาม slug
 	GetBySlug(ctx context.Context, slug string) (*models.Category, error)
 
+	// GetOrCreateByName หา category ตามชื่อ ถ้าไม่มีก็สร้างใหม่
+	GetOrCreateByName(ctx context.Context, name string) (*models.Category, error)
+
 	// Update อัปเดต category
 	Update(ctx context.Context, id uuid.UUID, req *dto.UpdateCategoryRequest) (*models.Category, error)
 

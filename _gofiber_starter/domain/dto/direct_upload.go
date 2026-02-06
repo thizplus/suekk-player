@@ -26,6 +26,7 @@ type CompleteDirectUploadRequest struct {
 	Filename    string          `json:"filename" validate:"required"`
 	Title       string          `json:"title" validate:"omitempty,max=255"`
 	Description string          `json:"description" validate:"omitempty,max=1000"`
+	Category    string          `json:"category" validate:"omitempty,max=100"`
 	Parts       []CompletedPart `json:"parts" validate:"required,min=1"`
 }
 

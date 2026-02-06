@@ -40,6 +40,15 @@ func (r *CategoryRepositoryImpl) GetBySlug(ctx context.Context, slug string) (*m
 	return &category, nil
 }
 
+func (r *CategoryRepositoryImpl) GetByName(ctx context.Context, name string) (*models.Category, error) {
+	var category models.Category
+	err := r.db.WithContext(ctx).Where("name = ?", name).First(&category).Error
+	if err != nil {
+		return nil, err
+	}
+	return &category, nil
+}
+
 func (r *CategoryRepositoryImpl) Update(ctx context.Context, category *models.Category) error {
 	return r.db.WithContext(ctx).Save(category).Error
 }
