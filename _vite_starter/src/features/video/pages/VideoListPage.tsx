@@ -314,7 +314,7 @@ export function VideoListPage() {
               <div className="flex-1 min-w-0">
                 <p className="font-medium truncate">{video.title}</p>
                 {video.description && (
-                  <p className="text-xs text-muted-foreground truncate">{video.description}</p>
+                  <p className="text-xs text-muted-foreground truncate max-w-full">{video.description}</p>
                 )}
                 <p className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
                   <span className="font-mono">{video.code}</span>
