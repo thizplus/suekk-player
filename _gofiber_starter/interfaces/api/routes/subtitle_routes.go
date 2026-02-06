@@ -36,6 +36,7 @@ func SetupSubtitleRoutes(api fiber.Router, h *handlers.Handlers) {
 	protected := videos.Group("", middleware.Protected())
 	protected.Get("/:id/subtitles", h.SubtitleHandler.GetSubtitles)                  // ดึง subtitles ของ video
 	protected.Post("/:id/subtitle/detect", h.SubtitleHandler.TriggerDetectLanguage)  // trigger detect language
+	protected.Post("/:id/subtitle/language", h.SubtitleHandler.SetLanguage)          // ตั้งค่าภาษาด้วยตนเอง
 	protected.Post("/:id/subtitle/transcribe", h.SubtitleHandler.TriggerTranscribe)  // trigger transcribe
 	protected.Post("/:id/subtitle/translate", h.SubtitleHandler.TriggerTranslation)  // trigger translation
 

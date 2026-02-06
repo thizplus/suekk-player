@@ -91,9 +91,17 @@ func (s *SubtitleServiceImpl) TriggerDetectLanguage(ctx context.Context, videoID
 		return nil, errors.New("video is not ready yet")
 	}
 
-	// 4. ตรวจสอบว่าตรวจจับภาษาไปแล้วหรือยัง
+	// 4. Clear existing detected language (allow re-detect)
 	if video.DetectedLanguage != "" {
-		return nil, fmt.Errorf("language already detected: %s", video.DetectedLanguage)
+		logger.InfoContext(ctx, "Re-detecting language, clearing existing",
+			"video_id", videoID,
+			"old_language", video.DetectedLanguage,
+		)
+		video.DetectedLanguage = ""
+		if err := s.videoRepo.Update(ctx, video); err != nil {
+			logger.ErrorContext(ctx, "Failed to clear detected language", "video_id", videoID, "error", err)
+			return nil, fmt.Errorf("failed to clear language: %w", err)
+		}
 	}
 
 	// 5. ส่ง detect job
@@ -115,6 +123,36 @@ func (s *SubtitleServiceImpl) TriggerDetectLanguage(ctx context.Context, videoID
 		VideoID:   videoID,
 		Message:   "Language detection job submitted",
 		AudioPath: video.AudioPath,
+	}, nil
+}
+
+// SetLanguage ตั้งค่าภาษาด้วยตนเอง (override auto-detect)
+func (s *SubtitleServiceImpl) SetLanguage(ctx context.Context, videoID uuid.UUID, language string) (*dto.SetLanguageResponse, error) {
+	logger.InfoContext(ctx, "Setting language manually", "video_id", videoID, "language", language)
+
+	// 1. ดึง video
+	video, err := s.videoRepo.GetByID(ctx, videoID)
+	if err != nil {
+		logger.ErrorContext(ctx, "Failed to get video", "video_id", videoID, "error", err)
+		return nil, err
+	}
+	if video == nil {
+		return nil, errors.New("video not found")
+	}
+
+	// 2. อัปเดต detected language
+	video.DetectedLanguage = language
+	if err := s.videoRepo.Update(ctx, video); err != nil {
+		logger.ErrorContext(ctx, "Failed to update video", "video_id", videoID, "error", err)
+		return nil, fmt.Errorf("failed to update language: %w", err)
+	}
+
+	logger.InfoContext(ctx, "Language set successfully", "video_id", videoID, "language", language)
+
+	return &dto.SetLanguageResponse{
+		VideoID:  videoID,
+		Language: language,
+		Message:  fmt.Sprintf("Language set to %s", language),
 	}, nil
 }
 

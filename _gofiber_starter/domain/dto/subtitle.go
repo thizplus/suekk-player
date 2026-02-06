@@ -49,6 +49,18 @@ type JobStartedRequest struct {
 	WorkerID   string `json:"worker_id"`
 }
 
+// SetLanguageRequest request สำหรับตั้งค่าภาษาด้วยตนเอง (override auto-detect)
+type SetLanguageRequest struct {
+	Language string `json:"language" validate:"required,oneof=ja en zh ko th ru"`
+}
+
+// SetLanguageResponse response หลังตั้งค่าภาษา
+type SetLanguageResponse struct {
+	VideoID  uuid.UUID `json:"videoId"`
+	Language string    `json:"language"`
+	Message  string    `json:"message"`
+}
+
 // === Content Edit Requests ===
 
 // SubtitleContentRequest request สำหรับอัปเดต subtitle content

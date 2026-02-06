@@ -28,6 +28,10 @@ type SubtitleService interface {
 	// อัปเดต video.DetectedLanguage เมื่อเสร็จ
 	TriggerDetectLanguage(ctx context.Context, videoID uuid.UUID) (*dto.DetectLanguageResponse, error)
 
+	// SetLanguage ตั้งค่าภาษาด้วยตนเอง (override auto-detect)
+	// อัปเดต video.DetectedLanguage โดยตรง
+	SetLanguage(ctx context.Context, videoID uuid.UUID, language string) (*dto.SetLanguageResponse, error)
+
 	// TriggerTranscribe สร้าง original subtitle record และส่ง transcribe job
 	// ต้องมี video.DetectedLanguage ก่อน
 	TriggerTranscribe(ctx context.Context, videoID uuid.UUID) (*dto.TranscribeResponse, error)

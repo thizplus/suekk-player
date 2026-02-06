@@ -136,6 +136,42 @@ func (h *SubtitleHandler) TriggerDetectLanguage(c *fiber.Ctx) error {
 	return utils.SuccessResponse(c, response)
 }
 
+// SetLanguage ตั้งค่าภาษาด้วยตนเอง (override auto-detect)
+// POST /api/v1/videos/:id/subtitle/language
+func (h *SubtitleHandler) SetLanguage(c *fiber.Ctx) error {
+	ctx := c.UserContext()
+
+	videoIDStr := c.Params("id")
+	videoID, err := uuid.Parse(videoIDStr)
+	if err != nil {
+		logger.WarnContext(ctx, "Invalid video ID", "video_id", videoIDStr)
+		return utils.BadRequestResponse(c, "Invalid video ID")
+	}
+
+	var req dto.SetLanguageRequest
+	if err := c.BodyParser(&req); err != nil {
+		logger.WarnContext(ctx, "Invalid request body", "error", err)
+		return utils.BadRequestResponse(c, "Invalid request body")
+	}
+
+	if err := utils.ValidateStruct(&req); err != nil {
+		errors := utils.GetValidationErrors(err)
+		logger.WarnContext(ctx, "Validation failed", "errors", errors)
+		return utils.ValidationErrorResponse(c, errors)
+	}
+
+	logger.InfoContext(ctx, "Set language request", "video_id", videoID, "language", req.Language)
+
+	response, err := h.subtitleService.SetLanguage(ctx, videoID, req.Language)
+	if err != nil {
+		logger.WarnContext(ctx, "Failed to set language", "video_id", videoID, "error", err)
+		return utils.BadRequestResponse(c, err.Error())
+	}
+
+	logger.InfoContext(ctx, "Language set", "video_id", videoID, "language", req.Language)
+	return utils.SuccessResponse(c, response)
+}
+
 // TriggerTranscribe trigger สร้าง original subtitle (manual)
 // POST /api/v1/videos/:id/subtitle/transcribe
 func (h *SubtitleHandler) TriggerTranscribe(c *fiber.Ctx) error {
