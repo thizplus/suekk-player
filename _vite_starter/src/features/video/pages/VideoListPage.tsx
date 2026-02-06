@@ -311,10 +311,10 @@ export function VideoListPage() {
               onClick={() => setSelectedVideoId(video.id)}
             >
               <Video className="h-4 w-4 text-muted-foreground shrink-0" />
-              <div className="flex-1 min-w-0">
+              <div className="flex-1 min-w-0 overflow-hidden">
                 <p className="font-medium truncate">{video.title}</p>
                 {video.description && (
-                  <p className="text-xs text-muted-foreground truncate max-w-full">{video.description}</p>
+                  <p className="text-xs text-muted-foreground truncate">{video.description}</p>
                 )}
                 <p className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
                   <span className="font-mono">{video.code}</span>
