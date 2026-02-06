@@ -20,12 +20,13 @@ type InitDirectUploadRequest struct {
 
 // CompleteDirectUploadRequest ข้อมูลสำหรับ complete upload
 type CompleteDirectUploadRequest struct {
-	UploadID  string          `json:"uploadId" validate:"required"`
-	VideoCode string          `json:"videoCode" validate:"required"`
-	Path      string          `json:"path" validate:"required"`
-	Filename  string          `json:"filename" validate:"required"`
-	Title     string          `json:"title" validate:"omitempty,max=255"`
-	Parts     []CompletedPart `json:"parts" validate:"required,min=1"`
+	UploadID    string          `json:"uploadId" validate:"required"`
+	VideoCode   string          `json:"videoCode" validate:"required"`
+	Path        string          `json:"path" validate:"required"`
+	Filename    string          `json:"filename" validate:"required"`
+	Title       string          `json:"title" validate:"omitempty,max=255"`
+	Description string          `json:"description" validate:"omitempty,max=1000"`
+	Parts       []CompletedPart `json:"parts" validate:"required,min=1"`
 }
 
 // CompletedPart ข้อมูล part ที่ upload สำเร็จ

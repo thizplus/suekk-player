@@ -224,6 +224,7 @@ func (h *DirectUploadHandler) CompleteUpload(c *fiber.Ctx) error {
 		ID:           uuid.New(),
 		Code:         req.VideoCode,
 		Title:        title,
+		Description:  req.Description,
 		UserID:       user.ID,
 		Status:       models.VideoStatusPending, // จะเปลี่ยนเป็น queued ถ้า auto-queue สำเร็จ
 		OriginalPath: req.Path,
