@@ -109,15 +109,17 @@ type TranscribeJob struct {
 	Language      string `json:"language"`       // Detected language
 	OutputPath    string `json:"output_path"`    // S3 path for SRT output
 	RefineWithLLM bool   `json:"refine_with_llm"`
+	Context       string `json:"context"`        // Video description for better translation
 }
 
 // TranslateJob job สำหรับ translate
 type TranslateJob struct {
-	SubtitleIDs        []string `json:"subtitle_ids"`         // IDs of subtitle records to update
-	VideoID            string   `json:"video_id"`
-	VideoCode          string   `json:"video_code"`
-	SourceSRTPath      string   `json:"source_srt_path"`      // S3 path to original SRT
-	SourceLanguage     string   `json:"source_language"`
-	TargetLanguages    []string `json:"target_languages"`
-	OutputPath         string   `json:"output_path"`          // S3 directory for translated SRTs
+	SubtitleIDs     []string `json:"subtitle_ids"`      // IDs of subtitle records to update
+	VideoID         string   `json:"video_id"`
+	VideoCode       string   `json:"video_code"`
+	SourceSRTPath   string   `json:"source_srt_path"`   // S3 path to original SRT
+	SourceLanguage  string   `json:"source_language"`
+	TargetLanguages []string `json:"target_languages"`
+	OutputPath      string   `json:"output_path"`       // S3 directory for translated SRTs
+	Context         string   `json:"context"`           // Video description for better translation
 }

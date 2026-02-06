@@ -222,6 +222,7 @@ func (s *SubtitleServiceImpl) TriggerTranscribe(ctx context.Context, videoID uui
 			Language:      language,
 			OutputPath:    outputPath,
 			RefineWithLLM: true,
+			Context:       video.Description,
 		}
 		if err := s.jobPublisher.PublishTranscribeJob(ctx, job); err != nil {
 			// Rollback: ลบ subtitle record ที่สร้างไป
@@ -335,6 +336,7 @@ func (s *SubtitleServiceImpl) TriggerTranslation(ctx context.Context, videoID uu
 			SourceLanguage:  original.Language,
 			TargetLanguages: targetLangs,
 			OutputPath:      fmt.Sprintf("subtitles/%s", video.Code),
+			Context:         video.Description,
 		}
 		if err := s.jobPublisher.PublishTranslateJob(ctx, job); err != nil {
 			// Rollback: ลบ subtitle records ที่สร้างไป
@@ -801,6 +803,7 @@ func (s *SubtitleServiceImpl) RetryStuckSubtitles(ctx context.Context) (*dto.Ret
 				Language:      language,
 				OutputPath:    outputPath,
 				RefineWithLLM: true,
+				Context:       video.Description,
 			}
 			publishErr = s.jobPublisher.PublishTranscribeJob(ctx, job)
 
@@ -826,6 +829,7 @@ func (s *SubtitleServiceImpl) RetryStuckSubtitles(ctx context.Context) (*dto.Ret
 				SourceLanguage:  original.Language,
 				TargetLanguages: []string{subtitle.Language},
 				OutputPath:      fmt.Sprintf("subtitles/%s", video.Code),
+				Context:         video.Description,
 			}
 			publishErr = s.jobPublisher.PublishTranslateJob(ctx, job)
 
