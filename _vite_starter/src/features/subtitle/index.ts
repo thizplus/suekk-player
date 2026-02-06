@@ -11,6 +11,7 @@ export {
   useVideoSubtitles,
   useSubtitlesByCode,
   useDetectLanguage,
+  useSetLanguage,
   useTranscribe,
   useTranslate,
   useDeleteSubtitle,

@@ -60,6 +60,18 @@ export interface DetectLanguageResponse {
   audioPath?: string
 }
 
+// Request สำหรับ set language
+export interface SetLanguageRequest {
+  language: string
+}
+
+// Response หลัง set language
+export interface SetLanguageResponse {
+  videoId: string
+  language: string
+  message: string
+}
+
 // Response หลัง trigger transcribe
 export interface TranscribeResponse {
   videoId: string

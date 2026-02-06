@@ -31,6 +31,8 @@ import {
   useTranscribe,
   useTranslate,
   useDeleteSubtitle,
+  useDetectLanguage,
+  useSetLanguage,
 } from '../hooks'
 import {
   SUBTITLE_STATUS_LABELS,
@@ -63,6 +65,8 @@ export function SubtitlePanel({ videoId, videoCode, videoStatus }: SubtitlePanel
   const transcribe = useTranscribe()
   const translate = useTranslate()
   const deleteSubtitle = useDeleteSubtitle()
+  const detectLanguage = useDetectLanguage()
+  const setLanguage = useSetLanguage()
 
   // WebSocket progress
   const subtitleProgress = useSubtitleProgress(videoId)
@@ -233,11 +237,42 @@ export function SubtitlePanel({ videoId, videoCode, videoStatus }: SubtitlePanel
           <Languages className="size-4 text-muted-foreground" />
           <span className="text-sm font-medium">Subtitle</span>
         </div>
-        {detectedLanguage && (
-          <Badge variant="outline" className="text-xs">
-            {LANGUAGE_FLAGS[detectedLanguage]} {LANGUAGE_LABELS[detectedLanguage]}
-          </Badge>
-        )}
+        <div className="flex items-center gap-1.5">
+          {detectedLanguage ? (
+            <>
+              <Badge variant="outline" className="text-xs">
+                {LANGUAGE_FLAGS[detectedLanguage]} {LANGUAGE_LABELS[detectedLanguage]}
+              </Badge>
+              <Button
+                size="icon"
+                variant="ghost"
+                className="size-6"
+                onClick={() => detectLanguage.mutate(videoId)}
+                disabled={detectLanguage.isPending || isProcessing}
+                title="ตรวจจับภาษาใหม่"
+              >
+                <RefreshCw className={`size-3 ${detectLanguage.isPending ? 'animate-spin' : ''}`} />
+              </Button>
+            </>
+          ) : (
+            <Select
+              value=""
+              onValueChange={(lang) => setLanguage.mutate({ videoId, language: lang })}
+              disabled={setLanguage.isPending || isProcessing}
+            >
+              <SelectTrigger className="h-7 w-[140px] text-xs">
+                <SelectValue placeholder="ตั้งค่าภาษา..." />
+              </SelectTrigger>
+              <SelectContent>
+                {languages?.sourceLanguages.map((lang) => (
+                  <SelectItem key={lang.code} value={lang.code}>
+                    {LANGUAGE_FLAGS[lang.code]} {LANGUAGE_LABELS[lang.code] || lang.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+        </div>
       </div>
 
       {/* Progress */}

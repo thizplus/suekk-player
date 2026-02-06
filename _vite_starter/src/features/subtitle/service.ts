@@ -4,6 +4,8 @@ import type {
   SubtitlesResponse,
   SupportedLanguagesResponse,
   DetectLanguageResponse,
+  SetLanguageRequest,
+  SetLanguageResponse,
   TranscribeResponse,
   TranslateJobResponse,
   TranslateRequest,
@@ -31,6 +33,12 @@ export const subtitleService = {
   // Trigger detect language
   async detectLanguage(videoId: string): Promise<DetectLanguageResponse> {
     return apiClient.post<DetectLanguageResponse>(SUBTITLE_ROUTES.DETECT(videoId))
+  },
+
+  // Set language manually (override auto-detect)
+  async setLanguage(videoId: string, language: string): Promise<SetLanguageResponse> {
+    const payload: SetLanguageRequest = { language }
+    return apiClient.post<SetLanguageResponse>(SUBTITLE_ROUTES.SET_LANGUAGE(videoId), payload)
   },
 
   // Trigger transcribe (สร้าง SRT)

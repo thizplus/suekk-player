@@ -177,6 +177,7 @@ export const SUBTITLE_ROUTES = {
   BY_CODE: (code: string) => `/api/v1/embed/videos/${code}/subtitles`,
   // Trigger actions
   DETECT: (videoId: string) => `/api/v1/videos/${videoId}/subtitle/detect`,
+  SET_LANGUAGE: (videoId: string) => `/api/v1/videos/${videoId}/subtitle/language`,
   TRANSCRIBE: (videoId: string) => `/api/v1/videos/${videoId}/subtitle/transcribe`,
   TRANSLATE: (videoId: string) => `/api/v1/videos/${videoId}/subtitle/translate`,
   // Delete subtitle

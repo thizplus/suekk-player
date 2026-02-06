@@ -68,6 +68,23 @@ export function useDetectLanguage() {
   })
 }
 
+// Set language manually
+export function useSetLanguage() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: ({ videoId, language }: { videoId: string; language: string }) =>
+      subtitleService.setLanguage(videoId, language),
+    onSuccess: async (data, { videoId }) => {
+      toast.success(`ตั้งค่าภาษาเป็น ${data.language} แล้ว`)
+      await invalidateSubtitleAndVideo(queryClient, videoId)
+    },
+    onError: (error: Error) => {
+      toast.error(error.message || 'ไม่สามารถตั้งค่าภาษาได้')
+    },
+  })
+}
+
 // Trigger transcribe
 export function useTranscribe() {
   const queryClient = useQueryClient()
