@@ -139,6 +139,7 @@ export default function AppRoutes() {
 
             {/* Video routes */}
             <Route path="/videos" element={<VideoListPage />} />
+            <Route path="/videos/page/:page" element={<VideoListPage />} />
             <Route path="/videos/dlq" element={<DLQPage />} />
 
             {/* Category routes */}

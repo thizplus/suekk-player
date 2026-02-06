@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
-import { useSearchParams, useNavigate } from 'react-router-dom'
-import { Plus, Eye, Trash2, RefreshCw, Copy, MoreVertical, Loader2, Video, Clock, Files, HardDrive, Languages, CheckCircle2, AlertCircle, Sparkles, Folder, Film } from 'lucide-react'
+import { useSearchParams, useNavigate, useParams } from 'react-router-dom'
+import { Plus, Eye, Trash2, RefreshCw, Copy, MoreVertical, Loader2, Video, Clock, Files, HardDrive, Languages, CheckCircle2, AlertCircle, Sparkles, Folder, Film, ChevronsLeft, ChevronsRight } from 'lucide-react'
+import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import {
@@ -56,13 +57,27 @@ interface DeleteTarget {
 
 export function VideoListPage() {
   const navigate = useNavigate()
+  const { page: pageParam } = useParams<{ page: string }>()
   const [searchParams, setSearchParams] = useSearchParams()
+  const [pageInput, setPageInput] = useState('')
+
+  // Get page from URL param or default to 1
+  const urlPage = pageParam ? parseInt(pageParam, 10) : 1
+  const currentPage = isNaN(urlPage) || urlPage < 1 ? 1 : urlPage
+
   const [filters, setFilters] = useState<VideoFilterParams>({
-    page: 1,
-    limit: 15,
+    page: currentPage,
+    limit: 100,
     sortBy: 'created_at',
     sortOrder: 'desc',
   })
+
+  // Sync filters.page with URL param
+  useEffect(() => {
+    if (filters.page !== currentPage) {
+      setFilters(prev => ({ ...prev, page: currentPage }))
+    }
+  }, [currentPage])
   const [uploadDialogOpen, setUploadDialogOpen] = useState(false)
   const [batchUploadDialogOpen, setBatchUploadDialogOpen] = useState(false)
   const [selectedVideoId, setSelectedVideoId] = useState<string | null>(null)
@@ -95,9 +110,22 @@ export function VideoListPage() {
   const totalPages = data?.meta.totalPages ?? 1
   const videos = data?.data ?? []
 
-  const setPage = (newPage: number | ((p: number) => number)) => {
-    const nextPage = typeof newPage === 'function' ? newPage(page) : newPage
-    setFilters((prev) => ({ ...prev, page: nextPage }))
+  const goToPage = (newPage: number) => {
+    const validPage = Math.max(1, Math.min(newPage, totalPages || 1))
+    if (validPage === 1) {
+      navigate('/videos')
+    } else {
+      navigate(`/videos/page/${validPage}`)
+    }
+  }
+
+  const handlePageInputSubmit = (e: React.FormEvent) => {
+    e.preventDefault()
+    const num = parseInt(pageInput, 10)
+    if (!isNaN(num) && num >= 1) {
+      goToPage(num)
+      setPageInput('')
+    }
   }
 
   const formatDate = (dateString: string) => {
@@ -285,6 +313,9 @@ export function VideoListPage() {
               <Video className="h-4 w-4 text-muted-foreground shrink-0" />
               <div className="flex-1 min-w-0">
                 <p className="font-medium truncate">{video.title}</p>
+                {video.description && (
+                  <p className="text-xs text-muted-foreground truncate">{video.description}</p>
+                )}
                 <p className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
                   <span className="font-mono">{video.code}</span>
                   <span className="inline-flex items-center gap-1">
@@ -451,15 +482,28 @@ export function VideoListPage() {
 
       {/* Pagination */}
       {data && totalPages > 1 && (
-        <div className="flex items-center justify-between">
-          <p className="text-sm text-muted-foreground">
+        <div className="flex items-center justify-between gap-4">
+          <p className="text-sm text-muted-foreground whitespace-nowrap">
             หน้า {page} / {totalPages}
           </p>
           <Pagination>
             <PaginationContent>
+              {/* First page */}
+              <PaginationItem>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-9 w-9"
+                  onClick={() => goToPage(1)}
+                  disabled={page <= 1}
+                  title="หน้าแรก"
+                >
+                  <ChevronsLeft className="h-4 w-4" />
+                </Button>
+              </PaginationItem>
               <PaginationItem>
                 <PaginationPrevious
-                  onClick={() => setPage((p) => Math.max(1, p - 1))}
+                  onClick={() => goToPage(page - 1)}
                   className={page <= 1 ? 'pointer-events-none opacity-50' : 'cursor-pointer'}
                 />
               </PaginationItem>
@@ -477,7 +521,7 @@ export function VideoListPage() {
                 return (
                   <PaginationItem key={pageNum}>
                     <PaginationLink
-                      onClick={() => setPage(pageNum)}
+                      onClick={() => goToPage(pageNum)}
                       isActive={page === pageNum}
                       className="cursor-pointer"
                     >
@@ -488,12 +532,40 @@ export function VideoListPage() {
               })}
               <PaginationItem>
                 <PaginationNext
-                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                  onClick={() => goToPage(page + 1)}
                   className={page >= totalPages ? 'pointer-events-none opacity-50' : 'cursor-pointer'}
                 />
               </PaginationItem>
+              {/* Last page */}
+              <PaginationItem>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-9 w-9"
+                  onClick={() => goToPage(totalPages)}
+                  disabled={page >= totalPages}
+                  title="หน้าสุดท้าย"
+                >
+                  <ChevronsRight className="h-4 w-4" />
+                </Button>
+              </PaginationItem>
             </PaginationContent>
           </Pagination>
+          {/* Page input */}
+          <form onSubmit={handlePageInputSubmit} className="flex items-center gap-2">
+            <Input
+              type="number"
+              min={1}
+              max={totalPages}
+              placeholder="ไป..."
+              value={pageInput}
+              onChange={(e) => setPageInput(e.target.value)}
+              className="w-20 h-9"
+            />
+            <Button type="submit" variant="outline" size="sm" disabled={!pageInput}>
+              ไป
+            </Button>
+          </form>
         </div>
       )}
 
