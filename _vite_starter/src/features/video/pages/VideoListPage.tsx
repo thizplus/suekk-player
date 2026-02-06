@@ -307,14 +307,14 @@ export function VideoListPage() {
           {videos.map((video) => (
             <div
               key={video.id}
-              className="flex items-center gap-3 px-3 py-2.5 rounded-lg border border-dashed hover:bg-accent/50 transition-colors cursor-pointer leading-none"
+              className="flex items-center gap-3 px-3 py-2.5 rounded-lg border border-dashed hover:bg-accent/50 transition-colors cursor-pointer leading-none overflow-hidden"
               onClick={() => setSelectedVideoId(video.id)}
             >
               <Video className="h-4 w-4 text-muted-foreground shrink-0" />
               <div className="flex-1 min-w-0 overflow-hidden">
                 <p className="font-medium truncate">{video.title}</p>
                 {video.description && (
-                  <p className="text-xs text-muted-foreground truncate">{video.description}</p>
+                  <p className="text-xs text-muted-foreground line-clamp-1">{video.description}</p>
                 )}
                 <p className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
                   <span className="font-mono">{video.code}</span>
