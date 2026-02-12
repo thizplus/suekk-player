@@ -81,6 +81,12 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: ${POSTGRES_DB:-suekk_stream}
+    command:
+      - "postgres"
+      - "-c"
+      - "max_connections=200"
+      - "-c"
+      - "shared_buffers=256MB"
     volumes:
       - pg-data:/var/lib/postgresql/data
     networks:
@@ -98,21 +104,44 @@ services:
         max-file: "3"
 
   # ═══════════════════════════════════════════════════════════
-  # PgBouncer - Connection Pooler
+  # PgBouncer - Connection Pooler (Bitnami - Self-healing)
   # ═══════════════════════════════════════════════════════════
   # รองรับ 10,000+ concurrent connections
-  # PostgreSQL 13 ใช้ MD5 auth ซึ่ง PgBouncer รองรับได้
   pgbouncer:
-    image: edoburu/pgbouncer:latest
+    image: bitnamilegacy/pgbouncer:latest
     container_name: suekk-pgbouncer
     environment:
-      - DATABASE_URL=postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-suekk_stream}
-      - POOL_MODE=transaction
-      - MAX_CLIENT_CONN=10000
-      - DEFAULT_POOL_SIZE=50
-      - AUTH_TYPE=md5
+      # Database Connection
+      - POSTGRESQL_HOST=postgres
+      - POSTGRESQL_PORT=5432
+      - POSTGRESQL_USERNAME=${POSTGRES_USER:-postgres}
+      - POSTGRESQL_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRESQL_DATABASE=${POSTGRES_DB:-suekk_stream}
+      # PgBouncer exposed database name
+      - PGBOUNCER_DATABASE=${POSTGRES_DB:-suekk_stream}
+      # Auth type (plain for internal Docker network)
+      - PGBOUNCER_AUTH_TYPE=plain
+      # Pool Settings
+      - PGBOUNCER_POOL_MODE=transaction
+      - PGBOUNCER_MAX_CLIENT_CONN=10000
+      - PGBOUNCER_DEFAULT_POOL_SIZE=50
+      - PGBOUNCER_MIN_POOL_SIZE=10
+      - PGBOUNCER_RESERVE_POOL_SIZE=10
+      # Self-healing: Timeout & Retry Settings
+      - PGBOUNCER_SERVER_IDLE_TIMEOUT=300
+      - PGBOUNCER_SERVER_LIFETIME=1800
+      - PGBOUNCER_SERVER_CONNECT_TIMEOUT=15
+      - PGBOUNCER_QUERY_TIMEOUT=120
+      - PGBOUNCER_CLIENT_IDLE_TIMEOUT=300
+      # Connection Reset
+      - PGBOUNCER_SERVER_RESET_QUERY=DISCARD ALL
+      - PGBOUNCER_IGNORE_STARTUP_PARAMETERS=extra_float_digits
+      # Logging
+      - PGBOUNCER_LOG_CONNECTIONS=1
+      - PGBOUNCER_LOG_DISCONNECTIONS=1
+      - PGBOUNCER_LOG_POOLER_ERRORS=1
     ports:
-      - "${PGBOUNCER_PORT:-6432}:5432"
+      - "${PGBOUNCER_PORT:-6432}:6432"
     depends_on:
       postgres:
         condition: service_healthy
@@ -120,10 +149,11 @@ services:
       - suekk-network
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "pg_isready", "-h", "localhost", "-p", "5432"]
+      test: ["CMD-SHELL", "bash -c '</dev/tcp/localhost/6432' || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 5
+      start_period: 30s
     logging:
       driver: "json-file"
       options:
@@ -171,7 +201,7 @@ services:
       - APP_NAME=Suekk Stream
       # Database (ผ่าน PgBouncer connection pooler)
       - DB_HOST=pgbouncer
-      - DB_PORT=5432
+      - DB_PORT=6432
       - DB_USER=${POSTGRES_USER:-postgres}
       - DB_PASSWORD=${POSTGRES_PASSWORD}
       - DB_NAME=${POSTGRES_DB:-suekk_stream}

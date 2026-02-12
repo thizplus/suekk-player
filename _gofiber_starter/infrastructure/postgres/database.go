@@ -2,6 +2,8 @@ package postgres
 
 import (
 	"fmt"
+	"time"
+
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
@@ -23,10 +25,33 @@ func NewDatabase(config DatabaseConfig) (*gorm.DB, error) {
 
 	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{
 		Logger: logger.Default.LogMode(logger.Info),
+		// IMPORTANT: Disable PrepareStmt for PgBouncer transaction pooling mode
+		// Without this, you'll get "prepared statement S_1 does not exist" errors
+		PrepareStmt: false,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to database: %v", err)
 	}
+
+	// Configure connection pool for PgBouncer
+	sqlDB, err := db.DB()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get sql.DB: %v", err)
+	}
+
+	// SetMaxOpenConns: Should be higher than PgBouncer's DEFAULT_POOL_SIZE (50)
+	// to allow effective connection competition during peak load
+	sqlDB.SetMaxOpenConns(100)
+
+	// SetMaxIdleConns: Keep some connections ready for reuse
+	sqlDB.SetMaxIdleConns(25)
+
+	// SetConnMaxLifetime: Should be less than PgBouncer's SERVER_LIFETIME (1800s)
+	// to ensure connections are refreshed before PgBouncer closes them
+	sqlDB.SetConnMaxLifetime(time.Minute * 15)
+
+	// SetConnMaxIdleTime: Close idle connections after 5 minutes
+	sqlDB.SetConnMaxIdleTime(time.Minute * 5)
 
 	return db, nil
 }
