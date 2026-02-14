@@ -163,19 +163,21 @@ services:
   # ═══════════════════════════════════════════════════════════
   # Redis - Cache + Distributed Locking
   # ═══════════════════════════════════════════════════════════
+  # SECURITY: ต้องตั้ง REDIS_PASSWORD ใน .env
   redis:
     image: redis:7-alpine
     container_name: suekk-redis
-    ports:
-      - "${REDIS_PORT:-6379}:6379"
-    command: redis-server --appendonly yes
+    # ไม่เปิด port สู่ภายนอก - ใช้ internal network เท่านั้น
+    # ports:
+    #   - "${REDIS_PORT:-6379}:6379"
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD}
     volumes:
       - redis-data:/data
     networks:
       - suekk-network
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -207,8 +209,8 @@ services:
       - DB_NAME=${POSTGRES_DB:-suekk_stream}
       # NATS
       - NATS_URL=nats://nats:4222
-      # Redis
-      - REDIS_URL=redis://redis:6379
+      # Redis (with password)
+      - REDIS_URL=redis://:${REDIS_PASSWORD}@redis:6379
       # JWT
       - JWT_SECRET=${JWT_SECRET}
       # S3/IDrive Storage
