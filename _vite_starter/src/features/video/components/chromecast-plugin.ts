@@ -177,12 +177,16 @@ function loadMedia(session: any, url: string, mimeType: string, art: any, subtit
       art.notice.show = 'กำลังแคสต์...'
 
       // Force enable subtitle after media loaded
-      // Need to wait a bit for media session to be ready
+      // Retry multiple times as media session might take time to be ready
       if (subtitles && subtitles.length > 0) {
-        setTimeout(() => {
+        let retries = 0
+        const maxRetries = 5
+
+        const tryEnableSubtitle = () => {
+          retries++
           try {
             const media = session.getMediaSession()
-            console.log('[Chromecast] Media session:', media)
+            console.log(`[Chromecast] Media session (attempt ${retries}):`, media ? 'available' : 'null')
 
             if (media) {
               // Create track info request to enable first subtitle
@@ -200,13 +204,19 @@ function loadMedia(session: any, url: string, mimeType: string, art: any, subtit
                 () => console.log('[Chromecast] Subtitle enabled successfully'),
                 (err: Error) => console.error('[Chromecast] Failed to enable subtitle:', err)
               )
+            } else if (retries < maxRetries) {
+              console.log(`[Chromecast] Retrying in 2 seconds... (${retries}/${maxRetries})`)
+              setTimeout(tryEnableSubtitle, 2000)
             } else {
-              console.warn('[Chromecast] Media session not available')
+              console.warn('[Chromecast] Media session not available after max retries. Try enabling subtitle from TV remote.')
             }
           } catch (err) {
             console.error('[Chromecast] Error enabling subtitle:', err)
           }
-        }, 1000) // Wait 1 second for media session to be ready
+        }
+
+        // Start first attempt after 2 seconds
+        setTimeout(tryEnableSubtitle, 2000)
       }
     },
     (error: Error) => {
