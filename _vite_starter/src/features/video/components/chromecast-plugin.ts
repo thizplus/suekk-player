@@ -175,6 +175,32 @@ function loadMedia(session: any, url: string, mimeType: string, art: any, subtit
     () => {
       console.log('[Chromecast] Media loaded successfully')
       art.notice.show = 'กำลังแคสต์...'
+
+      // Force enable subtitle after media loaded
+      if (subtitles && subtitles.length > 0) {
+        try {
+          const media = session.getMediaSession()
+          if (media) {
+            // Create track info request to enable first subtitle
+            const trackInfoRequest = new window.chrome.cast.media.EditTracksInfoRequest([1])
+
+            // Optional: Set text track style for better visibility
+            const textTrackStyle = new window.chrome.cast.media.TextTrackStyle()
+            textTrackStyle.backgroundColor = '#00000080' // Semi-transparent black
+            textTrackStyle.foregroundColor = '#FFFFFFFF' // White text
+            textTrackStyle.fontScale = 1.2
+            textTrackStyle.fontFamily = 'sans-serif'
+            trackInfoRequest.textTrackStyle = textTrackStyle
+
+            media.editTracksInfo(trackInfoRequest,
+              () => console.log('[Chromecast] Subtitle enabled successfully'),
+              (err: Error) => console.error('[Chromecast] Failed to enable subtitle:', err)
+            )
+          }
+        } catch (err) {
+          console.error('[Chromecast] Error enabling subtitle:', err)
+        }
+      }
     },
     (error: Error) => {
       console.error('[Chromecast] Error loading media:', error)
@@ -331,6 +357,15 @@ declare global {
           HlsVideoSegmentFormat: {
             MPEG2_TS: unknown
             FMP4: unknown
+          }
+          EditTracksInfoRequest: new (activeTrackIds: number[]) => {
+            textTrackStyle: unknown
+          }
+          TextTrackStyle: new () => {
+            backgroundColor: string
+            foregroundColor: string
+            fontScale: number
+            fontFamily: string
           }
         }
         AutoJoinPolicy: {
