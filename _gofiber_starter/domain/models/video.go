@@ -113,7 +113,8 @@ type Video struct {
 	OriginalSize int64        `gorm:"default:0"`               // ขนาดไฟล์ต้นฉบับ (ถูกลบหลัง transcode)
 	HLSSize      int64        `gorm:"default:0"`               // ขนาด HLS output ทั้งหมด
 	DiskUsage    int64        `gorm:"default:0"`               // = HLSSize (เพราะ original ถูกลบ)
-	QualitySizes QualitySizes `gorm:"type:jsonb;default:'{}'"` // ขนาดแยกตาม quality {"1080p": bytes, "720p": bytes}
+	QualitySizes     QualitySizes `gorm:"type:jsonb;default:'{}'"` // ขนาดแยกตาม quality {"1080p": bytes, "720p": bytes}
+	NeedsRetranscode bool         `gorm:"default:false"`           // ต้อง re-transcode หรือไม่
 
 	// Retry tracking for failure handling
 	RetryCount          int          `gorm:"default:0"`                      // จำนวนครั้งที่ retry

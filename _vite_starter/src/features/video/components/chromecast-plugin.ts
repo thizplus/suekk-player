@@ -146,38 +146,49 @@ export default function artplayerPluginChromecast(options: ChromecastOptions = {
           // Ensure SDK is loaded
           await loadCastSdk(sdkUrl)
 
+          const castContext = window.cast.framework.CastContext.getInstance()
+          const currentSession = castContext.getCurrentSession()
+          const sessionState = castContext.getSessionState()
+
+          console.log('[Chromecast] Session state:', sessionState, 'Session:', currentSession ? 'exists' : 'null')
+
+          // If already casting - stop and disconnect
+          if (currentSession && sessionState === 'SESSION_STARTED') {
+            console.log('[Chromecast] Stopping current session...')
+            art.notice.show = 'หยุดการแคสต์...'
+            await castContext.endCurrentSession(true)
+            console.log('[Chromecast] Session ended')
+            art.notice.show = 'หยุดแคสต์แล้ว'
+            return
+          }
+
+          // Build URL with token
           let url = options.url || art.option.url
           const mimeType = options.mimeType || getMimeType(url)
 
-          // Append token to URL for Chromecast (TV can't send headers)
           if (options.token) {
             const separator = url.includes('?') ? '&' : '?'
             url = `${url}${separator}token=${options.token}`
           }
           console.log('[Chromecast] Casting URL:', url)
 
-          const castContext = window.cast.framework.CastContext.getInstance()
-          const currentSession = castContext.getCurrentSession()
+          // Request new session
+          console.log('[Chromecast] Requesting new session...')
+          art.notice.show = 'กำลังเชื่อมต่อ Chromecast...'
 
-          if (currentSession) {
-            // Already connected - load media
-            loadMedia(currentSession, url, mimeType, art)
-          } else {
-            // Request new session
-            art.notice.show = 'กำลังเชื่อมต่อ Chromecast...'
-            castContext.requestSession().then(
-              () => {
-                const session = castContext.getCurrentSession()
-                if (session) {
-                  loadMedia(session, url, mimeType, art)
-                }
-              },
-              (error: Error) => {
-                console.error('[Chromecast] Session error:', error)
-                art.notice.show = 'ไม่สามารถเชื่อมต่อ Chromecast ได้'
+          castContext.requestSession().then(
+            () => {
+              const session = castContext.getCurrentSession()
+              if (session) {
+                console.log('[Chromecast] New session created')
+                loadMedia(session, url, mimeType, art)
               }
-            )
-          }
+            },
+            (error: Error) => {
+              console.error('[Chromecast] Session error:', error)
+              art.notice.show = 'ไม่สามารถเชื่อมต่อ Chromecast ได้'
+            }
+          )
         } catch (error) {
           console.error('[Chromecast] Error:', error)
           art.notice.show = 'Chromecast ไม่พร้อมใช้งาน'
@@ -204,7 +215,9 @@ declare global {
               autoJoinPolicy: unknown
             }) => void
             getCurrentSession: () => unknown
+            getSessionState: () => string
             requestSession: () => Promise<void>
+            endCurrentSession: (stopCasting: boolean) => Promise<void>
           }
         }
       }
