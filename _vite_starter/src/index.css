@@ -638,6 +638,11 @@
     display: flex !important;
   }
 
+  /* Volume control - show on mobile */
+  .artplayer-container .art-control-volume {
+    display: flex !important;
+  }
+
   /* Smaller icons */
   .artplayer-container .art-control svg {
     width: 20px !important;
@@ -661,9 +666,9 @@
     padding: 0 3px !important;
   }
 
-  /* Hide volume panel on very small screens */
-  .artplayer-container .art-volume-panel {
-    display: none !important;
+  /* Volume control - keep visible on small screens */
+  .artplayer-container .art-control-volume {
+    display: flex !important;
   }
 
   /* Smaller icons */
