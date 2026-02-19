@@ -13,6 +13,8 @@ export interface SubtitleOption {
   name: string
   language: string
   default?: boolean
+  /** CDN URL สำหรับ Chromecast (ต้องเป็น HTTP URL ไม่ใช่ blob) */
+  cdnUrl?: string
 }
 
 // Thai language translations
@@ -222,7 +224,7 @@ export function VideoPlayer({
             tooltip: 'เลือกคุณภาพวิดีโอ',
             selector: qualitySelector,
             onSelect: function (item) {
-              return onQualitySelect(item as { html: string; value: number })
+              return onQualitySelect(item as unknown as { html: string; value: number })
             },
           })
           console.log('[ArtPlayer] Quality setting added')
@@ -327,13 +329,16 @@ export function VideoPlayer({
       // Plugins - Multiple Subtitles + Chromecast
       plugins: [
         // Chromecast plugin (รองรับ HLS auto-detect, ส่ง token ผ่าน query param, VTT subtitles)
+        // ใช้ cdnUrl แทน blob URL เพราะ Chromecast ต้องการ HTTP URL ที่ fetch ได้
         artplayerPluginChromecast({
           token: streamToken,
-          subtitles: subtitles.map(sub => ({
-            url: sub.url,
-            language: sub.language,
-            name: sub.name,
-          })),
+          subtitles: subtitles
+            .filter(sub => sub.cdnUrl) // เฉพาะที่มี CDN URL เท่านั้น
+            .map(sub => ({
+              url: sub.cdnUrl!, // CDN URL (plugin จะแปลง .srt → .vtt)
+              language: sub.language,
+              name: sub.name,
+            })),
         }),
         // Multiple Subtitles (ไม่ใช้เมื่อ dynamicSubtitle = true)
         ...(!dynamicSubtitle && subtitleConfig.length > 0 ? [

@@ -116,6 +116,8 @@ export function PreviewPage() {
   }, [video?.code, streamAccess?.token])
 
   // Build subtitle options
+  // - url: Blob URL สำหรับ local player
+  // - cdnUrl: CDN URL สำหรับ Chromecast
   const subtitleOptions = useMemo(() => {
     if (!video?.subtitles) return []
 
@@ -123,6 +125,7 @@ export function PreviewPage() {
       .filter(sub => sub.status === 'ready' && sub.srtPath && subtitleBlobUrls[sub.language])
       .map(sub => ({
         url: subtitleBlobUrls[sub.language],
+        cdnUrl: `${APP_CONFIG.cdnUrl}/${sub.srtPath}`, // CDN URL สำหรับ Chromecast
         name: LANGUAGE_LABELS[sub.language] || sub.language,
         language: sub.language,
         default: sub.language === 'th',

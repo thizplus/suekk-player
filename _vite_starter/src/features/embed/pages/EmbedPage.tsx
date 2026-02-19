@@ -151,14 +151,17 @@ export function EmbedPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [video?.code, streamAccess?.token])
 
-  // Build subtitle options สำหรับ player (ใช้ Blob URLs)
+  // Build subtitle options สำหรับ player
+  // - url: Blob URL สำหรับ local player (ป้องกัน hotlink)
+  // - cdnUrl: CDN URL สำหรับ Chromecast (ต้องเป็น HTTP URL ที่ fetch ได้)
   const subtitleOptions = useMemo(() => {
     if (!video?.subtitles) return []
 
     return video.subtitles
       .filter(sub => sub.status === 'ready' && sub.srtPath && subtitleBlobUrls[sub.language])
       .map(sub => ({
-        url: subtitleBlobUrls[sub.language], // ใช้ Blob URL แทน
+        url: subtitleBlobUrls[sub.language], // Blob URL สำหรับ local player
+        cdnUrl: `${APP_CONFIG.cdnUrl}/${sub.srtPath}`, // CDN URL สำหรับ Chromecast
         name: LANGUAGE_LABELS[sub.language] || sub.language,
         language: sub.language,
         default: sub.language === 'th', // ใช้ภาษาไทยเป็น default ถ้ามี
