@@ -209,48 +209,33 @@ export function VideoPlayer({
             console.log('[Quality] Selected:', item.html, 'level:', item.value)
             hls.currentLevel = item.value
             isAutoMode = item.value === -1
-            // Update button label (only for controls mode)
-            const labelEl = art.template.$player.querySelector('.art-quality-label')
-            if (labelEl) {
-              if (isAutoMode) {
-                const currentLevel = hls.levels[hls.currentLevel]
-                labelEl.textContent = currentLevel ? `AUTO ${currentLevel.height}p` : 'AUTO'
-              } else {
-                labelEl.textContent = item.html
-              }
-            }
             return item.html
           }
 
-          // Add quality control button (both desktop and mobile)
-          art.controls.add({
+          // Add quality to settings panel
+          art.setting.add({
             name: 'quality',
-            position: 'right',
-            index: 10,
-            html: '<span class="art-quality-label">AUTO</span>',
-            style: {
-              fontSize: '12px',
-              padding: '0 8px',
-              fontWeight: 'bold',
-            },
+            html: 'คุณภาพ',
+            icon: `<svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor">
+              <path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-8 12H9.5v-2h-2v2H6V9h1.5v2.5h2V9H11v6zm7-1c0 .55-.45 1-1 1h-.75v1.5h-1.5V15H14c-.55 0-1-.45-1-1v-4c0-.55.45-1 1-1h3c.55 0 1 .45 1 1v4zm-3.5-.5h2v-3h-2v3z"/>
+            </svg>`,
+            tooltip: 'เลือกคุณภาพวิดีโอ',
             selector: qualitySelector,
             onSelect: function (item) {
               return onQualitySelect(item as { html: string; value: number })
             },
           })
-          console.log('[ArtPlayer] Quality control added')
+          console.log('[ArtPlayer] Quality setting added')
 
           console.log('[ArtPlayer] Quality options:', data.levels.map(l => `${l.height}p`))
 
         })
 
-        // Update label when HLS switches level (for auto mode)
+        // Log when HLS switches level (for auto mode)
         hls.on(Hls.Events.LEVEL_SWITCHED, (_event, data) => {
           if (isAutoMode) {
             const level = hls.levels[data.level]
-            const labelEl = art.template.$player.querySelector('.art-quality-label')
-            if (labelEl && level) {
-              labelEl.textContent = `AUTO ${level.height}p`
+            if (level) {
               console.log('[Quality] Auto switched to:', `${level.height}p`)
             }
           }
@@ -430,14 +415,8 @@ export function VideoPlayer({
           console.log('[ArtPlayer] Subtitle enabled')
         }
 
-        // Add subtitle control (only if subtitles exist)
+        // Add subtitle to settings (only if subtitles exist)
         if (subtitles.length > 0 && plugin) {
-          const getSubtitleLabel = (lang: string | null) => {
-            if (!lang) return 'ปิด'
-            const sub = subtitles.find(s => s.language === lang)
-            return sub?.name || lang
-          }
-
           const subtitleSelector = [
             { html: 'ปิด', value: '', default: !activeSubtitleLang },
             ...subtitles.map(sub => ({
@@ -449,12 +428,6 @@ export function VideoPlayer({
 
           const onSubtitleSelect = function (item: { html: string; value: string }) {
             console.log('[Subtitle] Selected:', item.html, 'lang:', item.value)
-
-            // Update label (only for controls mode)
-            const labelEl = art.template.$player.querySelector('.art-subtitle-label')
-            if (labelEl) {
-              labelEl.textContent = item.html
-            }
 
             if (item.value === '') {
               // Turn off subtitles
@@ -475,24 +448,21 @@ export function VideoPlayer({
             return item.html
           }
 
-          // Add subtitle control button (both desktop and mobile)
-          art.controls.add({
+          // Add subtitle to settings panel
+          art.setting.add({
             name: 'subtitle',
-            position: 'right',
-            index: 20,
-            html: `<span class="art-subtitle-label">${getSubtitleLabel(activeSubtitleLang)}</span>`,
-            style: {
-              fontSize: '12px',
-              padding: '0 8px',
-              fontWeight: 'bold',
-            },
+            html: 'คำบรรยาย',
+            icon: `<svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor">
+              <path d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 14H4V6h16v12zM6 10h2v2H6zm0 4h8v2H6zm10 0h2v2h-2zm-6-4h8v2h-8z"/>
+            </svg>`,
+            tooltip: 'เลือกคำบรรยาย',
             selector: subtitleSelector,
             onSelect: function (item) {
               return onSubtitleSelect(item as { html: string; value: string })
             },
           })
 
-          console.log('[ArtPlayer] Subtitle control added:', subtitles.map(s => s.name))
+          console.log('[ArtPlayer] Subtitle setting added:', subtitles.map(s => s.name))
         }
       })
     }
