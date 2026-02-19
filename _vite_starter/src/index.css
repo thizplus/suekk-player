@@ -632,10 +632,10 @@
     padding: 0 4px !important;
   }
 
-  /* Hide skip buttons on mobile */
-  .artplayer-container .art-control[data-index="1"],
-  .artplayer-container .art-control[data-index="3"] {
-    display: none !important;
+  /* Skip buttons - show on mobile */
+  .artplayer-container .art-control-skip-back,
+  .artplayer-container .art-control-skip-forward {
+    display: flex !important;
   }
 
   /* Smaller icons */
