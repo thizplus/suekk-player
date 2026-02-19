@@ -10,12 +10,19 @@ let castSdkLoading: Promise<void> | null = null
 // Default Cast icon
 const CAST_ICON = `<svg height="20" width="20" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 576 512"><path d="M512 96H64v99c-13-2-26.4-3-40-3H0V96C0 60.7 28.7 32 64 32H512c35.3 0 64 28.7 64 64V416c0 35.3-28.7 64-64 64H288V456c0-13.6-1-27-3-40H512V96zM24 224c128.1 0 232 103.9 232 232c0 13.3-10.7 24-24 24s-24-10.7-24-24c0-101.6-82.4-184-184-184c-13.3 0-24-10.7-24-24s10.7-24 24-24zm8 192a32 32 0 1 1 0 64 32 32 0 1 1 0-64zM0 344c0-13.3 10.7-24 24-24c75.1 0 136 60.9 136 136c0 13.3-10.7 24-24 24s-24-10.7-24-24c0-48.6-39.4-88-88-88c-13.3 0-24-10.7-24-24z"/></svg>`
 
+interface SubtitleTrack {
+  url: string      // SRT URL (จะแปลงเป็น VTT อัตโนมัติ)
+  language: string // e.g., 'th', 'en', 'ja'
+  name: string     // e.g., 'ไทย', 'English'
+}
+
 interface ChromecastOptions {
   sdk?: string
   url?: string
   mimeType?: string
   icon?: string
   token?: string // JWT token สำหรับ HLS authentication
+  subtitles?: SubtitleTrack[] // Subtitles สำหรับ Chromecast (จะใช้ VTT)
 }
 
 // MIME type mapping
@@ -95,8 +102,20 @@ function loadCastSdk(sdkUrl: string): Promise<void> {
   return castSdkLoading
 }
 
+/**
+ * Convert SRT URL to VTT URL (replace extension)
+ */
+function toVttUrl(srtUrl: string): string {
+  // Replace .srt with .vtt
+  if (srtUrl.endsWith('.srt')) {
+    return srtUrl.slice(0, -4) + '.vtt'
+  }
+  // If already .vtt or other format, return as-is
+  return srtUrl
+}
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function loadMedia(session: any, url: string, mimeType: string, art: any) {
+function loadMedia(session: any, url: string, mimeType: string, art: any, subtitles?: SubtitleTrack[], token?: string) {
   const mediaInfo = new window.chrome.cast.media.MediaInfo(url, mimeType)
 
   // Set stream type for HLS
@@ -109,9 +128,48 @@ function loadMedia(session: any, url: string, mimeType: string, art: any) {
     mediaInfo.hlsVideoSegmentFormat = window.chrome.cast.media.HlsVideoSegmentFormat.MPEG2_TS
   }
 
+  // Add subtitle tracks (VTT format for Chromecast)
+  if (subtitles && subtitles.length > 0) {
+    const tracks: chrome.cast.media.Track[] = []
+
+    subtitles.forEach((sub, index) => {
+      // Convert SRT URL to VTT URL
+      let vttUrl = toVttUrl(sub.url)
+
+      // Append token to VTT URL if needed
+      if (token) {
+        const separator = vttUrl.includes('?') ? '&' : '?'
+        vttUrl = `${vttUrl}${separator}token=${token}`
+      }
+
+      const track = new window.chrome.cast.media.Track(
+        index + 1, // trackId (1-based)
+        window.chrome.cast.media.TrackType.TEXT
+      )
+      track.trackContentId = vttUrl
+      track.trackContentType = 'text/vtt'
+      track.subtype = window.chrome.cast.media.TextTrackType.SUBTITLES
+      track.name = sub.name
+      track.language = sub.language
+
+      tracks.push(track)
+      console.log('[Chromecast] Added subtitle track:', { language: sub.language, url: vttUrl })
+    })
+
+    mediaInfo.tracks = tracks
+
+    // Auto-enable first subtitle track
+    mediaInfo.activeTrackIds = [1]
+  }
+
   const request = new window.chrome.cast.media.LoadRequest(mediaInfo)
 
-  console.log('[Chromecast] Loading media:', { url, mimeType, streamType: mediaInfo.streamType })
+  console.log('[Chromecast] Loading media:', {
+    url,
+    mimeType,
+    streamType: mediaInfo.streamType,
+    subtitleTracks: subtitles?.length || 0,
+  })
 
   session.loadMedia(request).then(
     () => {
@@ -181,7 +239,7 @@ export default function artplayerPluginChromecast(options: ChromecastOptions = {
               const session = castContext.getCurrentSession()
               if (session) {
                 console.log('[Chromecast] New session created')
-                loadMedia(session, url, mimeType, art)
+                loadMedia(session, url, mimeType, art, options.subtitles, options.token)
               }
             },
             (error: Error) => {
@@ -204,6 +262,18 @@ export default function artplayerPluginChromecast(options: ChromecastOptions = {
 
 // Type declarations for Cast SDK
 declare global {
+  // eslint-disable-next-line @typescript-eslint/no-namespace
+  namespace chrome.cast.media {
+    interface Track {
+      trackId: number
+      trackContentId: string
+      trackContentType: string
+      subtype: unknown
+      name: string
+      language: string
+    }
+  }
+
   interface Window {
     __onGCastApiAvailable: (isAvailable: boolean) => void
     cast: {
@@ -231,8 +301,23 @@ declare global {
             contentType: string
             hlsSegmentFormat: unknown
             hlsVideoSegmentFormat: unknown
+            tracks: chrome.cast.media.Track[]
+            activeTrackIds: number[]
           }
           LoadRequest: new (mediaInfo: unknown) => unknown
+          Track: new (trackId: number, trackType: unknown) => chrome.cast.media.Track
+          TrackType: {
+            TEXT: unknown
+            AUDIO: unknown
+            VIDEO: unknown
+          }
+          TextTrackType: {
+            SUBTITLES: unknown
+            CAPTIONS: unknown
+            DESCRIPTIONS: unknown
+            CHAPTERS: unknown
+            METADATA: unknown
+          }
           StreamType: {
             BUFFERED: unknown
             LIVE: unknown

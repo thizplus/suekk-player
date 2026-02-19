@@ -341,8 +341,15 @@ export function VideoPlayer({
       } : {}),
       // Plugins - Multiple Subtitles + Chromecast
       plugins: [
-        // Chromecast plugin (รองรับ HLS auto-detect, ส่ง token ผ่าน query param)
-        artplayerPluginChromecast({ token: streamToken }),
+        // Chromecast plugin (รองรับ HLS auto-detect, ส่ง token ผ่าน query param, VTT subtitles)
+        artplayerPluginChromecast({
+          token: streamToken,
+          subtitles: subtitles.map(sub => ({
+            url: sub.url,
+            language: sub.language,
+            name: sub.name,
+          })),
+        }),
         // Multiple Subtitles (ไม่ใช้เมื่อ dynamicSubtitle = true)
         ...(!dynamicSubtitle && subtitleConfig.length > 0 ? [
           artplayerPluginMultipleSubtitles({
