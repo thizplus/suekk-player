@@ -177,29 +177,36 @@ function loadMedia(session: any, url: string, mimeType: string, art: any, subtit
       art.notice.show = 'กำลังแคสต์...'
 
       // Force enable subtitle after media loaded
+      // Need to wait a bit for media session to be ready
       if (subtitles && subtitles.length > 0) {
-        try {
-          const media = session.getMediaSession()
-          if (media) {
-            // Create track info request to enable first subtitle
-            const trackInfoRequest = new window.chrome.cast.media.EditTracksInfoRequest([1])
+        setTimeout(() => {
+          try {
+            const media = session.getMediaSession()
+            console.log('[Chromecast] Media session:', media)
 
-            // Optional: Set text track style for better visibility
-            const textTrackStyle = new window.chrome.cast.media.TextTrackStyle()
-            textTrackStyle.backgroundColor = '#00000080' // Semi-transparent black
-            textTrackStyle.foregroundColor = '#FFFFFFFF' // White text
-            textTrackStyle.fontScale = 1.2
-            textTrackStyle.fontFamily = 'sans-serif'
-            trackInfoRequest.textTrackStyle = textTrackStyle
+            if (media) {
+              // Create track info request to enable first subtitle
+              const trackInfoRequest = new window.chrome.cast.media.EditTracksInfoRequest([1])
 
-            media.editTracksInfo(trackInfoRequest,
-              () => console.log('[Chromecast] Subtitle enabled successfully'),
-              (err: Error) => console.error('[Chromecast] Failed to enable subtitle:', err)
-            )
+              // Optional: Set text track style for better visibility
+              const textTrackStyle = new window.chrome.cast.media.TextTrackStyle()
+              textTrackStyle.backgroundColor = '#00000080' // Semi-transparent black
+              textTrackStyle.foregroundColor = '#FFFFFFFF' // White text
+              textTrackStyle.fontScale = 1.2
+              textTrackStyle.fontFamily = 'sans-serif'
+              trackInfoRequest.textTrackStyle = textTrackStyle
+
+              media.editTracksInfo(trackInfoRequest,
+                () => console.log('[Chromecast] Subtitle enabled successfully'),
+                (err: Error) => console.error('[Chromecast] Failed to enable subtitle:', err)
+              )
+            } else {
+              console.warn('[Chromecast] Media session not available')
+            }
+          } catch (err) {
+            console.error('[Chromecast] Error enabling subtitle:', err)
           }
-        } catch (err) {
-          console.error('[Chromecast] Error enabling subtitle:', err)
-        }
+        }, 1000) // Wait 1 second for media session to be ready
       }
     },
     (error: Error) => {
