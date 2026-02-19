@@ -291,7 +291,7 @@ export function VideoPlayer({
       pip: false,
       fullscreen: true,
       fullscreenWeb: false,
-      subtitleOffset: true,
+      subtitleOffset: false,
       miniProgressBar: true,
       mutex: true,
       backdrop: true,
