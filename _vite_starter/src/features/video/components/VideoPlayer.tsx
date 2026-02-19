@@ -2,6 +2,7 @@ import { useEffect, useRef, useMemo } from 'react'
 import Artplayer from 'artplayer'
 import Hls from 'hls.js'
 import artplayerPluginMultipleSubtitles from 'artplayer-plugin-multiple-subtitles'
+import artplayerPluginChromecast from './chromecast-plugin'
 
 // HLS instance type
 type HlsInstance = InstanceType<typeof Hls>
@@ -338,12 +339,17 @@ export function VideoPlayer({
           },
         },
       } : {}),
-      // Plugins - Multiple Subtitles (ไม่ใช้เมื่อ dynamicSubtitle = true)
-      plugins: (!dynamicSubtitle && subtitleConfig.length > 0) ? [
-        artplayerPluginMultipleSubtitles({
-          subtitles: subtitleConfig,
-        }),
-      ] : [],
+      // Plugins - Multiple Subtitles + Chromecast
+      plugins: [
+        // Chromecast plugin (รองรับ HLS auto-detect, ส่ง token ผ่าน query param)
+        artplayerPluginChromecast({ token: streamToken }),
+        // Multiple Subtitles (ไม่ใช้เมื่อ dynamicSubtitle = true)
+        ...(!dynamicSubtitle && subtitleConfig.length > 0 ? [
+          artplayerPluginMultipleSubtitles({
+            subtitles: subtitleConfig,
+          }),
+        ] : []),
+      ],
       // Settings - ไม่ใส่ subtitle ใน settings แล้ว (ย้ายไป controls)
       settings: [],
       // Controls
