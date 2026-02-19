@@ -68,7 +68,6 @@ function loadCastSdk(sdkUrl: string): Promise<void> {
             autoJoinPolicy: window.chrome.cast.AutoJoinPolicy.ORIGIN_SCOPED,
           })
           castSdkLoaded = true
-          console.log('[Chromecast] SDK initialized successfully')
           resolve()
         } catch (err) {
           console.error('[Chromecast] Failed to initialize:', err)
@@ -83,7 +82,6 @@ function loadCastSdk(sdkUrl: string): Promise<void> {
     const existingScript = document.querySelector(`script[src*="cast_sender.js"]`)
     if (existingScript) {
       // Script exists, wait for callback
-      console.log('[Chromecast] SDK script already exists, waiting for init...')
       return
     }
 
@@ -96,7 +94,6 @@ function loadCastSdk(sdkUrl: string): Promise<void> {
       reject(new Error('Failed to load Cast SDK'))
     }
     document.body.appendChild(script)
-    console.log('[Chromecast] Loading SDK...')
   })
 
   return castSdkLoading
@@ -163,28 +160,18 @@ function loadMedia(session: any, url: string, mimeType: string, art: any, subtit
       track.language = sub.language
 
       tracks.push(track)
-      console.log('[Chromecast] Added subtitle track:', { language: sub.language, trackId, url: vttUrl })
     })
 
     mediaInfo.tracks = tracks
 
     // Auto-enable Thai subtitle track (or first if no Thai)
     mediaInfo.activeTrackIds = [thaiTrackId]
-    console.log('[Chromecast] Default subtitle trackId:', thaiTrackId)
   }
 
   const request = new window.chrome.cast.media.LoadRequest(mediaInfo)
 
-  console.log('[Chromecast] Loading media:', {
-    url,
-    mimeType,
-    streamType: mediaInfo.streamType,
-    subtitleTracks: subtitles?.length || 0,
-  })
-
   session.loadMedia(request).then(
     () => {
-      console.log('[Chromecast] Media loaded successfully')
       art.notice.show = 'กำลังแคสต์...'
 
       // Force enable subtitle after media loaded
@@ -197,13 +184,12 @@ function loadMedia(session: any, url: string, mimeType: string, art: any, subtit
           retries++
           try {
             const media = session.getMediaSession()
-            console.log(`[Chromecast] Media session (attempt ${retries}):`, media ? 'available' : 'null')
 
             if (media) {
               // Create track info request to enable Thai subtitle (or first if no Thai)
               const trackInfoRequest = new window.chrome.cast.media.EditTracksInfoRequest([thaiTrackId])
 
-              // Optional: Set text track style for better visibility
+              // Set text track style for better visibility
               const textTrackStyle = new window.chrome.cast.media.TextTrackStyle()
               textTrackStyle.backgroundColor = '#00000080' // Semi-transparent black
               textTrackStyle.foregroundColor = '#FFFFFFFF' // White text
@@ -212,14 +198,11 @@ function loadMedia(session: any, url: string, mimeType: string, art: any, subtit
               trackInfoRequest.textTrackStyle = textTrackStyle
 
               media.editTracksInfo(trackInfoRequest,
-                () => console.log('[Chromecast] Subtitle enabled successfully'),
+                () => { /* Subtitle enabled */ },
                 (err: Error) => console.error('[Chromecast] Failed to enable subtitle:', err)
               )
             } else if (retries < maxRetries) {
-              console.log(`[Chromecast] Retrying in 2 seconds... (${retries}/${maxRetries})`)
               setTimeout(tryEnableSubtitle, 2000)
-            } else {
-              console.warn('[Chromecast] Media session not available after max retries. Try enabling subtitle from TV remote.')
             }
           } catch (err) {
             console.error('[Chromecast] Error enabling subtitle:', err)
