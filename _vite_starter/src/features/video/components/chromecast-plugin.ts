@@ -129,6 +129,9 @@ function loadMedia(session: any, url: string, mimeType: string, art: any, subtit
   }
 
   // Add subtitle tracks (VTT format for Chromecast)
+  // Prioritize Thai (th) subtitle
+  let thaiTrackId = 1 // Default to first track
+
   if (subtitles && subtitles.length > 0) {
     const tracks: chrome.cast.media.Track[] = []
 
@@ -142,8 +145,15 @@ function loadMedia(session: any, url: string, mimeType: string, art: any, subtit
         vttUrl = `${vttUrl}${separator}token=${token}`
       }
 
+      const trackId = index + 1 // trackId (1-based)
+
+      // Remember Thai track ID
+      if (sub.language === 'th') {
+        thaiTrackId = trackId
+      }
+
       const track = new window.chrome.cast.media.Track(
-        index + 1, // trackId (1-based)
+        trackId,
         window.chrome.cast.media.TrackType.TEXT
       )
       track.trackContentId = vttUrl
@@ -153,13 +163,14 @@ function loadMedia(session: any, url: string, mimeType: string, art: any, subtit
       track.language = sub.language
 
       tracks.push(track)
-      console.log('[Chromecast] Added subtitle track:', { language: sub.language, url: vttUrl })
+      console.log('[Chromecast] Added subtitle track:', { language: sub.language, trackId, url: vttUrl })
     })
 
     mediaInfo.tracks = tracks
 
-    // Auto-enable first subtitle track
-    mediaInfo.activeTrackIds = [1]
+    // Auto-enable Thai subtitle track (or first if no Thai)
+    mediaInfo.activeTrackIds = [thaiTrackId]
+    console.log('[Chromecast] Default subtitle trackId:', thaiTrackId)
   }
 
   const request = new window.chrome.cast.media.LoadRequest(mediaInfo)
@@ -189,8 +200,8 @@ function loadMedia(session: any, url: string, mimeType: string, art: any, subtit
             console.log(`[Chromecast] Media session (attempt ${retries}):`, media ? 'available' : 'null')
 
             if (media) {
-              // Create track info request to enable first subtitle
-              const trackInfoRequest = new window.chrome.cast.media.EditTracksInfoRequest([1])
+              // Create track info request to enable Thai subtitle (or first if no Thai)
+              const trackInfoRequest = new window.chrome.cast.media.EditTracksInfoRequest([thaiTrackId])
 
               // Optional: Set text track style for better visibility
               const textTrackStyle = new window.chrome.cast.media.TextTrackStyle()
