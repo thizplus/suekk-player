@@ -247,11 +247,24 @@ func (h *HLSHandler) ServeHLS(c *fiber.Ctx) error {
 		contentType = "image/webp"
 	}
 
-	// Set common headers (CORS handled by global middleware)
+	// Set common headers
 	c.Set("Content-Type", contentType)
 	c.Set("Content-Disposition", "inline") // ป้องกัน IDM ดักจับ
 	c.Set("Accept-Ranges", "bytes")
 	c.Set("Cache-Control", "public, max-age=31536000")
+
+	// CORS headers for Chromecast (no Origin header sent)
+	// Allow all origins for HLS streaming
+	origin := c.Get("Origin")
+	if origin == "" {
+		// Chromecast doesn't send Origin - allow all
+		c.Set("Access-Control-Allow-Origin", "*")
+	} else {
+		c.Set("Access-Control-Allow-Origin", origin)
+	}
+	c.Set("Access-Control-Allow-Methods", "GET, HEAD, OPTIONS")
+	c.Set("Access-Control-Allow-Headers", "Range, X-Stream-Token")
+	c.Set("Access-Control-Expose-Headers", "Content-Length, Content-Range, Accept-Ranges")
 
 	// Check for Range header (byte range requests)
 	rangeHeader := c.Get("Range")

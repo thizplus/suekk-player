@@ -153,8 +153,8 @@ export default function artplayerPluginChromecast(options: ChromecastOptions = {
           if (options.token) {
             const separator = url.includes('?') ? '&' : '?'
             url = `${url}${separator}token=${options.token}`
-            console.log('[Chromecast] URL with token:', url)
           }
+          console.log('[Chromecast] Casting URL:', url)
 
           const castContext = window.cast.framework.CastContext.getInstance()
           const currentSession = castContext.getCurrentSession()
