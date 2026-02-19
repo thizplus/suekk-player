@@ -354,6 +354,17 @@ func (h *HLSHandler) ServeSubtitle(c *fiber.Ctx) error {
 	c.Set("Content-Type", contentType)
 	c.Set("Cache-Control", "public, max-age=86400") // Cache 1 day
 
+	// CORS headers for Chromecast (Chromecast receiver needs to fetch subtitle)
+	origin := c.Get("Origin")
+	if origin == "" {
+		// Chromecast doesn't send Origin - allow all
+		c.Set("Access-Control-Allow-Origin", "*")
+	} else {
+		c.Set("Access-Control-Allow-Origin", origin)
+	}
+	c.Set("Access-Control-Allow-Methods", "GET, HEAD, OPTIONS")
+	c.Set("Access-Control-Allow-Headers", "X-Stream-Token")
+
 	// Get file from storage
 	reader, _, err := h.storage.GetFileContent(storagePath)
 	if err != nil {
