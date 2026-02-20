@@ -191,14 +191,41 @@ func (h *HLSHandler) ServeHLS(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).SendString("Invalid path")
 	}
 
-	// TODO: Token validation disabled - Chromecast seek causes black screen with token enabled
-	// Need to investigate why seeking fails with authenticated HLS
+	// Set content type based on file extension
+	ext := strings.ToLower(filepath.Ext(filePath))
+
+	// Token validation only for .m3u8 (playlist) files
+	// .ts segments skip validation for Chromecast seek compatibility
+	if ext == ".m3u8" {
+		tokenString := c.Get("X-Stream-Token")
+		if tokenString == "" {
+			tokenString = c.Query("token")
+		}
+
+		if tokenString == "" {
+			return c.Status(fiber.StatusUnauthorized).SendString("Unauthorized")
+		}
+
+		claims := &HLSAccessClaims{}
+		token, err := jwt.ParseWithClaims(tokenString, claims, func(token *jwt.Token) (interface{}, error) {
+			if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+				return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
+			}
+			return []byte(h.jwtSecret), nil
+		})
+
+		if err != nil || !token.Valid {
+			logger.WarnContext(ctx, "Invalid HLS token", "code", code, "error", err)
+			return c.Status(fiber.StatusUnauthorized).SendString("Invalid token")
+		}
+
+		if claims.VideoCode != code {
+			return c.Status(fiber.StatusForbidden).SendString("Forbidden")
+		}
+	}
 
 	// Construct storage path: hls/{code}/{filepath}
 	storagePath := fmt.Sprintf("hls/%s/%s", code, filePath)
-
-	// Set content type based on file extension
-	ext := strings.ToLower(filepath.Ext(filePath))
 	contentType := "application/octet-stream"
 	switch ext {
 	case ".m3u8":
@@ -269,7 +296,32 @@ func (h *HLSHandler) ServeSubtitle(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).SendString("Invalid path")
 	}
 
-	// TODO: Token validation disabled - Chromecast seek causes black screen with token enabled
+	// Validate token for subtitle files
+	tokenString := c.Get("X-Stream-Token")
+	if tokenString == "" {
+		tokenString = c.Query("token")
+	}
+
+	if tokenString == "" {
+		return c.Status(fiber.StatusUnauthorized).SendString("Unauthorized")
+	}
+
+	claims := &HLSAccessClaims{}
+	token, err := jwt.ParseWithClaims(tokenString, claims, func(token *jwt.Token) (interface{}, error) {
+		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
+		}
+		return []byte(h.jwtSecret), nil
+	})
+
+	if err != nil || !token.Valid {
+		logger.WarnContext(ctx, "Invalid subtitle token", "code", code, "error", err)
+		return c.Status(fiber.StatusUnauthorized).SendString("Invalid token")
+	}
+
+	if claims.VideoCode != code {
+		return c.Status(fiber.StatusForbidden).SendString("Forbidden")
+	}
 
 	// Construct storage path: subtitles/{code}/{filepath}
 	storagePath := fmt.Sprintf("subtitles/%s/%s", code, filePath)
