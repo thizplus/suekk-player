@@ -232,6 +232,12 @@ function canCast(): boolean {
   const isAndroidChrome = /Android/i.test(ua) && /Chrome|CriOS/i.test(ua)
   const isDesktop = !/Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(ua)
 
+  // Debug log
+  console.log('[Chromecast] UA:', ua)
+  console.log('[Chromecast] isAndroidChrome:', isAndroidChrome)
+  console.log('[Chromecast] isDesktop:', isDesktop)
+  console.log('[Chromecast] canCast:', isDesktop || isAndroidChrome)
+
   // Desktop หรือ Android Chrome เท่านั้นที่รองรับ Cast SDK
   // iOS จะถูก block โดย isDesktop = false และ isAndroidChrome = false
   return isDesktop || isAndroidChrome
@@ -244,10 +250,13 @@ export default function artplayerPluginChromecast(options: ChromecastOptions = {
   return (art: any) => {
     // Skip if device/browser doesn't support Cast SDK
     if (!canCast()) {
+      console.log('[Chromecast] Skipping - device not supported')
       return {
         name: 'artplayerPluginChromecast',
       }
     }
+
+    console.log('[Chromecast] Adding Cast button')
 
     // Pre-load SDK when plugin initializes
     loadCastSdk(sdkUrl).catch(() => {
