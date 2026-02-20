@@ -64,13 +64,6 @@ export function LoginForm({ className, ...props }: React.ComponentProps<'div'>) 
           {isPending ? 'กำลังเข้าสู่ระบบ...' : 'เข้าสู่ระบบ'}
         </Button>
       </form>
-
-      <div className="text-center text-sm">
-        ยังไม่มีบัญชี?{' '}
-        <a href="/register" className="underline underline-offset-4">
-          สมัครสมาชิก
-        </a>
-      </div>
     </div>
   )
 }
