@@ -220,11 +220,23 @@ function loadMedia(session: any, url: string, mimeType: string, art: any, subtit
   )
 }
 
+// Check if device is mobile (Cast SDK only works on desktop)
+function isMobile(): boolean {
+  return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)
+}
+
 export default function artplayerPluginChromecast(options: ChromecastOptions = {}) {
   const sdkUrl = options.sdk || 'https://www.gstatic.com/cv/js/sender/v1/cast_sender.js?loadCastFramework=1'
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   return (art: any) => {
+    // Skip on mobile - Cast SDK not supported
+    if (isMobile()) {
+      return {
+        name: 'artplayerPluginChromecast',
+      }
+    }
+
     // Pre-load SDK when plugin initializes
     loadCastSdk(sdkUrl).catch(() => {
       // Silently fail - will show error when user clicks
