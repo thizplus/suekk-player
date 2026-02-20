@@ -191,22 +191,35 @@ func (h *HLSHandler) ServeHLS(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).SendString("Invalid path")
 	}
 
-	// DEBUG: Log token for Chromecast investigation
+	// DEBUG: Test JWT parsing for Chromecast investigation
 	tokenFromHeader := c.Get("X-Stream-Token")
 	tokenFromQuery := c.Query("token")
+	tokenString := tokenFromHeader
+	if tokenString == "" {
+		tokenString = tokenFromQuery
+	}
 
-	// Log first 50 chars of token to debug
-	if tokenFromQuery != "" {
-		tokenPreview := tokenFromQuery
-		if len(tokenPreview) > 50 {
-			tokenPreview = tokenPreview[:50] + "..."
+	if tokenString != "" {
+		// Try to parse JWT and log result
+		claims := &HLSAccessClaims{}
+		token, err := jwt.ParseWithClaims(tokenString, claims, func(token *jwt.Token) (interface{}, error) {
+			if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+				return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
+			}
+			return []byte(h.jwtSecret), nil
+		})
+
+		if err != nil {
+			logger.WarnContext(ctx, "JWT parse error",
+				"error", err.Error(),
+				"token_source", map[bool]string{true: "header", false: "query"}[tokenFromHeader != ""],
+			)
+		} else if token.Valid {
+			logger.InfoContext(ctx, "JWT parse success",
+				"video_code", claims.VideoCode,
+				"expires_at", claims.ExpiresAt,
+			)
 		}
-		logger.InfoContext(ctx, "HLS token debug",
-			"from_header", tokenFromHeader != "",
-			"from_query", tokenFromQuery != "",
-			"query_preview", tokenPreview,
-			"query_len", len(tokenFromQuery),
-		)
 	}
 
 	// Construct storage path: hls/{code}/{filepath}
