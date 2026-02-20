@@ -245,14 +245,10 @@ export default function artplayerPluginChromecast(options: ChromecastOptions = {
           const currentSession = castContext.getCurrentSession()
           const sessionState = castContext.getSessionState()
 
-          console.log('[Chromecast] Session state:', sessionState, 'Session:', currentSession ? 'exists' : 'null')
-
           // If already casting - stop and disconnect
           if (currentSession && sessionState === 'SESSION_STARTED') {
-            console.log('[Chromecast] Stopping current session...')
             art.notice.show = 'หยุดการแคสต์...'
             await castContext.endCurrentSession(true)
-            console.log('[Chromecast] Session ended')
             art.notice.show = 'หยุดแคสต์แล้ว'
             return
           }
@@ -265,17 +261,14 @@ export default function artplayerPluginChromecast(options: ChromecastOptions = {
             const separator = url.includes('?') ? '&' : '?'
             url = `${url}${separator}token=${options.token}`
           }
-          console.log('[Chromecast] Casting URL:', url)
 
           // Request new session
-          console.log('[Chromecast] Requesting new session...')
           art.notice.show = 'กำลังเชื่อมต่อ Chromecast...'
 
           castContext.requestSession().then(
             () => {
               const session = castContext.getCurrentSession()
               if (session) {
-                console.log('[Chromecast] New session created')
                 loadMedia(session, url, mimeType, art, options.subtitles, options.token)
               }
             },
