@@ -229,10 +229,11 @@ function loadMedia(session: any, url: string, mimeType: string, art: any, subtit
  */
 function canCast(): boolean {
   const ua = navigator.userAgent
-  const isIOS = /iPhone|iPad|iPod/i.test(ua)
   const isAndroidChrome = /Android/i.test(ua) && /Chrome|CriOS/i.test(ua)
   const isDesktop = !/Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(ua)
 
+  // Desktop หรือ Android Chrome เท่านั้นที่รองรับ Cast SDK
+  // iOS จะถูก block โดย isDesktop = false และ isAndroidChrome = false
   return isDesktop || isAndroidChrome
 }
 
