@@ -220,9 +220,20 @@ function loadMedia(session: any, url: string, mimeType: string, art: any, subtit
   )
 }
 
-// Check if device is mobile (Cast SDK only works on desktop)
-function isMobile(): boolean {
-  return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)
+/**
+ * Check if device/browser supports Chromecast
+ * - Desktop Chrome: ✅ รองรับ
+ * - Android Chrome: ✅ รองรับ
+ * - iOS (Safari/Chrome): ❌ ไม่รองรับ (ใช้ AirPlay แทน)
+ * - Other mobile browsers: ❌ ไม่รองรับ
+ */
+function canCast(): boolean {
+  const ua = navigator.userAgent
+  const isIOS = /iPhone|iPad|iPod/i.test(ua)
+  const isAndroidChrome = /Android/i.test(ua) && /Chrome|CriOS/i.test(ua)
+  const isDesktop = !/Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(ua)
+
+  return isDesktop || isAndroidChrome
 }
 
 export default function artplayerPluginChromecast(options: ChromecastOptions = {}) {
@@ -230,8 +241,8 @@ export default function artplayerPluginChromecast(options: ChromecastOptions = {
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   return (art: any) => {
-    // Skip on mobile - Cast SDK not supported
-    if (isMobile()) {
+    // Skip if device/browser doesn't support Cast SDK
+    if (!canCast()) {
       return {
         name: 'artplayerPluginChromecast',
       }
