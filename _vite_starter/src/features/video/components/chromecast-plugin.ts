@@ -290,10 +290,16 @@ export default function artplayerPluginChromecast(options: ChromecastOptions = {
           let url = options.url || art.option.url
           const mimeType = options.mimeType || getMimeType(url)
 
+          console.log('[Chromecast] Original URL:', url)
+          console.log('[Chromecast] Token provided:', options.token ? 'YES' : 'NO')
+
           if (options.token) {
             const separator = url.includes('?') ? '&' : '?'
             url = `${url}${separator}token=${options.token}`
           }
+
+          console.log('[Chromecast] Final URL for cast:', url)
+          console.log('[Chromecast] MIME type:', mimeType)
 
           // Request new session
           art.notice.show = 'กำลังเชื่อมต่อ Chromecast...'

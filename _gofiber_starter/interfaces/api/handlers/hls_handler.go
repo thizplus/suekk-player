@@ -194,9 +194,11 @@ func (h *HLSHandler) ServeHLS(c *fiber.Ctx) error {
 	// Set content type based on file extension
 	ext := strings.ToLower(filepath.Ext(filePath))
 
-	// Token validation only for .m3u8 (playlist) files
-	// .ts segments skip validation for Chromecast seek compatibility
-	if ext == ".m3u8" {
+	// Token validation only for master.m3u8
+	// Sub-playlists (720p/playlist.m3u8) และ .ts segments ไม่ต้องตรวจ
+	// เพราะ Chromecast โหลด sub-playlist ด้วย relative URL (ไม่มี token)
+	isMasterPlaylist := ext == ".m3u8" && (filePath == "master.m3u8" || strings.HasSuffix(filePath, "/master.m3u8"))
+	if isMasterPlaylist {
 		tokenString := c.Get("X-Stream-Token")
 		if tokenString == "" {
 			tokenString = c.Query("token")
