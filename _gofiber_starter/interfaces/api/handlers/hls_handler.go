@@ -191,35 +191,31 @@ func (h *HLSHandler) ServeHLS(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).SendString("Invalid path")
 	}
 
-	// DEBUG: Test JWT parsing for Chromecast investigation
-	tokenFromHeader := c.Get("X-Stream-Token")
-	tokenFromQuery := c.Query("token")
-	tokenString := tokenFromHeader
+	// Validate token (from header or query param for Chromecast)
+	tokenString := c.Get("X-Stream-Token")
 	if tokenString == "" {
-		tokenString = tokenFromQuery
+		tokenString = c.Query("token")
 	}
 
-	if tokenString != "" {
-		// Try to parse JWT and log result
-		claims := &HLSAccessClaims{}
-		token, err := jwt.ParseWithClaims(tokenString, claims, func(token *jwt.Token) (interface{}, error) {
-			if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
-				return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
-			}
-			return []byte(h.jwtSecret), nil
-		})
+	if tokenString == "" {
+		return c.Status(fiber.StatusUnauthorized).SendString("Unauthorized")
+	}
 
-		if err != nil {
-			logger.WarnContext(ctx, "JWT parse error",
-				"error", err.Error(),
-				"token_source", map[bool]string{true: "header", false: "query"}[tokenFromHeader != ""],
-			)
-		} else if token.Valid {
-			logger.InfoContext(ctx, "JWT parse success",
-				"video_code", claims.VideoCode,
-				"expires_at", claims.ExpiresAt,
-			)
+	claims := &HLSAccessClaims{}
+	token, err := jwt.ParseWithClaims(tokenString, claims, func(token *jwt.Token) (interface{}, error) {
+		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
 		}
+		return []byte(h.jwtSecret), nil
+	})
+
+	if err != nil || !token.Valid {
+		logger.WarnContext(ctx, "Invalid HLS token", "code", code, "error", err)
+		return c.Status(fiber.StatusUnauthorized).SendString("Invalid token")
+	}
+
+	if claims.VideoCode != code {
+		return c.Status(fiber.StatusForbidden).SendString("Forbidden")
 	}
 
 	// Construct storage path: hls/{code}/{filepath}
@@ -297,9 +293,32 @@ func (h *HLSHandler) ServeSubtitle(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).SendString("Invalid path")
 	}
 
-	// TODO: Token validation disabled for Chromecast compatibility
-	// Chromecast sends token via query param but validation fails
-	// Need to investigate JWT parsing issue with URL-encoded tokens
+	// Validate token (from header or query param for Chromecast)
+	tokenString := c.Get("X-Stream-Token")
+	if tokenString == "" {
+		tokenString = c.Query("token")
+	}
+
+	if tokenString == "" {
+		return c.Status(fiber.StatusUnauthorized).SendString("Unauthorized")
+	}
+
+	claims := &HLSAccessClaims{}
+	token, err := jwt.ParseWithClaims(tokenString, claims, func(token *jwt.Token) (interface{}, error) {
+		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
+		}
+		return []byte(h.jwtSecret), nil
+	})
+
+	if err != nil || !token.Valid {
+		logger.WarnContext(ctx, "Invalid subtitle token", "code", code, "error", err)
+		return c.Status(fiber.StatusUnauthorized).SendString("Invalid token")
+	}
+
+	if claims.VideoCode != code {
+		return c.Status(fiber.StatusForbidden).SendString("Forbidden")
+	}
 
 	// Construct storage path: subtitles/{code}/{filepath}
 	storagePath := fmt.Sprintf("subtitles/%s/%s", code, filePath)
