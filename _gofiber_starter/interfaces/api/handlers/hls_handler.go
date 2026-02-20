@@ -191,9 +191,23 @@ func (h *HLSHandler) ServeHLS(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).SendString("Invalid path")
 	}
 
-	// TODO: Token validation disabled for Chromecast compatibility
-	// Chromecast sends token via query param but validation fails
-	// Need to investigate JWT parsing issue with URL-encoded tokens
+	// DEBUG: Log token for Chromecast investigation
+	tokenFromHeader := c.Get("X-Stream-Token")
+	tokenFromQuery := c.Query("token")
+
+	// Log first 50 chars of token to debug
+	if tokenFromQuery != "" {
+		tokenPreview := tokenFromQuery
+		if len(tokenPreview) > 50 {
+			tokenPreview = tokenPreview[:50] + "..."
+		}
+		logger.InfoContext(ctx, "HLS token debug",
+			"from_header", tokenFromHeader != "",
+			"from_query", tokenFromQuery != "",
+			"query_preview", tokenPreview,
+			"query_len", len(tokenFromQuery),
+		)
+	}
 
 	// Construct storage path: hls/{code}/{filepath}
 	storagePath := fmt.Sprintf("hls/%s/%s", code, filePath)
