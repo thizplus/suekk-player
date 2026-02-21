@@ -9,12 +9,13 @@ import { toast } from 'sonner'
 import { useReel, useCreateReel, useUpdateReel, useExportReel } from '../hooks'
 import { useVideoByCode } from '@/features/video/hooks'
 import type { Video } from '@/features/video/types'
-import type { ReelStyle, CreateReelRequest, UpdateReelRequest } from '../types'
+import type { ReelStyle, CreateReelRequest, UpdateReelRequest, VideoSegment } from '../types'
 import {
   ReelPreviewCanvas,
   ReelVideoSelector,
   ReelTimecodeSelector,
   ReelTextOverlay,
+  SegmentList,
   generateChunkOptions,
   type ChunkOption,
 } from '../components'
@@ -44,7 +45,11 @@ export function ReelGeneratorPage() {
   const [segmentStart, setSegmentStart] = useState(0)
   const [segmentEnd, setSegmentEnd] = useState(60)
 
-  // NEW: Style-based fields
+  // Multi-segment state
+  const [segments, setSegments] = useState<VideoSegment[]>([])
+  const [selectedSegmentIndex, setSelectedSegmentIndex] = useState<number | null>(null)
+
+  // Style-based fields
   const [style, setStyle] = useState<ReelStyle>('letterbox')
   const [title, setTitle] = useState('')
   const [line1, setLine1] = useState('')
@@ -86,7 +91,18 @@ export function ReelGeneratorPage() {
       setSegmentStart(existingReel.segmentStart)
       setSegmentEnd(existingReel.segmentEnd)
 
-      // NEW: Style-based fields
+      // Multi-segment: load from API if exists
+      if (existingReel.segments && existingReel.segments.length > 0) {
+        const loadedSegments: VideoSegment[] = existingReel.segments.map((seg, i) => ({
+          id: `seg_${i}_${Date.now()}`,
+          start: seg.start,
+          end: seg.end,
+        }))
+        setSegments(loadedSegments)
+        setSelectedSegmentIndex(0)
+      }
+
+      // Style-based fields
       if (existingReel.style) {
         setStyle(existingReel.style)
       }
@@ -173,16 +189,32 @@ export function ReelGeneratorPage() {
       return
     }
 
-    if (segmentEnd <= segmentStart) {
-      toast.error('ช่วงเวลาไม่ถูกต้อง')
-      return
+    // ถ้ามี segments ให้ใช้ segments, ไม่งั้นใช้ segmentStart/End
+    const hasSegments = segments.length > 0
+    const segmentsForApi = hasSegments
+      ? segments.map(seg => ({ start: seg.start, end: seg.end }))
+      : undefined
+
+    // Validate
+    if (hasSegments) {
+      const totalDuration = segments.reduce((sum, seg) => sum + (seg.end - seg.start), 0)
+      if (totalDuration > 60) {
+        toast.error('ความยาวรวมเกิน 60 วินาที')
+        return
+      }
+    } else {
+      if (segmentEnd <= segmentStart) {
+        toast.error('ช่วงเวลาไม่ถูกต้อง')
+        return
+      }
     }
 
     try {
       if (isEditing && id) {
         const data: UpdateReelRequest = {
-          segmentStart,
-          segmentEnd,
+          segments: segmentsForApi,
+          segmentStart: hasSegments ? undefined : segmentStart,
+          segmentEnd: hasSegments ? undefined : segmentEnd,
           coverTime,
           style,
           title,
@@ -198,8 +230,9 @@ export function ReelGeneratorPage() {
       } else {
         const data: CreateReelRequest = {
           videoId: selectedVideoId,
-          segmentStart,
-          segmentEnd,
+          segments: segmentsForApi,
+          segmentStart: hasSegments ? undefined : segmentStart,
+          segmentEnd: hasSegments ? undefined : segmentEnd,
           coverTime,
           style,
           title,
@@ -356,25 +389,77 @@ export function ReelGeneratorPage() {
               />
             </TabsContent>
 
-            <TabsContent value="timecode" className="mt-4">
+            <TabsContent value="timecode" className="mt-4 space-y-4">
               {activeVideo && (
-                <ReelTimecodeSelector
-                  videoDuration={videoDuration}
-                  rawDuration={rawDuration}
-                  segmentStart={segmentStart}
-                  segmentEnd={segmentEnd}
-                  currentTime={currentTime}
-                  isVideoReady={isVideoReady}
-                  selectedChunk={selectedChunk}
-                  chunkOptions={chunkOptions}
-                  coverTime={coverTime}
-                  onChunkChange={handleChunkChange}
-                  onSegmentStartChange={handleSegmentStartChange}
-                  onSegmentEndChange={handleSegmentEndChange}
-                  onSeekTo={triggerSeek}
-                  onPreviewSegment={handlePreviewSegment}
-                  onCoverTimeChange={setCoverTime}
-                />
+                <>
+                  {/* Multi-segment list */}
+                  <SegmentList
+                    segments={segments}
+                    videoDuration={rawDuration}
+                    currentTime={currentTime}
+                    onChange={setSegments}
+                    onSeek={triggerSeek}
+                    onSelectSegment={(index) => {
+                      setSelectedSegmentIndex(index)
+                      if (index !== null && segments[index]) {
+                        // Update single-segment state เพื่อแสดงใน ReelTimecodeSelector
+                        setSegmentStart(segments[index].start)
+                        setSegmentEnd(segments[index].end)
+                      }
+                    }}
+                    selectedIndex={selectedSegmentIndex}
+                  />
+
+                  {/* Divider */}
+                  {segments.length > 0 && selectedSegmentIndex !== null && (
+                    <div className="border-t pt-4">
+                      <p className="text-sm text-muted-foreground mb-2">
+                        แก้ไข Segment {(selectedSegmentIndex ?? 0) + 1}
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Single segment editor (ใช้ edit segment ที่เลือก หรือ single mode) */}
+                  <ReelTimecodeSelector
+                    videoDuration={videoDuration}
+                    rawDuration={rawDuration}
+                    segmentStart={segmentStart}
+                    segmentEnd={segmentEnd}
+                    currentTime={currentTime}
+                    isVideoReady={isVideoReady}
+                    selectedChunk={selectedChunk}
+                    chunkOptions={chunkOptions}
+                    coverTime={coverTime}
+                    onChunkChange={handleChunkChange}
+                    onSegmentStartChange={(time) => {
+                      handleSegmentStartChange(time)
+                      // Update segment in list if editing
+                      if (selectedSegmentIndex !== null && segments[selectedSegmentIndex]) {
+                        const newSegments = [...segments]
+                        newSegments[selectedSegmentIndex] = {
+                          ...newSegments[selectedSegmentIndex],
+                          start: time,
+                        }
+                        setSegments(newSegments)
+                      }
+                    }}
+                    onSegmentEndChange={(time) => {
+                      handleSegmentEndChange(time)
+                      // Update segment in list if editing
+                      if (selectedSegmentIndex !== null && segments[selectedSegmentIndex]) {
+                        const newSegments = [...segments]
+                        newSegments[selectedSegmentIndex] = {
+                          ...newSegments[selectedSegmentIndex],
+                          end: time,
+                        }
+                        setSegments(newSegments)
+                      }
+                    }}
+                    onSeekTo={triggerSeek}
+                    onPreviewSegment={handlePreviewSegment}
+                    onCoverTimeChange={setCoverTime}
+                  />
+                </>
               )}
             </TabsContent>
 

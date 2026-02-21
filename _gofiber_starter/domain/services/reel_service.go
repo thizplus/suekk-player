@@ -49,6 +49,12 @@ type ReelJobPublisher interface {
 	PublishReelExportJob(ctx context.Context, job *ReelExportJob) error
 }
 
+// VideoSegmentJob segment ใน export job
+type VideoSegmentJob struct {
+	Start float64 `json:"start"`
+	End   float64 `json:"end"`
+}
+
 // ReelExportJob job สำหรับ export reel เป็น MP4
 type ReelExportJob struct {
 	ReelID       string  `json:"reel_id"`
@@ -56,6 +62,11 @@ type ReelExportJob struct {
 	VideoCode    string  `json:"video_code"`
 	HLSPath      string  `json:"hls_path"`      // S3 path to HLS master playlist
 	VideoQuality string  `json:"video_quality"` // Best available quality: 1080p, 720p, etc.
+
+	// Multi-segment support
+	Segments []VideoSegmentJob `json:"segments"` // หลายช่วงเวลา
+
+	// LEGACY: Single segment (for backward compatibility)
 	SegmentStart float64 `json:"segment_start"` // Start time in seconds
 	SegmentEnd   float64 `json:"segment_end"`   // End time in seconds
 	CoverTime    float64 `json:"cover_time"`    // Cover/thumbnail time (-1 = auto middle)

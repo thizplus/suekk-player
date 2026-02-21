@@ -28,11 +28,16 @@ func (p *NATSReelPublisher) PublishReelExportJob(ctx context.Context, job *servi
 		VideoCode:    job.VideoCode,
 		HLSPath:      job.HLSPath,
 		VideoQuality: job.VideoQuality,
+
+		// Multi-segment support
+		Segments: convertSegmentsToNATSFormat(job.Segments),
+
+		// LEGACY: Single segment
 		SegmentStart: job.SegmentStart,
 		SegmentEnd:   job.SegmentEnd,
 		CoverTime:    job.CoverTime,
 
-		// NEW: Style-based fields
+		// Style-based fields
 		Style:        job.Style,
 		Title:        job.Title,
 		Line1:        job.Line1,
@@ -55,6 +60,18 @@ func (p *NATSReelPublisher) PublishReelExportJob(ctx context.Context, job *servi
 	}
 
 	return p.publisher.PublishReelExportJob(ctx, natsJob)
+}
+
+// convertSegmentsToNATSFormat แปลง segments จาก service type เป็น NATS type
+func convertSegmentsToNATSFormat(segments []services.VideoSegmentJob) []natspkg.VideoSegmentJob {
+	result := make([]natspkg.VideoSegmentJob, len(segments))
+	for i, s := range segments {
+		result[i] = natspkg.VideoSegmentJob{
+			Start: s.Start,
+			End:   s.End,
+		}
+	}
+	return result
 }
 
 // convertLayersToNATSFormat แปลง layers จาก service type เป็น NATS type

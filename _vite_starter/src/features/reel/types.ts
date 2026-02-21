@@ -2,6 +2,23 @@
 
 export type ReelStatus = 'draft' | 'exporting' | 'ready' | 'failed'
 
+// ═══════════════════════════════════════════════════════════════════════════════
+// Multi-segment support
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// Video segment for multi-segment reel
+export interface VideoSegment {
+  id: string        // unique id for React key
+  start: number     // start time (seconds)
+  end: number       // end time (seconds)
+}
+
+// Segment request (without id, for API)
+export interface VideoSegmentRequest {
+  start: number
+  end: number
+}
+
 // NEW: Reel Style - simplified 3-style system
 export type ReelStyle = 'letterbox' | 'square' | 'fullcover'
 
@@ -74,11 +91,16 @@ export interface ReelTemplateBasic {
 // Full reel object
 export interface Reel {
   id: string
+  duration: number
+  status: ReelStatus
+
+  // Multi-segment support
+  segments?: VideoSegmentRequest[]
+
+  // LEGACY: Single segment (for backward compatibility)
   segmentStart: number
   segmentEnd: number
   coverTime: number // -1 = auto middle
-  duration: number
-  status: ReelStatus
 
   // NEW: Style-based fields
   style?: ReelStyle
@@ -132,11 +154,16 @@ export interface ReelTemplate {
 
 export interface CreateReelRequest {
   videoId: string
-  segmentStart: number
-  segmentEnd: number
+
+  // Multi-segment support (preferred)
+  segments?: VideoSegmentRequest[]
+
+  // LEGACY: Single segment (still supported)
+  segmentStart?: number
+  segmentEnd?: number
   coverTime?: number // -1 = auto middle, or absolute time from video
 
-  // NEW: Style-based fields (preferred)
+  // Style-based fields (preferred)
   style?: ReelStyle
   title?: string
   line1?: string
@@ -157,11 +184,15 @@ export interface CreateReelRequest {
 }
 
 export interface UpdateReelRequest {
+  // Multi-segment support (preferred)
+  segments?: VideoSegmentRequest[]
+
+  // LEGACY: Single segment (still supported)
   segmentStart?: number
   segmentEnd?: number
   coverTime?: number // -1 = auto middle, or absolute time from video
 
-  // NEW: Style-based fields
+  // Style-based fields
   style?: ReelStyle
   title?: string
   line1?: string

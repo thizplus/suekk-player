@@ -59,8 +59,32 @@ func (s *ReelServiceImpl) Create(ctx context.Context, userID uuid.UUID, req *dto
 	}
 
 	// 2. ตรวจสอบ segment time
-	if req.SegmentEnd > float64(video.Duration) {
-		return nil, fmt.Errorf("segment end (%v) exceeds video duration (%v)", req.SegmentEnd, video.Duration)
+	// ถ้ามี segments ใช้ segments, ถ้าไม่มีใช้ segmentStart/End
+	var segments models.VideoSegments
+	if len(req.Segments) > 0 {
+		segments = dto.SegmentRequestsToModels(req.Segments)
+		// Validate each segment
+		for i, seg := range segments {
+			if seg.End > float64(video.Duration) {
+				return nil, fmt.Errorf("segment %d end (%v) exceeds video duration (%v)", i+1, seg.End, video.Duration)
+			}
+			if seg.End <= seg.Start {
+				return nil, fmt.Errorf("segment %d: end time must be greater than start time", i+1)
+			}
+		}
+		// Validate total duration (max 60 seconds)
+		totalDuration := segments.TotalDuration()
+		if totalDuration > 60 {
+			return nil, fmt.Errorf("total duration (%v seconds) exceeds maximum (60 seconds)", totalDuration)
+		}
+	} else if req.SegmentEnd > 0 {
+		// LEGACY: Single segment
+		if req.SegmentEnd > float64(video.Duration) {
+			return nil, fmt.Errorf("segment end (%v) exceeds video duration (%v)", req.SegmentEnd, video.Duration)
+		}
+		segments = models.VideoSegments{{Start: req.SegmentStart, End: req.SegmentEnd}}
+	} else {
+		return nil, errors.New("segments or segmentEnd is required")
 	}
 
 	// 3. ตรวจสอบ template (ถ้ามี)
@@ -90,8 +114,9 @@ func (s *ReelServiceImpl) Create(ctx context.Context, userID uuid.UUID, req *dto
 		UserID:       userID,
 		VideoID:      req.VideoID,
 		Title:        req.Title,
-		SegmentStart: req.SegmentStart,
-		SegmentEnd:   req.SegmentEnd,
+		Segments:     segments,
+		SegmentStart: segments[0].Start,                  // LEGACY: first segment start
+		SegmentEnd:   segments[len(segments)-1].End,      // LEGACY: last segment end
 		CoverTime:    coverTime,
 		Status:       models.ReelStatusDraft,
 	}
@@ -218,16 +243,44 @@ func (s *ReelServiceImpl) Update(ctx context.Context, id, userID uuid.UUID, req 
 	if req.Title != nil {
 		reel.Title = *req.Title
 	}
-	if req.SegmentStart != nil {
-		reel.SegmentStart = *req.SegmentStart
-	}
-	if req.SegmentEnd != nil {
-		// ตรวจสอบว่าไม่เกิน video duration
-		if reel.Video != nil && *req.SegmentEnd > float64(reel.Video.Duration) {
-			return nil, fmt.Errorf("segment end (%v) exceeds video duration (%v)", *req.SegmentEnd, reel.Video.Duration)
+
+	// Multi-segment support
+	if req.Segments != nil && len(*req.Segments) > 0 {
+		segments := dto.SegmentRequestsToModels(*req.Segments)
+		// Validate each segment
+		for i, seg := range segments {
+			if reel.Video != nil && seg.End > float64(reel.Video.Duration) {
+				return nil, fmt.Errorf("segment %d end (%v) exceeds video duration (%v)", i+1, seg.End, reel.Video.Duration)
+			}
+			if seg.End <= seg.Start {
+				return nil, fmt.Errorf("segment %d: end time must be greater than start time", i+1)
+			}
 		}
-		reel.SegmentEnd = *req.SegmentEnd
+		// Validate total duration
+		totalDuration := segments.TotalDuration()
+		if totalDuration > 60 {
+			return nil, fmt.Errorf("total duration (%v seconds) exceeds maximum (60 seconds)", totalDuration)
+		}
+		reel.Segments = segments
+		reel.SegmentStart = segments[0].Start
+		reel.SegmentEnd = segments[len(segments)-1].End
+	} else {
+		// LEGACY: Single segment update
+		if req.SegmentStart != nil {
+			reel.SegmentStart = *req.SegmentStart
+		}
+		if req.SegmentEnd != nil {
+			if reel.Video != nil && *req.SegmentEnd > float64(reel.Video.Duration) {
+				return nil, fmt.Errorf("segment end (%v) exceeds video duration (%v)", *req.SegmentEnd, reel.Video.Duration)
+			}
+			reel.SegmentEnd = *req.SegmentEnd
+		}
+		// Update legacy segments array if using single segment
+		if req.SegmentStart != nil || req.SegmentEnd != nil {
+			reel.Segments = models.VideoSegments{{Start: reel.SegmentStart, End: reel.SegmentEnd}}
+		}
 	}
+
 	if req.CoverTime != nil {
 		reel.CoverTime = *req.CoverTime
 	}
@@ -422,14 +475,24 @@ func (s *ReelServiceImpl) Export(ctx context.Context, id, userID uuid.UUID) erro
 
 	// 5. Publish job ไป NATS (ถ้ามี publisher)
 	if s.jobPublisher != nil {
+		// Convert segments to job format
+		segments := make([]services.VideoSegmentJob, len(reel.GetSegments()))
+		for i, seg := range reel.GetSegments() {
+			segments[i] = services.VideoSegmentJob{
+				Start: seg.Start,
+				End:   seg.End,
+			}
+		}
+
 		job := &services.ReelExportJob{
 			ReelID:       reel.ID.String(),
 			VideoID:      reel.VideoID.String(),
 			VideoCode:    reel.Video.Code,
 			HLSPath:      reel.Video.HLSPath,
 			VideoQuality: reel.Video.Quality,
-			SegmentStart: reel.SegmentStart,
-			SegmentEnd:   reel.SegmentEnd,
+			Segments:     segments,
+			SegmentStart: reel.SegmentStart, // LEGACY
+			SegmentEnd:   reel.SegmentEnd,   // LEGACY
 			CoverTime:    reel.CoverTime,
 			OutputPath:   fmt.Sprintf("reels/%s/output.mp4", reel.ID.String()),
 		}

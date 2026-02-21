@@ -131,6 +131,14 @@ func NewWarmCacheJob(videoID, videoCode, hlsPath string, segmentCounts map[strin
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// VideoSegmentJob - แต่ละช่วงเวลาใน multi-segment reel
+// ═══════════════════════════════════════════════════════════════════════════════
+type VideoSegmentJob struct {
+	Start float64 `json:"start"`
+	End   float64 `json:"end"`
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // ReelExportJob - API → Reel Worker (via JetStream)
 // สำหรับ export reel เป็น MP4 แนวตั้ง (9:16) พร้อม layers composition
 // ⚠️ โครงสร้างนี้ต้องตรงกับ _reel_worker
@@ -139,11 +147,16 @@ type ReelExportJob struct {
 	ReelID       string  `json:"reel_id"`
 	VideoID      string  `json:"video_id"`
 	VideoCode    string  `json:"video_code"`
-	HLSPath      string  `json:"hls_path"`       // S3 path: hls/{code}/master.m3u8
-	VideoQuality string  `json:"video_quality"`  // Best available quality: 1080p, 720p, etc.
-	SegmentStart float64 `json:"segment_start"`  // Start time in seconds
-	SegmentEnd   float64 `json:"segment_end"`    // End time in seconds
-	CoverTime    float64 `json:"cover_time"`     // Cover/thumbnail time (-1 = auto middle)
+	HLSPath      string  `json:"hls_path"`      // S3 path: hls/{code}/master.m3u8
+	VideoQuality string  `json:"video_quality"` // Best available quality: 1080p, 720p, etc.
+
+	// ═══ Multi-segment support ═══
+	Segments []VideoSegmentJob `json:"segments"` // หลายช่วงเวลา
+
+	// ═══ LEGACY: Single segment (for backward compatibility) ═══
+	SegmentStart float64 `json:"segment_start"` // Start time in seconds
+	SegmentEnd   float64 `json:"segment_end"`   // End time in seconds
+	CoverTime    float64 `json:"cover_time"`    // Cover/thumbnail time (-1 = auto middle)
 
 	// ═══ NEW: Style-based composition (simplified) ═══
 	Style        string  `json:"style"`         // letterbox, square, fullcover

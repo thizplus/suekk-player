@@ -9,12 +9,23 @@ import (
 
 // === Requests ===
 
+// VideoSegmentRequest segment ใน request
+type VideoSegmentRequest struct {
+	Start float64 `json:"start" validate:"min=0"`
+	End   float64 `json:"end" validate:"required,gtfield=Start"`
+}
+
 // CreateReelRequest สร้าง reel ใหม่
 type CreateReelRequest struct {
-	VideoID      uuid.UUID `json:"videoId" validate:"required,uuid"`
-	SegmentStart float64   `json:"segmentStart" validate:"min=0"`
-	SegmentEnd   float64   `json:"segmentEnd" validate:"required,gtfield=SegmentStart"`
-	CoverTime    *float64  `json:"coverTime"` // nil = auto middle of segment
+	VideoID uuid.UUID `json:"videoId" validate:"required,uuid"`
+
+	// Multi-segment support (preferred)
+	Segments []VideoSegmentRequest `json:"segments" validate:"omitempty,min=1,max=10,dive"`
+
+	// LEGACY: Single segment (still supported for backward compatibility)
+	SegmentStart float64  `json:"segmentStart" validate:"min=0"`
+	SegmentEnd   float64  `json:"segmentEnd" validate:"omitempty,gtfield=SegmentStart"`
+	CoverTime    *float64 `json:"coverTime"` // nil = auto middle of segment
 
 	// NEW: Style-based fields (preferred)
 	Style    string `json:"style" validate:"omitempty,oneof=letterbox square fullcover"`
@@ -38,6 +49,10 @@ type CreateReelRequest struct {
 
 // UpdateReelRequest อัปเดต reel
 type UpdateReelRequest struct {
+	// Multi-segment support (preferred)
+	Segments *[]VideoSegmentRequest `json:"segments" validate:"omitempty,min=1,max=10,dive"`
+
+	// LEGACY: Single segment (still supported)
 	SegmentStart *float64 `json:"segmentStart" validate:"omitempty,min=0"`
 	SegmentEnd   *float64 `json:"segmentEnd" validate:"omitempty"`
 	CoverTime    *float64 `json:"coverTime"` // nil = no change, -1 = auto middle
@@ -92,14 +107,25 @@ type ReelFilterRequest struct {
 
 // === Responses ===
 
+// VideoSegmentResponse segment ใน response
+type VideoSegmentResponse struct {
+	Start float64 `json:"start"`
+	End   float64 `json:"end"`
+}
+
 // ReelResponse reel response
 type ReelResponse struct {
-	ID           uuid.UUID         `json:"id"`
-	SegmentStart float64           `json:"segmentStart"`
-	SegmentEnd   float64           `json:"segmentEnd"`
-	CoverTime    float64           `json:"coverTime"` // -1 = auto middle
-	Duration     int               `json:"duration"`
-	Status       models.ReelStatus `json:"status"`
+	ID       uuid.UUID         `json:"id"`
+	Duration int               `json:"duration"`
+	Status   models.ReelStatus `json:"status"`
+
+	// Multi-segment support
+	Segments []VideoSegmentResponse `json:"segments"`
+
+	// LEGACY: Single segment (for backward compatibility)
+	SegmentStart float64 `json:"segmentStart"`
+	SegmentEnd   float64 `json:"segmentEnd"`
+	CoverTime    float64 `json:"coverTime"` // -1 = auto middle
 
 	// NEW: Style-based fields
 	Style    string `json:"style,omitempty"`
@@ -204,14 +230,19 @@ func ReelToResponse(reel *models.Reel) *ReelResponse {
 	}
 
 	resp := &ReelResponse{
-		ID:           reel.ID,
+		ID:       reel.ID,
+		Duration: reel.Duration,
+		Status:   reel.Status,
+
+		// Multi-segment support
+		Segments: segmentsToResponse(reel.GetSegments()),
+
+		// LEGACY: Single segment (first segment start, last segment end)
 		SegmentStart: reel.SegmentStart,
 		SegmentEnd:   reel.SegmentEnd,
 		CoverTime:    reel.CoverTime,
-		Duration:     reel.Duration,
-		Status:       reel.Status,
 
-		// NEW: Style-based fields
+		// Style-based fields
 		Style:    string(reel.Style),
 		Title:    reel.Title,
 		Line1:    reel.Line1,
@@ -344,6 +375,32 @@ func layersToResponse(layers models.ReelLayers) []ReelLayerResponse {
 			Opacity:    l.Opacity,
 			ZIndex:     l.ZIndex,
 			Style:      l.Style,
+		}
+	}
+	return result
+}
+
+// === Segment Mappers ===
+
+// SegmentRequestsToModels แปลง segment requests เป็น models
+func SegmentRequestsToModels(segments []VideoSegmentRequest) models.VideoSegments {
+	result := make(models.VideoSegments, len(segments))
+	for i, s := range segments {
+		result[i] = models.VideoSegment{
+			Start: s.Start,
+			End:   s.End,
+		}
+	}
+	return result
+}
+
+// segmentsToResponse แปลง model segments เป็น response
+func segmentsToResponse(segments []models.VideoSegment) []VideoSegmentResponse {
+	result := make([]VideoSegmentResponse, len(segments))
+	for i, s := range segments {
+		result[i] = VideoSegmentResponse{
+			Start: s.Start,
+			End:   s.End,
 		}
 	}
 	return result

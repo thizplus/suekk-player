@@ -118,6 +118,51 @@ func (l ReelLayers) Value() (driver.Value, error) {
 	return json.Marshal(l)
 }
 
+// ═══════════════════════════════════════════════════════════════════════════════
+// VideoSegment - Multi-segment support
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// VideoSegment แต่ละช่วงเวลาใน reel
+type VideoSegment struct {
+	Start float64 `json:"start"` // start time (seconds)
+	End   float64 `json:"end"`   // end time (seconds)
+}
+
+// VideoSegments custom type สำหรับเก็บ segments ใน JSONB
+type VideoSegments []VideoSegment
+
+// Scan implements sql.Scanner for VideoSegments
+func (s *VideoSegments) Scan(value interface{}) error {
+	if value == nil {
+		*s = VideoSegments{}
+		return nil
+	}
+
+	bytes, ok := value.([]byte)
+	if !ok {
+		return nil
+	}
+
+	return json.Unmarshal(bytes, s)
+}
+
+// Value implements driver.Valuer for VideoSegments
+func (s VideoSegments) Value() (driver.Value, error) {
+	if s == nil || len(s) == 0 {
+		return "[]", nil
+	}
+	return json.Marshal(s)
+}
+
+// TotalDuration คำนวณ duration รวมของทุก segments
+func (s VideoSegments) TotalDuration() float64 {
+	total := 0.0
+	for _, seg := range s {
+		total += seg.End - seg.Start
+	}
+	return total
+}
+
 // Reel แต่ละ reel ที่สร้างจาก video
 type Reel struct {
 	ID        uuid.UUID `gorm:"primaryKey;type:uuid;default:gen_random_uuid()"`
@@ -135,10 +180,11 @@ type Reel struct {
 	// TTS (Text-to-Speech)
 	TTSText string `gorm:"type:text"` // ข้อความสำหรับพากย์เสียง (ถ้าว่าง = ไม่มีเสียง)
 
-	// Video Segment
-	SegmentStart float64 `gorm:"default:0"`  // start time (seconds)
-	SegmentEnd   float64 `gorm:"default:60"` // end time (seconds)
-	CoverTime    float64 `gorm:"default:-1"` // cover/thumbnail time (-1 = auto middle)
+	// Video Segments (Multi-segment support)
+	Segments     VideoSegments `gorm:"type:jsonb;default:'[]'"` // หลายช่วงเวลา
+	SegmentStart float64       `gorm:"default:0"`               // LEGACY: start time (seconds)
+	SegmentEnd   float64       `gorm:"default:60"`              // LEGACY: end time (seconds)
+	CoverTime    float64       `gorm:"default:-1"`              // cover/thumbnail time (-1 = auto middle)
 
 	// NEW: Style-based display (simplified)
 	Style    ReelStyle `gorm:"size:20;default:'letterbox'"` // letterbox, square, fullcover
@@ -207,8 +253,21 @@ func (r *Reel) IsFailed() bool {
 	return r.Status == ReelStatusFailed
 }
 
-// GetDuration คำนวณ duration ของ segment
+// GetSegments returns segments (backward compatible)
+// ถ้ามี Segments ใช้ Segments, ถ้าไม่มีใช้ SegmentStart/End
+func (r *Reel) GetSegments() []VideoSegment {
+	if len(r.Segments) > 0 {
+		return r.Segments
+	}
+	// Fallback to legacy single segment
+	return []VideoSegment{{Start: r.SegmentStart, End: r.SegmentEnd}}
+}
+
+// GetDuration คำนวณ duration รวมของทุก segments
 func (r *Reel) GetDuration() float64 {
+	if len(r.Segments) > 0 {
+		return r.Segments.TotalDuration()
+	}
 	return r.SegmentEnd - r.SegmentStart
 }
 
