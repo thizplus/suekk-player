@@ -143,6 +143,120 @@ docker-compose down -v && docker-compose up --build -d
 
 ---
 
+## Gallery Generation from HLS
+
+### สถานการณ์
+- Video ที่ transcode ไปแล้วไม่มี gallery (ไฟล์ต้นฉบับถูกลบหลัง transcode)
+- เหลือแค่ HLS files (m3u8, .ts segments) บน S3
+
+### แนวทาง: สร้าง Gallery จาก HLS Segments
+
+**ข้อดี:**
+- ไม่ต้อง re-upload ไฟล์ต้นฉบับ
+- ใช้ไฟล์ที่มีอยู่แล้วบน S3
+
+**วิธีการ:**
+
+#### 1. FFmpeg Extract Frames จาก HLS
+```bash
+# ดึง 100 frames จาก HLS playlist (กระจายตลอดทั้ง video)
+ffmpeg -i "https://cdn.example.com/{code}/1080p/playlist.m3u8" \
+  -vf "select='not(mod(n\,INTERVAL))',scale=1920:-1" \
+  -frames:v 100 \
+  -q:v 2 \
+  gallery/%03d.jpg
+
+# INTERVAL = total_frames / 100
+```
+
+#### 2. Worker Job Type ใหม่: `gallery_generate`
+```
+Job Flow:
+1. API สร้าง job type: "gallery_generate"
+2. Worker รับ job → download HLS จาก S3/CDN
+3. FFmpeg extract 100 frames
+4. Upload ไป S3: gallery/{video_code}/001.jpg - 100.jpg
+5. Update DB: galleryPath, galleryCount
+```
+
+#### 3. API Endpoint
+```
+POST /api/v1/videos/{id}/generate-gallery
+- เพิ่ม video เข้า queue สำหรับ generate gallery
+- ใช้ HLS ที่มีอยู่แล้ว (ไม่ต้อง re-transcode)
+```
+
+#### 4. Batch Generate (สำหรับ video เก่าทั้งหมด)
+```
+POST /api/v1/admin/generate-galleries
+Body: { "minDuration": 1200 }  // เฉพาะ video > 20 นาที
+
+- Loop videos ที่ status=ready และ galleryCount=0
+- สร้าง gallery job ทีละตัว
+```
+
+### Implementation Priority
+
+| Step | Task | Effort |
+|------|------|--------|
+| 1 | เพิ่ม job type `gallery_generate` ใน NATS | Low |
+| 2 | Worker: FFmpeg extract frames จาก HLS | Medium |
+| 3 | Worker: Upload gallery images to S3 | Low |
+| 4 | API: POST /videos/{id}/generate-gallery | Low |
+| 5 | API: Batch generate endpoint | Low |
+| 6 | Frontend: ปุ่ม "Generate Gallery" ใน VideoDetailSheet | Low |
+
+### Notes
+- ใช้ quality สูงสุดที่มี (1080p > 720p > 480p)
+- Gallery images: 1920x1080 หรือ aspect ratio เดิม
+- JPEG quality: 85-90 (balance size vs quality)
+
+### Implementation Status
+
+#### API Side (DONE)
+- ✅ `_gofiber_starter/infrastructure/nats/types.go` - GalleryJob struct + constants
+- ✅ `_gofiber_starter/infrastructure/nats/publisher.go` - PublishGalleryJob()
+- ✅ `_gofiber_starter/infrastructure/nats/client.go` - gallery stream setup
+- ✅ `_gofiber_starter/interfaces/api/handlers/video_handler.go` - GenerateGallery handler
+- ✅ `_gofiber_starter/interfaces/api/routes/video_routes.go` - POST /:id/generate-gallery
+
+#### Worker Side (DONE)
+
+**Files modified/created:**
+
+| File | Action | Description |
+|------|--------|-------------|
+| `_worker/domain/models/job.go` | ✅ DONE | GalleryJob struct |
+| `_worker/domain/constants/nats.go` | ✅ DONE | Gallery stream constants |
+| `_worker/use_cases/gallery_handler.go` | ✅ DONE | Gallery job handler |
+| `_worker/infrastructure/consumer/gallery_consumer.go` | ✅ DONE | Separate gallery consumer |
+| `_worker/container/container.go` | ✅ DONE | Wire up gallery handler + consumer |
+| `_worker/config/config.go` | ✅ DONE | Add S3_PUBLIC_ENDPOINT config |
+
+### Environment Variables (Worker)
+
+```bash
+# S3 public endpoint for HLS access (CDN URL)
+S3_PUBLIC_ENDPOINT=https://cdn.example.com
+```
+
+### Usage
+
+1. **Generate gallery for single video:**
+   ```bash
+   curl -X POST http://localhost:8080/api/v1/videos/{id}/generate-gallery \
+     -H "Authorization: Bearer TOKEN"
+   ```
+
+2. **Worker will:**
+   - Receive job from NATS stream `GALLERY_JOBS`
+   - Download HLS from S3/CDN
+   - Extract 100 frames using FFmpeg
+   - Upload to S3: `gallery/{video_code}/001.jpg - 100.jpg`
+   - Update database via API
+
+---
+
 ## Debugging History
 
 ### 2026-01-11: Ghost Worker Bug

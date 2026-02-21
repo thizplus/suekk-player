@@ -25,10 +25,16 @@ const (
 	SubjectWarmCache      = "jobs.warmcache"
 
 	// Reel Export Jobs Stream and Subjects
-	ReelStreamName     = "REEL_JOBS"
-	ReelConsumerName   = "REEL_WORKER"
-	SubjectReelExport  = "jobs.reel.export"
+	ReelStreamName      = "REEL_JOBS"
+	ReelConsumerName    = "REEL_WORKER"
+	SubjectReelExport   = "jobs.reel.export"
 	SubjectReelProgress = "progress.reel"
+
+	// Gallery Jobs Stream and Subjects
+	GalleryStreamName      = "GALLERY_JOBS"
+	GalleryConsumerName    = "GALLERY_WORKER"
+	SubjectGalleryGenerate = "jobs.gallery.generate"
+	SubjectGalleryProgress = "progress.gallery"
 )
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -210,6 +216,39 @@ func NewReelExportJob(reelID, videoID, videoCode, hlsPath string, segmentStart, 
 		SegmentEnd:   segmentEnd,
 		Layers:       layers,
 		OutputPath:   outputPath,
+		CreatedAt:    time.Now().Unix(),
+	}
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// GalleryJob - API → Worker (via JetStream)
+// สำหรับ generate gallery images จาก HLS ที่มีอยู่แล้ว
+// ⚠️ โครงสร้างนี้ต้องตรงกับ _worker
+// ═══════════════════════════════════════════════════════════════════════════════
+type GalleryJob struct {
+	VideoID      string `json:"video_id"`
+	VideoCode    string `json:"video_code"`
+	HLSPath      string `json:"hls_path"`       // hls/{code}/master.m3u8
+	VideoQuality string `json:"video_quality"`  // Best quality: 1080p, 720p, etc.
+	Duration     int    `json:"duration"`       // Video duration in seconds
+	OutputPath   string `json:"output_path"`    // gallery/{code}/
+	ImageCount   int    `json:"image_count"`    // Number of images to generate (default 100)
+	CreatedAt    int64  `json:"created_at"`
+}
+
+// NewGalleryJob สร้าง GalleryJob ใหม่
+func NewGalleryJob(videoID, videoCode, hlsPath, videoQuality string, duration int, outputPath string, imageCount int) *GalleryJob {
+	if imageCount <= 0 {
+		imageCount = 100 // default 100 images
+	}
+	return &GalleryJob{
+		VideoID:      videoID,
+		VideoCode:    videoCode,
+		HLSPath:      hlsPath,
+		VideoQuality: videoQuality,
+		Duration:     duration,
+		OutputPath:   outputPath,
+		ImageCount:   imageCount,
 		CreatedAt:    time.Now().Unix(),
 	}
 }

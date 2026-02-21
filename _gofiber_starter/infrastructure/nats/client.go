@@ -17,6 +17,7 @@ type Client struct {
 	stream         jetstream.Stream  // Transcode jobs stream
 	subtitleStream jetstream.Stream  // Subtitle jobs stream
 	reelStream     jetstream.Stream  // Reel export jobs stream
+	galleryStream  jetstream.Stream  // Gallery generate jobs stream
 
 	// KV Buckets
 	workerKV jetstream.KeyValue // Worker status (from heartbeat)
@@ -133,6 +134,24 @@ func (c *Client) setupStream(ctx context.Context) error {
 	}
 	c.reelStream = reelStream
 	logger.Info("JetStream stream ready", "name", ReelStreamName)
+
+	// Gallery generate jobs stream
+	galleryCfg := jetstream.StreamConfig{
+		Name:        GalleryStreamName,
+		Subjects:    []string{SubjectGalleryGenerate},
+		Storage:     jetstream.FileStorage,
+		Retention:   jetstream.WorkQueuePolicy,
+		MaxAge:      24 * time.Hour,
+		Replicas:    1,
+		Description: "Gallery generate job queue (extract frames from HLS)",
+	}
+
+	galleryStream, err := c.js.CreateOrUpdateStream(ctx, galleryCfg)
+	if err != nil {
+		return fmt.Errorf("failed to create/update gallery stream: %w", err)
+	}
+	c.galleryStream = galleryStream
+	logger.Info("JetStream stream ready", "name", GalleryStreamName)
 
 	return nil
 }

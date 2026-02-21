@@ -375,3 +375,37 @@ func (p *Publisher) PublishReelExportJob(ctx context.Context, job *ReelExportJob
 
 	return nil
 }
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Gallery Job Publishing
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// PublishGalleryJob ส่ง gallery generate job ไปยัง NATS
+func (p *Publisher) PublishGalleryJob(ctx context.Context, job *GalleryJob) error {
+	data, err := json.Marshal(job)
+	if err != nil {
+		return fmt.Errorf("failed to marshal gallery job: %w", err)
+	}
+
+	// Publish to JetStream
+	ack, err := p.client.js.Publish(ctx, SubjectGalleryGenerate, data)
+	if err != nil {
+		logger.Error("Failed to publish gallery job",
+			"video_id", job.VideoID,
+			"video_code", job.VideoCode,
+			"error", err,
+		)
+		return fmt.Errorf("failed to publish gallery job: %w", err)
+	}
+
+	logger.Info("Gallery job published to JetStream",
+		"video_id", job.VideoID,
+		"video_code", job.VideoCode,
+		"hls_path", job.HLSPath,
+		"image_count", job.ImageCount,
+		"stream", ack.Stream,
+		"sequence", ack.Sequence,
+	)
+
+	return nil
+}

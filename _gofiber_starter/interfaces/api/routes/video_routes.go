@@ -34,4 +34,5 @@ func SetupVideoRoutes(api fiber.Router, h *handlers.Handlers) {
 	protected.Get("/:id", h.VideoHandler.GetByID)             // ดึง video ตาม ID
 	protected.Put("/:id", h.VideoHandler.Update)              // อัปเดต video
 	protected.Delete("/:id", h.VideoHandler.Delete)           // ลบ video
+	protected.Post("/:id/generate-gallery", h.VideoHandler.GenerateGallery) // สร้าง gallery จาก HLS
 }
