@@ -178,7 +178,8 @@ type Reel struct {
 	Line2 string `gorm:"size:255"` // Secondary line 2
 
 	// TTS (Text-to-Speech)
-	TTSText string `gorm:"type:text"` // ข้อความสำหรับพากย์เสียง (ถ้าว่าง = ไม่มีเสียง)
+	TTSText  string `gorm:"type:text"`   // ข้อความสำหรับพากย์เสียง (ถ้าว่าง = ไม่มีเสียง)
+	TTSVoice string `gorm:"size:50"`     // ElevenLabs Voice ID (ถ้าว่าง = ใช้ default)
 
 	// Video Segments (Multi-segment support)
 	Segments     VideoSegments `gorm:"type:jsonb;default:'[]'"` // หลายช่วงเวลา

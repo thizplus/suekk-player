@@ -83,7 +83,8 @@ type ReelExportJob struct {
 	CropY        float64 `json:"crop_y"`        // 0-100 crop position Y (for square)
 
 	// TTS (Text-to-Speech)
-	TTSText string `json:"tts_text"` // ข้อความพากย์เสียง (ถ้าว่าง = ไม่มีเสียง)
+	TTSText  string `json:"tts_text"`  // ข้อความพากย์เสียง (ถ้าว่าง = ไม่มีเสียง)
+	TTSVoice string `json:"tts_voice"` // Voice ID (ถ้าว่าง = ใช้ default)
 
 	// LEGACY: Layer-based composition (deprecated)
 	OutputFormat string         `json:"output_format"` // 9:16, 1:1, 4:5, 16:9

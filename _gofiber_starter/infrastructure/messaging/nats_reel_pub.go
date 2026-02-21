@@ -49,7 +49,8 @@ func (p *NATSReelPublisher) PublishReelExportJob(ctx context.Context, job *servi
 		CropY:        job.CropY,
 
 		// TTS
-		TTSText: job.TTSText,
+		TTSText:  job.TTSText,
+		TTSVoice: job.TTSVoice,
 
 		// LEGACY: Layer-based fields
 		OutputFormat: job.OutputFormat,

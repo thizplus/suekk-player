@@ -19,6 +19,22 @@ export interface VideoSegmentRequest {
   end: number
 }
 
+// ═══════════════════════════════════════════════════════════════════════════════
+// TTS Voice options
+// ═══════════════════════════════════════════════════════════════════════════════
+
+export interface TTSVoiceOption {
+  id: string
+  name: string
+  description: string
+}
+
+// Available TTS voices
+export const TTS_VOICES: TTSVoiceOption[] = [
+  { id: '', name: 'Default', description: 'เสียงเริ่มต้น' },
+  { id: 'Tw2LVqLUUWkxqrCfFOpw', name: 'ลุง Cole', description: 'Gritty, Rough, Strong' },
+]
+
 // NEW: Reel Style - simplified 3-style system
 export type ReelStyle = 'letterbox' | 'square' | 'fullcover'
 
@@ -110,7 +126,8 @@ export interface Reel {
   showLogo: boolean
 
   // TTS (Text-to-Speech)
-  ttsText?: string // ข้อความพากย์เสียง
+  ttsText?: string  // ข้อความพากย์เสียง
+  ttsVoice?: string // Voice ID
 
   // Output
   outputUrl?: string
@@ -171,7 +188,8 @@ export interface CreateReelRequest {
   showLogo?: boolean
 
   // TTS (Text-to-Speech)
-  ttsText?: string // ข้อความพากย์เสียง (max 5000 chars)
+  ttsText?: string  // ข้อความพากย์เสียง (max 5000 chars)
+  ttsVoice?: string // Voice ID (ถ้าว่าง = default)
 
   // LEGACY: Layer-based fields (deprecated but still supported)
   description?: string
@@ -200,7 +218,8 @@ export interface UpdateReelRequest {
   showLogo?: boolean
 
   // TTS (Text-to-Speech)
-  ttsText?: string // ข้อความพากย์เสียง (max 5000 chars)
+  ttsText?: string  // ข้อความพากย์เสียง (max 5000 chars)
+  ttsVoice?: string // Voice ID (ถ้าว่าง = default)
 
   // LEGACY: Layer-based fields
   description?: string

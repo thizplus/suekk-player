@@ -35,7 +35,8 @@ type CreateReelRequest struct {
 	ShowLogo *bool  `json:"showLogo"` // nil = true (default)
 
 	// TTS (Text-to-Speech)
-	TTSText string `json:"ttsText" validate:"omitempty,max=5000"` // ข้อความพากย์เสียง
+	TTSText  string `json:"ttsText" validate:"omitempty,max=5000"`  // ข้อความพากย์เสียง
+	TTSVoice string `json:"ttsVoice" validate:"omitempty,max=50"`   // Voice ID (ถ้าว่าง = default)
 
 	// LEGACY: Layer-based fields (deprecated but still supported)
 	Description  string             `json:"description" validate:"omitempty,max=1000"` // deprecated, use line1
@@ -65,7 +66,8 @@ type UpdateReelRequest struct {
 	ShowLogo *bool   `json:"showLogo"`
 
 	// TTS (Text-to-Speech)
-	TTSText *string `json:"ttsText" validate:"omitempty,max=5000"` // ข้อความพากย์เสียง
+	TTSText  *string `json:"ttsText" validate:"omitempty,max=5000"`  // ข้อความพากย์เสียง
+	TTSVoice *string `json:"ttsVoice" validate:"omitempty,max=50"`   // Voice ID (ถ้าว่าง = default)
 
 	// LEGACY: Layer-based fields (deprecated but still supported)
 	Description  *string             `json:"description" validate:"omitempty,max=1000"`
@@ -135,7 +137,8 @@ type ReelResponse struct {
 	ShowLogo bool   `json:"showLogo"`
 
 	// TTS (Text-to-Speech)
-	TTSText string `json:"ttsText,omitempty"` // ข้อความพากย์เสียง
+	TTSText  string `json:"ttsText,omitempty"`  // ข้อความพากย์เสียง
+	TTSVoice string `json:"ttsVoice,omitempty"` // Voice ID
 
 	// Output
 	OutputURL    string     `json:"outputUrl,omitempty"`
@@ -250,7 +253,8 @@ func ReelToResponse(reel *models.Reel) *ReelResponse {
 		ShowLogo: reel.ShowLogo,
 
 		// TTS
-		TTSText: reel.TTSText,
+		TTSText:  reel.TTSText,
+		TTSVoice: reel.TTSVoice,
 
 		// Output
 		OutputURL:    reel.OutputPath,

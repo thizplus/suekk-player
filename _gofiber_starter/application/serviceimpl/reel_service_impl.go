@@ -121,8 +121,9 @@ func (s *ReelServiceImpl) Create(ctx context.Context, userID uuid.UUID, req *dto
 		Status:       models.ReelStatusDraft,
 	}
 
-	// TTS Text (สำหรับทุก style)
+	// TTS (สำหรับทุก style)
 	reel.TTSText = req.TTSText
+	reel.TTSVoice = req.TTSVoice
 
 	// Check if using new style-based system
 	if req.Style != "" {
@@ -299,9 +300,12 @@ func (s *ReelServiceImpl) Update(ctx context.Context, id, userID uuid.UUID, req 
 		reel.ShowLogo = *req.ShowLogo
 	}
 
-	// TTS Text
+	// TTS
 	if req.TTSText != nil {
 		reel.TTSText = *req.TTSText
+	}
+	if req.TTSVoice != nil {
+		reel.TTSVoice = *req.TTSVoice
 	}
 
 	// LEGACY: Layer-based fields
@@ -497,8 +501,9 @@ func (s *ReelServiceImpl) Export(ctx context.Context, id, userID uuid.UUID) erro
 			OutputPath:   fmt.Sprintf("reels/%s/output.mp4", reel.ID.String()),
 		}
 
-		// TTS Text (สำหรับทุก style)
+		// TTS (สำหรับทุก style)
 		job.TTSText = reel.TTSText
+		job.TTSVoice = reel.TTSVoice
 
 		// Check if using style-based or legacy layer-based
 		if reel.IsStyleBased() {

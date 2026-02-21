@@ -10,6 +10,7 @@ import { useReel, useCreateReel, useUpdateReel, useExportReel } from '../hooks'
 import { useVideoByCode } from '@/features/video/hooks'
 import type { Video } from '@/features/video/types'
 import type { ReelStyle, CreateReelRequest, UpdateReelRequest, VideoSegment } from '../types'
+import { TTS_VOICES } from '../types'
 import {
   ReelPreviewCanvas,
   ReelVideoSelector,
@@ -59,6 +60,7 @@ export function ReelGeneratorPage() {
   const [cropY, setCropY] = useState(50) // 0-100, center default
   const [coverTime, setCoverTime] = useState(-1) // -1 = auto middle
   const [ttsText, setTtsText] = useState('') // TTS text
+  const [ttsVoice, setTtsVoice] = useState('') // TTS voice ID ('' = default)
 
   // Video state (from preview canvas)
   const [actualDuration, setActualDuration] = useState(0)
@@ -114,6 +116,7 @@ export function ReelGeneratorPage() {
       setCropY(existingReel.cropY ?? 50)
       setCoverTime(existingReel.coverTime ?? -1)
       setTtsText(existingReel.ttsText || '')
+      setTtsVoice(existingReel.ttsVoice || '')
     } else if (videoByCode) {
       setSelectedVideoId(videoByCode.id)
       setSelectedVideo(videoByCode)
@@ -224,6 +227,7 @@ export function ReelGeneratorPage() {
           cropX,
           cropY,
           ttsText: ttsText || undefined,
+          ttsVoice: ttsVoice || undefined,
         }
         await updateReel.mutateAsync({ id, data })
         toast.success('บันทึกสำเร็จ')
@@ -242,6 +246,7 @@ export function ReelGeneratorPage() {
           cropX,
           cropY,
           ttsText: ttsText || undefined,
+          ttsVoice: ttsVoice || undefined,
         }
         const newReel = await createReel.mutateAsync(data)
         toast.success('สร้าง Reel สำเร็จ')
@@ -503,8 +508,31 @@ export function ReelGeneratorPage() {
             <TabsContent value="tts" className="mt-4">
               {activeVideo && (
                 <div className="space-y-4">
+                  {/* Voice selector */}
                   <div className="space-y-2">
-                    <label className="text-sm font-medium">เสียงพากย์ (TTS)</label>
+                    <label className="text-sm font-medium">เลือกเสียง</label>
+                    <div className="grid grid-cols-2 gap-2">
+                      {TTS_VOICES.map((voice) => (
+                        <button
+                          key={voice.id}
+                          type="button"
+                          onClick={() => setTtsVoice(voice.id)}
+                          className={`p-3 rounded-lg border text-left transition-colors ${
+                            ttsVoice === voice.id
+                              ? 'border-primary bg-primary/10'
+                              : 'border-input hover:border-primary/50'
+                          }`}
+                        >
+                          <div className="font-medium text-sm">{voice.name}</div>
+                          <div className="text-xs text-muted-foreground">{voice.description}</div>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* TTS text */}
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">ข้อความพากย์</label>
                     <textarea
                       value={ttsText}
                       onChange={(e) => setTtsText(e.target.value)}
@@ -517,6 +545,7 @@ export function ReelGeneratorPage() {
                       {ttsText.length.toLocaleString()}/5,000 ตัวอักษร
                     </p>
                   </div>
+
                   <div className="rounded-lg bg-muted p-3 text-sm text-muted-foreground">
                     <p className="font-medium mb-1">💡 คำแนะนำ:</p>
                     <ul className="list-disc list-inside space-y-1">
