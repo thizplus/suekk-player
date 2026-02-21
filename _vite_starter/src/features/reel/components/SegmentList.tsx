@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import { Plus, Trash2, Clock, AlertCircle, GripVertical, Play } from 'lucide-react'
+import { Plus, Trash2, Clock, AlertCircle, GripVertical, Play, Pencil } from 'lucide-react'
 import {
   DndContext,
   closestCenter,
@@ -107,8 +107,13 @@ export function SegmentList({
     }
   }
 
-  // Preview segment
+  // Preview segment (แค่ seek ไปดู ไม่ select)
   const handlePreviewSegment = (index: number) => {
+    onSeek(segments[index].start)
+  }
+
+  // Edit segment (select เพื่อแก้ไข)
+  const handleEditSegment = (index: number) => {
     onSelectSegment(index)
     onSeek(segments[index].start)
   }
@@ -197,7 +202,8 @@ export function SegmentList({
                   segment={segment}
                   index={index}
                   isSelected={selectedIndex === index}
-                  onSelect={() => handlePreviewSegment(index)}
+                  onPreview={() => handlePreviewSegment(index)}
+                  onEdit={() => handleEditSegment(index)}
                   onDelete={(e) => handleDeleteSegment(index, e)}
                 />
               ))}
@@ -224,7 +230,7 @@ export function SegmentList({
 
       {/* Help text */}
       <p className="text-xs text-muted-foreground text-center">
-        ลากเพื่อเรียงลำดับ • กดเพื่อแก้ไข • สูงสุด {MAX_SEGMENTS} segments รวม {MAX_TOTAL_DURATION} วินาที
+        ▶️ ดู preview • ✏️ แก้ไขเวลา • ลากเรียงลำดับ • สูงสุด {MAX_SEGMENTS} segments รวม {MAX_TOTAL_DURATION} วินาที
       </p>
     </div>
   )
@@ -309,7 +315,8 @@ interface SortableSegmentItemProps {
   segment: VideoSegment
   index: number
   isSelected: boolean
-  onSelect: () => void
+  onPreview: () => void  // แค่ seek ไปดู
+  onEdit: () => void     // select เพื่อแก้ไข
   onDelete: (e: React.MouseEvent) => void
 }
 
@@ -317,7 +324,8 @@ function SortableSegmentItem({
   segment,
   index,
   isSelected,
-  onSelect,
+  onPreview,
+  onEdit,
   onDelete,
 }: SortableSegmentItemProps) {
   const {
@@ -367,10 +375,10 @@ function SortableSegmentItem({
           {index + 1}
         </div>
 
-        {/* Time info - clickable */}
+        {/* Time info - click to preview only */}
         <button
           className="flex-1 text-left"
-          onClick={onSelect}
+          onClick={onPreview}
         >
           <div className="font-mono text-sm">
             {formatTime(segment.start)} - {formatTime(segment.end)}
@@ -380,18 +388,32 @@ function SortableSegmentItem({
           </div>
         </button>
 
-        {/* Preview button */}
+        {/* Preview button - แค่ดู */}
         <Button
           variant="ghost"
           size="icon"
           className="h-8 w-8 text-muted-foreground hover:text-primary"
           onClick={(e) => {
             e.stopPropagation()
-            onSelect()
+            onPreview()
           }}
-          title="Preview"
+          title="ดู Preview"
         >
           <Play className="h-4 w-4" />
+        </Button>
+
+        {/* Edit button - แก้ไข */}
+        <Button
+          variant={isSelected ? "default" : "ghost"}
+          size="icon"
+          className={`h-8 w-8 ${isSelected ? '' : 'text-muted-foreground hover:text-primary'}`}
+          onClick={(e) => {
+            e.stopPropagation()
+            onEdit()
+          }}
+          title="แก้ไขช่วงเวลา"
+        >
+          <Pencil className="h-4 w-4" />
         </Button>
 
         {/* Delete button */}
