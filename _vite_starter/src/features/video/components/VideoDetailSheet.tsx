@@ -3,6 +3,7 @@ import { Eye, Clock, RefreshCw, Copy, Check, ExternalLink, Play, Folder, X, Time
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Input } from '@/components/ui/input'
+import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
 import {
   Select,
@@ -43,12 +44,14 @@ export function VideoDetailSheet({ videoId, open, onOpenChange }: VideoDetailShe
   // Edit mode state
   const [isEditing, setIsEditing] = useState(false)
   const [editTitle, setEditTitle] = useState('')
+  const [editDescription, setEditDescription] = useState('')
   const [editCategoryId, setEditCategoryId] = useState<string>('')
 
   // Reset edit state when video changes or sheet opens
   useEffect(() => {
     if (video && open) {
       setEditTitle(video.title)
+      setEditDescription(video.description ?? '')
       // API returns category as object, use category.id
       setEditCategoryId(video.category?.id ?? '')
     }
@@ -63,6 +66,7 @@ export function VideoDetailSheet({ videoId, open, onOpenChange }: VideoDetailShe
         id: video.id,
         data: {
           title: editTitle.trim(),
+          description: editDescription.trim() || undefined,
           categoryId: editCategoryId || undefined,
         },
       })
@@ -75,6 +79,7 @@ export function VideoDetailSheet({ videoId, open, onOpenChange }: VideoDetailShe
 
   const handleCancelEdit = () => {
     setEditTitle(video?.title ?? '')
+    setEditDescription(video?.description ?? '')
     setEditCategoryId(video?.category?.id ?? '')
     setIsEditing(false)
   }
@@ -357,9 +362,20 @@ export function VideoDetailSheet({ videoId, open, onOpenChange }: VideoDetailShe
                 )}
               </div>
 
-              {video.description && !isEditing && (
+              {/* Description */}
+              {isEditing ? (
+                <div className="space-y-1.5">
+                  <Label className="text-sm text-muted-foreground">รายละเอียด</Label>
+                  <Textarea
+                    value={editDescription}
+                    onChange={(e) => setEditDescription(e.target.value)}
+                    placeholder="รายละเอียดวิดีโอ (ไม่บังคับ)"
+                    rows={3}
+                  />
+                </div>
+              ) : video.description ? (
                 <p className="text-sm text-muted-foreground">{video.description}</p>
-              )}
+              ) : null}
             </div>
 
             {/* Info - Inline */}
