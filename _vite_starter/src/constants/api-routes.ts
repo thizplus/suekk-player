@@ -31,6 +31,8 @@ export const VIDEO_ROUTES = {
   UPLOAD: '/api/v1/videos/upload',
   BATCH_UPLOAD: '/api/v1/videos/batch',
   UPDATE_STATUS: (id: string) => `/api/v1/videos/${id}/status`,
+  // Gallery Generation
+  GENERATE_GALLERY: (id: string) => `/api/v1/videos/${id}/generate-gallery`,
   // Dead Letter Queue (DLQ) Management
   DLQ_LIST: '/api/v1/videos/dlq',
   DLQ_RETRY: (id: string) => `/api/v1/videos/dlq/${id}/retry`,

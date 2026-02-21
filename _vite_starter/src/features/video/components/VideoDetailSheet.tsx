@@ -19,7 +19,7 @@ import {
   SheetHeader,
   SheetTitle,
 } from '@/components/ui/sheet'
-import { useVideo, useQueueTranscoding, useUpdateVideo } from '../hooks'
+import { useVideo, useQueueTranscoding, useUpdateVideo, useGenerateGallery } from '../hooks'
 import { useCategories } from '@/features/category/hooks'
 import { EmbedCodeDialog } from './EmbedCodeDialog'
 import { SubtitlePanel } from '@/features/subtitle'
@@ -39,6 +39,7 @@ export function VideoDetailSheet({ videoId, open, onOpenChange }: VideoDetailShe
   const { data: categories } = useCategories()
   const queueTranscoding = useQueueTranscoding()
   const updateVideo = useUpdateVideo()
+  const generateGallery = useGenerateGallery()
   const [copiedField, setCopiedField] = useState<string | null>(null)
   const [embedDialogOpen, setEmbedDialogOpen] = useState(false)
 
@@ -485,15 +486,40 @@ export function VideoDetailSheet({ videoId, open, onOpenChange }: VideoDetailShe
               </div>
             )}
 
-            {/* Gallery Link */}
-            {video.status === 'ready' && video.galleryCount && video.galleryCount > 0 && (
+            {/* Gallery Section */}
+            {video.status === 'ready' && (
               <div className="pt-2 border-t">
-                <Button variant="outline" className="w-full" asChild>
-                  <Link to={`/gallery/${video.code}`}>
-                    <Images className="size-4 mr-1.5" />
-                    ดู Gallery ({video.galleryCount} ภาพ)
-                  </Link>
-                </Button>
+                {video.galleryCount && video.galleryCount > 0 ? (
+                  <Button variant="outline" className="w-full" asChild>
+                    <Link to={`/gallery/${video.code}`}>
+                      <Images className="size-4 mr-1.5" />
+                      ดู Gallery ({video.galleryCount} ภาพ)
+                    </Link>
+                  </Button>
+                ) : (
+                  <Button
+                    variant="outline"
+                    className="w-full"
+                    onClick={() => {
+                      generateGallery.mutate(video.id, {
+                        onSuccess: () => {
+                          toast.success('เริ่มสร้าง Gallery แล้ว')
+                        },
+                        onError: () => {
+                          toast.error('ไม่สามารถสร้าง Gallery ได้')
+                        },
+                      })
+                    }}
+                    disabled={generateGallery.isPending}
+                  >
+                    {generateGallery.isPending ? (
+                      <Loader2 className="size-4 mr-1.5 animate-spin" />
+                    ) : (
+                      <Images className="size-4 mr-1.5" />
+                    )}
+                    สร้าง Gallery
+                  </Button>
+                )}
               </div>
             )}
 

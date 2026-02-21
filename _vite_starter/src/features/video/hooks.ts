@@ -213,3 +213,18 @@ export function useUploadLimits() {
     gcTime: 10 * 60 * 1000,   // Keep in cache 10 นาที
   })
 }
+
+// === Gallery ===
+
+// สร้าง gallery จาก HLS
+export function useGenerateGallery() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (videoId: string) => videoService.generateGallery(videoId),
+    onSuccess: (_, videoId) => {
+      queryClient.invalidateQueries({ queryKey: videoKeys.detail(videoId) })
+      queryClient.invalidateQueries({ queryKey: videoKeys.lists() })
+    },
+  })
+}

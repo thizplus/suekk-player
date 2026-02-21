@@ -114,4 +114,11 @@ export const videoService = {
   async getUploadLimits(): Promise<UploadLimits> {
     return apiClient.get<UploadLimits>(CONFIG_ROUTES.UPLOAD_LIMITS)
   },
+
+  // === Gallery ===
+
+  // สร้าง gallery จาก HLS (สำหรับ video ที่ยังไม่มี gallery)
+  async generateGallery(videoId: string): Promise<{ message: string }> {
+    return apiClient.post<{ message: string }>(VIDEO_ROUTES.GENERATE_GALLERY(videoId))
+  },
 }
