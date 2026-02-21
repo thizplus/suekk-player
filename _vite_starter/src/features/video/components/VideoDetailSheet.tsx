@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
-import { Eye, Clock, RefreshCw, Copy, Check, ExternalLink, Play, Folder, X, Timer, Code2, Pencil, Save, Loader2 } from 'lucide-react'
+import { Link } from 'react-router-dom'
+import { Eye, Clock, RefreshCw, Copy, Check, ExternalLink, Play, Folder, X, Timer, Code2, Pencil, Save, Loader2, Images } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Input } from '@/components/ui/input'
@@ -481,6 +482,18 @@ export function VideoDetailSheet({ videoId, open, onOpenChange }: VideoDetailShe
                   videoCode={video.code}
                   videoStatus={video.status}
                 />
+              </div>
+            )}
+
+            {/* Gallery Link */}
+            {video.status === 'ready' && video.galleryCount && video.galleryCount > 0 && (
+              <div className="pt-2 border-t">
+                <Button variant="outline" className="w-full" asChild>
+                  <Link to={`/gallery/${video.code}`}>
+                    <Images className="size-4 mr-1.5" />
+                    ดู Gallery ({video.galleryCount} ภาพ)
+                  </Link>
+                </Button>
               </div>
             )}
 

@@ -47,6 +47,9 @@ const VideoListPage = lazyWithReload(() =>
 const DLQPage = lazyWithReload(() =>
   import('@/features/video').then((m) => ({ default: m.DLQPage }))
 )
+const GalleryPage = lazyWithReload(() =>
+  import('@/features/video').then((m) => ({ default: m.GalleryPage }))
+)
 
 // Lazy load category pages
 const CategoryListPage = lazyWithReload(() =>
@@ -115,6 +118,16 @@ export default function AppRoutes() {
         element={
           <Suspense fallback={<div className="fixed inset-0 bg-background flex items-center justify-center"><div className="animate-spin h-8 w-8 border-2 border-primary border-t-transparent rounded-full" /></div>}>
             <SubtitleEditorPage />
+          </Suspense>
+        }
+      />
+
+      {/* Gallery route - standalone gallery viewer */}
+      <Route
+        path="/gallery/:code"
+        element={
+          <Suspense fallback={<div className="fixed inset-0 bg-background flex items-center justify-center"><div className="animate-spin h-8 w-8 border-2 border-primary border-t-transparent rounded-full" /></div>}>
+            <GalleryPage />
           </Suspense>
         }
       />
