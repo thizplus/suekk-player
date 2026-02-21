@@ -132,6 +132,10 @@ type Video struct {
 	CacheError      string     `gorm:"type:text"`               // error message if failed
 	LastWarmedAt    *time.Time `gorm:"type:timestamptz"`        // last warm time
 
+	// Gallery fields (สร้างหลัง transcode สำหรับ video > 20 นาที)
+	GalleryPath  string `gorm:"type:text"`  // S3 path prefix e.g., "gallery/ABC123"
+	GalleryCount int    `gorm:"default:0"`  // จำนวนภาพ (0 = ไม่มี gallery, 100 = full)
+
 	CreatedAt time.Time
 	UpdatedAt time.Time
 

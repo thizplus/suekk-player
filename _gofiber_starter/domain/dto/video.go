@@ -62,6 +62,10 @@ type VideoResponse struct {
 	// Reel info
 	ReelCount int64 `json:"reelCount"` // จำนวน reels ที่สร้างจาก video นี้
 
+	// Gallery info (สำหรับ video > 20 นาที)
+	GalleryPath  string `json:"galleryPath,omitempty"`  // S3 path prefix e.g., "gallery/ABC123"
+	GalleryCount int    `json:"galleryCount,omitempty"` // จำนวนภาพ (0 = ไม่มี)
+
 	CreatedAt time.Time `json:"createdAt"`
 	UpdatedAt time.Time `json:"updatedAt"`
 }
@@ -152,6 +156,8 @@ func VideoToVideoResponse(video *models.Video) *VideoResponse {
 		Views:            video.Views,
 		HasAudio:         video.AudioPath != "",
 		DetectedLanguage: video.DetectedLanguage,
+		GalleryPath:      video.GalleryPath,
+		GalleryCount:     video.GalleryCount,
 		CreatedAt:        video.CreatedAt,
 		UpdatedAt:        video.UpdatedAt,
 	}
