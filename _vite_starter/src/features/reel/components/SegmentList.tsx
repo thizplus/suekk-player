@@ -1,4 +1,22 @@
-import { Plus, Trash2, Clock, AlertCircle } from 'lucide-react'
+import { useMemo } from 'react'
+import { Plus, Trash2, Clock, AlertCircle, GripVertical, Play } from 'lucide-react'
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from '@dnd-kit/core'
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { formatTime } from './constants'
@@ -28,6 +46,18 @@ export function SegmentList({
   onSelectSegment,
   selectedIndex,
 }: SegmentListProps) {
+  // DnD sensors
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 8,
+      },
+    }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  )
+
   // คำนวณ total duration
   const totalDuration = segments.reduce((sum, seg) => sum + (seg.end - seg.start), 0)
   const remainingDuration = MAX_TOTAL_DURATION - totalDuration
@@ -42,7 +72,7 @@ export function SegmentList({
 
     // กำหนดช่วงเวลาใหม่ (เริ่มจากตำแหน่งปัจจุบัน)
     const startTime = Math.min(currentTime, videoDuration - MIN_SEGMENT_DURATION)
-    const duration = Math.min(15, remainingDuration, videoDuration - startTime) // default 15s หรือเท่าที่เหลือ
+    const duration = Math.min(10, remainingDuration, videoDuration - startTime) // default 10s
     const endTime = startTime + duration
 
     const newSegment: VideoSegment = {
@@ -53,26 +83,57 @@ export function SegmentList({
 
     onChange([...segments, newSegment])
     onSelectSegment(segments.length) // select ตัวใหม่
+    onSeek(startTime) // seek ไปตำแหน่งใหม่
   }
 
   // ลบ segment
-  const handleDeleteSegment = (index: number) => {
+  const handleDeleteSegment = (index: number, e: React.MouseEvent) => {
+    e.stopPropagation()
     const newSegments = segments.filter((_, i) => i !== index)
     onChange(newSegments)
 
     // ปรับ selected index
     if (selectedIndex === index) {
-      onSelectSegment(newSegments.length > 0 ? 0 : null as unknown as number)
+      if (newSegments.length > 0) {
+        const newIndex = Math.min(index, newSegments.length - 1)
+        onSelectSegment(newIndex)
+        onSeek(newSegments[newIndex].start)
+      } else {
+        onSelectSegment(null as unknown as number)
+      }
     } else if (selectedIndex !== null && selectedIndex > index) {
       onSelectSegment(selectedIndex - 1)
     }
   }
 
-  // อัปเดต segment
-  const handleUpdateSegment = (index: number, start: number, end: number) => {
-    const newSegments = [...segments]
-    newSegments[index] = { ...newSegments[index], start, end }
-    onChange(newSegments)
+  // Preview segment
+  const handlePreviewSegment = (index: number) => {
+    onSelectSegment(index)
+    onSeek(segments[index].start)
+  }
+
+  // Drag end handler
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event
+
+    if (over && active.id !== over.id) {
+      const oldIndex = segments.findIndex((s) => s.id === active.id)
+      const newIndex = segments.findIndex((s) => s.id === over.id)
+
+      const newSegments = arrayMove(segments, oldIndex, newIndex)
+      onChange(newSegments)
+
+      // Update selected index after reorder
+      if (selectedIndex === oldIndex) {
+        onSelectSegment(newIndex)
+      } else if (selectedIndex !== null) {
+        if (oldIndex < selectedIndex && newIndex >= selectedIndex) {
+          onSelectSegment(selectedIndex - 1)
+        } else if (oldIndex > selectedIndex && newIndex <= selectedIndex) {
+          onSelectSegment(selectedIndex + 1)
+        }
+      }
+    }
   }
 
   return (
@@ -94,6 +155,16 @@ export function SegmentList({
         </div>
       </div>
 
+      {/* Timeline Visualization */}
+      {segments.length > 0 && videoDuration > 0 && (
+        <SegmentTimeline
+          segments={segments}
+          videoDuration={videoDuration}
+          selectedIndex={selectedIndex}
+          onSelectSegment={handlePreviewSegment}
+        />
+      )}
+
       {/* Warning if over limit */}
       {totalDuration > MAX_TOTAL_DURATION && (
         <div className="flex items-center gap-2 p-2 bg-destructive/10 rounded text-destructive text-sm">
@@ -102,7 +173,7 @@ export function SegmentList({
         </div>
       )}
 
-      {/* Segment list */}
+      {/* Segment list with drag & drop */}
       <div className="space-y-2">
         {segments.length === 0 ? (
           <div className="text-center py-6 text-muted-foreground">
@@ -110,22 +181,27 @@ export function SegmentList({
             <p className="text-sm">กดปุ่มด้านล่างเพื่อเพิ่ม</p>
           </div>
         ) : (
-          segments.map((segment, index) => (
-            <SegmentItem
-              key={segment.id}
-              segment={segment}
-              index={index}
-              isSelected={selectedIndex === index}
-              videoDuration={videoDuration}
-              maxDuration={MAX_TOTAL_DURATION - totalDuration + (segment.end - segment.start)}
-              onSelect={() => {
-                onSelectSegment(index)
-                onSeek(segment.start)
-              }}
-              onDelete={() => handleDeleteSegment(index)}
-              onUpdate={(start, end) => handleUpdateSegment(index, start, end)}
-            />
-          ))
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCenter}
+            onDragEnd={handleDragEnd}
+          >
+            <SortableContext
+              items={segments.map((s) => s.id)}
+              strategy={verticalListSortingStrategy}
+            >
+              {segments.map((segment, index) => (
+                <SortableSegmentItem
+                  key={segment.id}
+                  segment={segment}
+                  index={index}
+                  isSelected={selectedIndex === index}
+                  onSelect={() => handlePreviewSegment(index)}
+                  onDelete={(e) => handleDeleteSegment(index, e)}
+                />
+              ))}
+            </SortableContext>
+          </DndContext>
         )}
       </div>
 
@@ -137,7 +213,7 @@ export function SegmentList({
         disabled={!canAddMore}
       >
         <Plus className="h-4 w-4 mr-2" />
-        เพิ่ม Segment
+        เพิ่ม Segment จากตำแหน่งปัจจุบัน
         {remainingDuration > 0 && remainingDuration < MAX_TOTAL_DURATION && (
           <span className="ml-2 text-muted-foreground">
             (เหลือ {formatTime(remainingDuration)})
@@ -147,75 +223,182 @@ export function SegmentList({
 
       {/* Help text */}
       <p className="text-xs text-muted-foreground text-center">
-        เลือกหลายช่วงเวลาแล้วนำมาต่อกันเป็นคลิปเดียว (สูงสุด {MAX_SEGMENTS} segments, รวม {MAX_TOTAL_DURATION} วินาที)
+        ลากเพื่อเรียงลำดับ • กดเพื่อแก้ไข • สูงสุด {MAX_SEGMENTS} segments รวม {MAX_TOTAL_DURATION} วินาที
       </p>
     </div>
   )
 }
 
-// Segment item component
-interface SegmentItemProps {
+// Timeline visualization component
+interface SegmentTimelineProps {
+  segments: VideoSegment[]
+  videoDuration: number
+  selectedIndex: number | null
+  onSelectSegment: (index: number) => void
+}
+
+function SegmentTimeline({
+  segments,
+  videoDuration,
+  selectedIndex,
+  onSelectSegment,
+}: SegmentTimelineProps) {
+  // Sort segments by start time for display
+  const sortedForDisplay = useMemo(() => {
+    return segments
+      .map((seg, index) => ({ ...seg, originalIndex: index }))
+      .sort((a, b) => a.start - b.start)
+  }, [segments])
+
+  return (
+    <div className="space-y-1">
+      <div className="text-xs text-muted-foreground">Timeline (ตำแหน่งจริงใน video)</div>
+      <div className="relative h-8 bg-muted rounded overflow-hidden">
+        {/* Background grid lines */}
+        <div className="absolute inset-0 flex">
+          {[...Array(10)].map((_, i) => (
+            <div
+              key={i}
+              className="flex-1 border-r border-background/20 last:border-r-0"
+            />
+          ))}
+        </div>
+
+        {/* Segment blocks */}
+        {sortedForDisplay.map((segment) => {
+          const left = (segment.start / videoDuration) * 100
+          const width = ((segment.end - segment.start) / videoDuration) * 100
+          const isSelected = selectedIndex === segment.originalIndex
+
+          return (
+            <button
+              key={segment.id}
+              className={`absolute top-1 bottom-1 rounded cursor-pointer transition-all ${
+                isSelected
+                  ? 'bg-primary ring-2 ring-primary ring-offset-1 ring-offset-background'
+                  : 'bg-primary/60 hover:bg-primary/80'
+              }`}
+              style={{
+                left: `${left}%`,
+                width: `${Math.max(width, 1)}%`,
+              }}
+              onClick={() => onSelectSegment(segment.originalIndex)}
+              title={`Segment ${segment.originalIndex + 1}: ${formatTime(segment.start)} - ${formatTime(segment.end)}`}
+            >
+              <span className="absolute inset-0 flex items-center justify-center text-[10px] font-medium text-primary-foreground">
+                {segment.originalIndex + 1}
+              </span>
+            </button>
+          )
+        })}
+
+        {/* Time markers */}
+        <div className="absolute bottom-0 left-0 right-0 flex justify-between text-[8px] text-muted-foreground px-1">
+          <span>0:00</span>
+          <span>{formatTime(videoDuration / 2)}</span>
+          <span>{formatTime(videoDuration)}</span>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// Sortable segment item component
+interface SortableSegmentItemProps {
   segment: VideoSegment
   index: number
   isSelected: boolean
-  videoDuration: number
-  maxDuration: number
   onSelect: () => void
-  onDelete: () => void
-  onUpdate: (start: number, end: number) => void
+  onDelete: (e: React.MouseEvent) => void
 }
 
-function SegmentItem({
+function SortableSegmentItem({
   segment,
   index,
   isSelected,
-  videoDuration: _videoDuration,
-  maxDuration: _maxDuration,
   onSelect,
   onDelete,
-  onUpdate: _onUpdate,
-}: SegmentItemProps) {
-  // Reserved for future inline editing: _videoDuration, _maxDuration, _onUpdate
+}: SortableSegmentItemProps) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: segment.id })
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+  }
+
   const duration = segment.end - segment.start
 
   return (
     <Card
-      className={`p-3 cursor-pointer transition-colors ${
-        isSelected
+      ref={setNodeRef}
+      style={style}
+      className={`p-3 transition-colors ${
+        isDragging
+          ? 'opacity-50 shadow-lg'
+          : isSelected
           ? 'border-primary bg-primary/5'
           : 'hover:border-primary/50'
       }`}
-      onClick={onSelect}
     >
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          {/* Index badge */}
-          <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-medium ${
-            isSelected ? 'bg-primary text-primary-foreground' : 'bg-muted'
-          }`}>
-            {index + 1}
-          </div>
+      <div className="flex items-center gap-2">
+        {/* Drag handle */}
+        <button
+          className="cursor-grab active:cursor-grabbing p-1 -m-1 text-muted-foreground hover:text-foreground touch-none"
+          {...attributes}
+          {...listeners}
+        >
+          <GripVertical className="h-4 w-4" />
+        </button>
 
-          {/* Time info */}
-          <div className="space-y-0.5">
-            <div className="font-mono text-sm">
-              {formatTime(segment.start)} - {formatTime(segment.end)}
-            </div>
-            <div className="text-xs text-muted-foreground">
-              {formatTime(duration)}
-            </div>
-          </div>
+        {/* Index badge */}
+        <div
+          className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-medium shrink-0 ${
+            isSelected ? 'bg-primary text-primary-foreground' : 'bg-muted'
+          }`}
+        >
+          {index + 1}
         </div>
+
+        {/* Time info - clickable */}
+        <button
+          className="flex-1 text-left"
+          onClick={onSelect}
+        >
+          <div className="font-mono text-sm">
+            {formatTime(segment.start)} - {formatTime(segment.end)}
+          </div>
+          <div className="text-xs text-muted-foreground">
+            ความยาว {formatTime(duration)}
+          </div>
+        </button>
+
+        {/* Preview button */}
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-8 w-8 text-muted-foreground hover:text-primary"
+          onClick={(e) => {
+            e.stopPropagation()
+            onSelect()
+          }}
+          title="Preview"
+        >
+          <Play className="h-4 w-4" />
+        </Button>
 
         {/* Delete button */}
         <Button
           variant="ghost"
           size="icon"
           className="h-8 w-8 text-muted-foreground hover:text-destructive"
-          onClick={(e) => {
-            e.stopPropagation()
-            onDelete()
-          }}
+          onClick={onDelete}
         >
           <Trash2 className="h-4 w-4" />
         </Button>
