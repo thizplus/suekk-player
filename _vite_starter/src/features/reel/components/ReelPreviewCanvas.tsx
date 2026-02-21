@@ -1,12 +1,12 @@
 import { useEffect, useRef, useCallback, useState } from 'react'
 import Hls from 'hls.js'
-import { Play, Pause, SkipBack, SkipForward, Scissors, Flag, Film, Loader2 } from 'lucide-react'
+import { Play, Pause, SkipBack, SkipForward, Scissors, Flag, Film, Loader2, ListVideo } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useStreamAccess } from '@/features/embed/hooks'
 import { useThumbnailBlob } from '../hooks/useThumbnailBlob'
 import { APP_CONFIG } from '@/constants/app-config'
 import type { Video } from '@/features/video/types'
-import type { ReelStyle } from '../types'
+import type { ReelStyle, VideoSegment } from '../types'
 import { formatTime } from './constants'
 
 interface ReelPreviewCanvasProps {
@@ -27,6 +27,9 @@ interface ReelPreviewCanvasProps {
   onVideoReady: (ready: boolean) => void
   onSegmentStartChange: (time: number) => void
   onSegmentEndChange: (time: number) => void
+  // Multi-segment preview
+  segments?: VideoSegment[]
+  onSegmentIndexChange?: (index: number) => void
 }
 
 // Style-specific layout configurations matching FFmpeg output exactly
@@ -102,6 +105,8 @@ export function ReelPreviewCanvas({
   onVideoReady,
   onSegmentStartChange,
   onSegmentEndChange,
+  segments = [],
+  onSegmentIndexChange,
 }: ReelPreviewCanvasProps) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const hlsRef = useRef<Hls | null>(null)
@@ -109,7 +114,21 @@ export function ReelPreviewCanvas({
   const [currentTime, setCurrentTime] = useState(0)
   const [isVideoReady, setIsVideoReady] = useState(false)
 
+  // Multi-segment preview state
+  const [isMultiPreview, setIsMultiPreview] = useState(false)
+  const [previewSegmentIndex, setPreviewSegmentIndex] = useState(0)
+
   const layout = STYLE_LAYOUTS[style]
+
+  // ใช้ segments สำหรับ multi-preview หรือ single segment
+  const hasMultipleSegments = segments.length > 1
+  const currentPreviewSegment = isMultiPreview && segments.length > 0
+    ? segments[previewSegmentIndex]
+    : null
+
+  // effective start/end สำหรับ playback
+  const effectiveStart = currentPreviewSegment?.start ?? segmentStart
+  const effectiveEnd = currentPreviewSegment?.end ?? segmentEnd
 
   // Compute video style with crop position for square/fullcover
   const computedVideoStyle: React.CSSProperties = {
@@ -203,7 +222,7 @@ export function ReelPreviewCanvas({
     }
   }, [hlsUrl, streamAccess?.token])
 
-  // Sync video time with segment
+  // Sync video time with segment (handles both single and multi-segment)
   useEffect(() => {
     const video = videoRef.current
     if (!video) return
@@ -212,22 +231,45 @@ export function ReelPreviewCanvas({
       const time = video.currentTime
       setCurrentTime(time)
       onTimeUpdate(time)
-      if (time >= segmentEnd) {
-        video.currentTime = segmentStart
-        if (isPlaying) {
-          video.play()
+
+      // Check if we've reached the end of current segment
+      if (time >= effectiveEnd) {
+        if (isMultiPreview && segments.length > 0) {
+          // Multi-segment mode: advance to next segment
+          const nextIndex = (previewSegmentIndex + 1) % segments.length
+          setPreviewSegmentIndex(nextIndex)
+          onSegmentIndexChange?.(nextIndex)
+
+          const nextSegment = segments[nextIndex]
+          // Load and seek to next segment
+          if (hlsRef.current) {
+            hlsRef.current.startLoad(nextSegment.start)
+          }
+          video.currentTime = nextSegment.start
+          if (isPlaying) {
+            video.play()
+          }
+        } else {
+          // Single segment mode: loop
+          video.currentTime = effectiveStart
+          if (isPlaying) {
+            video.play()
+          }
         }
       }
     }
 
     video.addEventListener('timeupdate', handleTimeUpdate)
     return () => video.removeEventListener('timeupdate', handleTimeUpdate)
-  }, [segmentStart, segmentEnd, isPlaying, onTimeUpdate])
+  }, [effectiveStart, effectiveEnd, isPlaying, onTimeUpdate, isMultiPreview, segments, previewSegmentIndex, onSegmentIndexChange])
 
   // Handle seek from parent
   useEffect(() => {
     const video = videoRef.current
     if (!video || !isVideoReady || seekToTime === undefined || !seekRequestId) return
+
+    // Exit multi-preview mode when seeking manually
+    setIsMultiPreview(false)
 
     // เริ่มโหลด segments ที่ตำแหน่งที่ต้องการ
     if (hlsRef.current) {
@@ -245,10 +287,10 @@ export function ReelPreviewCanvas({
     if (video.paused) {
       // เริ่มโหลด segments เมื่อกด play (ถ้ายังไม่โหลด)
       if (hlsRef.current) {
-        hlsRef.current.startLoad(segmentStart)
+        hlsRef.current.startLoad(effectiveStart)
       }
-      if (video.currentTime < segmentStart || video.currentTime >= segmentEnd) {
-        video.currentTime = segmentStart
+      if (video.currentTime < effectiveStart || video.currentTime >= effectiveEnd) {
+        video.currentTime = effectiveStart
       }
       // รอให้ buffer พร้อมก่อน play
       const playWhenReady = () => {
@@ -268,7 +310,7 @@ export function ReelPreviewCanvas({
       video.pause()
       setIsPlaying(false)
     }
-  }, [segmentStart, segmentEnd])
+  }, [effectiveStart, effectiveEnd])
 
   const seekTo = useCallback((time: number) => {
     const video = videoRef.current
@@ -282,6 +324,47 @@ export function ReelPreviewCanvas({
     onTimeUpdate(time)
   }, [isVideoReady, onTimeUpdate])
 
+  // Start multi-segment preview
+  const startMultiPreview = useCallback(() => {
+    if (segments.length === 0) return
+
+    const video = videoRef.current
+    if (!video || !isVideoReady) return
+
+    setIsMultiPreview(true)
+    setPreviewSegmentIndex(0)
+    onSegmentIndexChange?.(0)
+
+    const firstSegment = segments[0]
+    if (hlsRef.current) {
+      hlsRef.current.startLoad(firstSegment.start)
+    }
+    video.currentTime = firstSegment.start
+
+    // Auto play
+    const playWhenReady = () => {
+      video.play().catch(() => {
+        setTimeout(() => video.play().catch(() => {}), 100)
+      })
+      setIsPlaying(true)
+    }
+    if (video.readyState >= 3) {
+      playWhenReady()
+    } else {
+      video.addEventListener('canplay', playWhenReady, { once: true })
+    }
+  }, [segments, isVideoReady, onSegmentIndexChange])
+
+  // Stop multi-segment preview
+  const stopMultiPreview = useCallback(() => {
+    setIsMultiPreview(false)
+    const video = videoRef.current
+    if (video) {
+      video.pause()
+      setIsPlaying(false)
+    }
+  }, [])
+
   // FFmpeg: shadowcolor=black@0.5:shadowx=2:shadowy=2
   const textShadowStyle = layout.hasTextShadow
     ? { textShadow: '2px 2px 4px rgba(0,0,0,0.7)' }
@@ -293,6 +376,27 @@ export function ReelPreviewCanvas({
     square: 'แบบสี่เหลี่ยม (1:1)',
     fullcover: 'แบบเต็มจอ',
   }
+
+  // Calculate progress within current preview
+  const previewProgress = isMultiPreview && segments.length > 0
+    ? (() => {
+        // Calculate cumulative progress
+        let totalDuration = 0
+        let currentProgress = 0
+
+        for (let i = 0; i < segments.length; i++) {
+          const segDuration = segments[i].end - segments[i].start
+          if (i < previewSegmentIndex) {
+            currentProgress += segDuration
+          } else if (i === previewSegmentIndex) {
+            currentProgress += Math.max(0, currentTime - segments[i].start)
+          }
+          totalDuration += segDuration
+        }
+
+        return { current: currentProgress, total: totalDuration }
+      })()
+    : null
 
   return (
     <div className="w-full max-w-[320px] space-y-3">
@@ -417,6 +521,34 @@ export function ReelPreviewCanvas({
           </div>
         )}
 
+        {/* Multi-segment preview indicator */}
+        {isMultiPreview && segments.length > 0 && (
+          <div className="absolute top-2 left-2 right-2 pointer-events-none">
+            <div className="bg-black/70 rounded-lg px-3 py-2 text-white text-xs">
+              <div className="flex items-center justify-between mb-1">
+                <span className="flex items-center gap-1">
+                  <ListVideo className="h-3 w-3" />
+                  Preview: Segment {previewSegmentIndex + 1}/{segments.length}
+                </span>
+                <span className="font-mono">
+                  {formatTime(previewProgress?.current || 0)}/{formatTime(previewProgress?.total || 0)}
+                </span>
+              </div>
+              {/* Progress bar */}
+              <div className="h-1 bg-white/30 rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-primary transition-all"
+                  style={{
+                    width: previewProgress
+                      ? `${(previewProgress.current / previewProgress.total) * 100}%`
+                      : '0%'
+                  }}
+                />
+              </div>
+            </div>
+          </div>
+        )}
+
       </div>
 
       {/* Style label below preview */}
@@ -431,7 +563,13 @@ export function ReelPreviewCanvas({
           <div className="text-center text-sm font-mono text-muted-foreground">
             <span className="text-foreground font-semibold">{formatTime(currentTime)}</span>
             <span className="mx-2">|</span>
-            <span>{formatTime(segmentStart)} - {formatTime(segmentEnd)}</span>
+            {isMultiPreview && currentPreviewSegment ? (
+              <span className="text-primary">
+                Seg {previewSegmentIndex + 1}: {formatTime(currentPreviewSegment.start)} - {formatTime(currentPreviewSegment.end)}
+              </span>
+            ) : (
+              <span>{formatTime(segmentStart)} - {formatTime(segmentEnd)}</span>
+            )}
           </div>
 
           {/* Playback controls */}
@@ -440,7 +578,10 @@ export function ReelPreviewCanvas({
               variant="outline"
               size="icon"
               className="h-9 w-9"
-              onClick={() => seekTo(segmentStart)}
+              onClick={() => {
+                setIsMultiPreview(false)
+                seekTo(segmentStart)
+              }}
               disabled={!isVideoReady}
               title="ไปจุดเริ่มต้น"
             >
@@ -459,42 +600,79 @@ export function ReelPreviewCanvas({
               variant="outline"
               size="icon"
               className="h-9 w-9"
-              onClick={() => seekTo(Math.max(0, segmentEnd - 1))}
+              onClick={() => {
+                setIsMultiPreview(false)
+                seekTo(Math.max(0, segmentEnd - 1))
+              }}
               disabled={!isVideoReady}
               title="ไปจุดสิ้นสุด"
             >
               <SkipForward className="h-4 w-4" />
             </Button>
-            <div className="w-px h-6 bg-border mx-1" />
-            <Button
-              variant="secondary"
-              size="sm"
-              className="h-9 px-3"
-              onClick={() => {
-                onSegmentStartChange(currentTime)
-                if (currentTime >= segmentEnd) {
-                  onSegmentEndChange(currentTime + 30)
-                }
-              }}
-              disabled={!isVideoReady}
-            >
-              <Flag className="h-3.5 w-3.5 mr-1.5" />
-              เริ่ม
-            </Button>
-            <Button
-              variant="secondary"
-              size="sm"
-              className="h-9 px-3"
-              onClick={() => {
-                if (currentTime > segmentStart) {
-                  onSegmentEndChange(currentTime)
-                }
-              }}
-              disabled={!isVideoReady || currentTime <= segmentStart}
-            >
-              <Scissors className="h-3.5 w-3.5 mr-1.5" />
-              จบ
-            </Button>
+
+            {/* Multi-segment preview button */}
+            {hasMultipleSegments && (
+              <>
+                <div className="w-px h-6 bg-border mx-1" />
+                {isMultiPreview ? (
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    className="h-9 px-3"
+                    onClick={stopMultiPreview}
+                  >
+                    <Pause className="h-3.5 w-3.5 mr-1.5" />
+                    หยุด Preview
+                  </Button>
+                ) : (
+                  <Button
+                    variant="default"
+                    size="sm"
+                    className="h-9 px-3"
+                    onClick={startMultiPreview}
+                    disabled={!isVideoReady}
+                  >
+                    <ListVideo className="h-3.5 w-3.5 mr-1.5" />
+                    Preview ทั้งหมด
+                  </Button>
+                )}
+              </>
+            )}
+
+            {!hasMultipleSegments && (
+              <>
+                <div className="w-px h-6 bg-border mx-1" />
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  className="h-9 px-3"
+                  onClick={() => {
+                    onSegmentStartChange(currentTime)
+                    if (currentTime >= segmentEnd) {
+                      onSegmentEndChange(currentTime + 30)
+                    }
+                  }}
+                  disabled={!isVideoReady}
+                >
+                  <Flag className="h-3.5 w-3.5 mr-1.5" />
+                  เริ่ม
+                </Button>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  className="h-9 px-3"
+                  onClick={() => {
+                    if (currentTime > segmentStart) {
+                      onSegmentEndChange(currentTime)
+                    }
+                  }}
+                  disabled={!isVideoReady || currentTime <= segmentStart}
+                >
+                  <Scissors className="h-3.5 w-3.5 mr-1.5" />
+                  จบ
+                </Button>
+              </>
+            )}
           </div>
         </div>
       )}

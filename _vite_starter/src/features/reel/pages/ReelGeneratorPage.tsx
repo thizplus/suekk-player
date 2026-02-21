@@ -349,6 +349,15 @@ export function ReelGeneratorPage() {
             onVideoReady={setIsVideoReady}
             onSegmentStartChange={handleSegmentStartChange}
             onSegmentEndChange={handleSegmentEndChange}
+            segments={segments}
+            onSegmentIndexChange={(index) => {
+              setSelectedSegmentIndex(index)
+              // Sync timecode selector with current preview segment
+              if (segments[index]) {
+                setSegmentStart(segments[index].start)
+                setSegmentEnd(segments[index].end)
+              }
+            }}
           />
         </div>
 
