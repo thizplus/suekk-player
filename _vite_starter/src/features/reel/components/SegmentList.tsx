@@ -33,7 +33,7 @@ interface SegmentListProps {
   currentTime: number
   onChange: (segments: VideoSegment[]) => void
   onSeek: (time: number) => void
-  onSelectSegment: (index: number) => void
+  onSelectSegment: (index: number | null) => void  // null = deselect
   selectedIndex: number | null
 }
 
@@ -82,8 +82,9 @@ export function SegmentList({
     }
 
     onChange([...segments, newSegment])
-    onSelectSegment(segments.length) // select ตัวใหม่
-    onSeek(startTime) // seek ไปตำแหน่งใหม่
+    // ไม่ select segment ใหม่ - ให้ user browse หาตำแหน่งถัดไปได้อิสระ
+    onSelectSegment(null)
+    // ไม่ seek - ให้ user อยู่ตำแหน่งเดิมเพื่อดู preview แล้วไปต่อ
   }
 
   // ลบ segment
@@ -99,7 +100,7 @@ export function SegmentList({
         onSelectSegment(newIndex)
         onSeek(newSegments[newIndex].start)
       } else {
-        onSelectSegment(null as unknown as number)
+        onSelectSegment(null)
       }
     } else if (selectedIndex !== null && selectedIndex > index) {
       onSelectSegment(selectedIndex - 1)

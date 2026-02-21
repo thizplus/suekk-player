@@ -419,14 +419,26 @@ export function ReelGeneratorPage() {
                     selectedIndex={selectedSegmentIndex}
                   />
 
-                  {/* Divider */}
-                  {segments.length > 0 && selectedSegmentIndex !== null && (
-                    <div className="border-t pt-4">
+                  {/* Divider - show mode */}
+                  <div className="border-t pt-4">
+                    {selectedSegmentIndex !== null && segments[selectedSegmentIndex] ? (
+                      <div className="flex items-center justify-between mb-2">
+                        <p className="text-sm font-medium text-primary">
+                          ✏️ กำลังแก้ไข Segment {selectedSegmentIndex + 1}
+                        </p>
+                        <button
+                          className="text-xs text-muted-foreground hover:text-foreground"
+                          onClick={() => setSelectedSegmentIndex(null)}
+                        >
+                          ยกเลิกแก้ไข
+                        </button>
+                      </div>
+                    ) : (
                       <p className="text-sm text-muted-foreground mb-2">
-                        แก้ไข Segment {(selectedSegmentIndex ?? 0) + 1}
+                        🔍 เลือกช่วงเวลาสำหรับ segment ใหม่
                       </p>
-                    </div>
-                  )}
+                    )}
+                  </div>
 
                   {/* Single segment editor (ใช้ edit segment ที่เลือก หรือ single mode) */}
                   <ReelTimecodeSelector
