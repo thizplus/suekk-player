@@ -72,11 +72,17 @@ func (pb *ProgressBroadcaster) handleProgressUpdate(update *ports.ProgressData) 
 		return
 	}
 
-	// ตรวจสอบว่าเป็น subtitle progress หรือ transcode progress
+	// ตรวจสอบว่าเป็น subtitle progress หรือ transcode progress หรือ gallery progress
 	isSubtitleProgress := update.SubtitleID != "" || update.Stage != ""
+	isGalleryProgress := update.Quality == "gallery"
 
 	if isSubtitleProgress {
 		pb.handleSubtitleProgress(update)
+		return
+	}
+
+	if isGalleryProgress {
+		pb.handleGalleryProgress(update)
 		return
 	}
 
@@ -359,6 +365,42 @@ func (pb *ProgressBroadcaster) handleSubtitleProgress(update *ports.ProgressData
 		"progress", update.Progress,
 		"subtitle_id", update.SubtitleID,
 		"language", update.CurrentLanguage,
+		"clients_count", pb.manager.GetTotalClients(),
+	)
+}
+
+// handleGalleryProgress จัดการ gallery progress update
+func (pb *ProgressBroadcaster) handleGalleryProgress(update *ports.ProgressData) {
+	// Map status
+	status := update.Status
+	if status == "processing" && update.Progress == 0 {
+		status = "started"
+	}
+
+	// ดึง video title จาก cache หรือ database
+	videoTitle := pb.getVideoTitle(update.VideoID, update.VideoCode)
+
+	// สร้าง WebSocket message สำหรับ gallery
+	wsMessage := ProgressMessage{
+		VideoID:      update.VideoID,
+		VideoCode:    update.VideoCode,
+		VideoTitle:   videoTitle,
+		Type:         "gallery",
+		Status:       status,
+		Progress:     update.Progress,
+		CurrentStep:  update.Message,
+		Message:      update.Message,
+		ErrorMessage: update.Error,
+	}
+
+	// Broadcast ไปยังทุก client
+	pb.manager.BroadcastToAll("video_progress", wsMessage)
+
+	logger.Info("Gallery progress broadcasted to WebSocket",
+		"video_id", update.VideoID,
+		"status", update.Status,
+		"progress", update.Progress,
+		"worker_id", update.WorkerID,
 		"clients_count", pb.manager.GetTotalClients(),
 	)
 }

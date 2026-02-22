@@ -3,7 +3,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { videoKeys } from '@/features/video/hooks'
 
 // Progress Types (ตรงกับ backend ProgressData)
-export type ProgressType = 'upload' | 'transcode' | 'subtitle'
+export type ProgressType = 'upload' | 'transcode' | 'subtitle' | 'gallery'
 export type ProgressStatus = 'started' | 'processing' | 'completed' | 'failed'
 
 export interface VideoProgress {
