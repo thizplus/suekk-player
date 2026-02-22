@@ -462,6 +462,79 @@ func (h *HLSHandler) ServeReel(c *fiber.Ctx) error {
 	return nil
 }
 
+// ServeGallery streams gallery images from storage
+// GET /gallery/:code/001.jpg
+func (h *HLSHandler) ServeGallery(c *fiber.Ctx) error {
+	ctx := c.UserContext()
+	videoCode := c.Params("code")
+	filePath := c.Params("*")
+
+	if videoCode == "" || filePath == "" {
+		return c.Status(fiber.StatusBadRequest).SendString("Invalid path")
+	}
+
+	// Validate X-Stream-Token header
+	tokenString := c.Get("X-Stream-Token")
+	if tokenString == "" {
+		tokenString = c.Query("token")
+	}
+
+	if tokenString == "" {
+		logger.WarnContext(ctx, "Missing gallery token", "code", videoCode, "path", filePath)
+		return c.Status(fiber.StatusUnauthorized).SendString("Unauthorized")
+	}
+
+	// Parse and validate JWT
+	claims := &HLSAccessClaims{}
+	token, err := jwt.ParseWithClaims(tokenString, claims, func(token *jwt.Token) (interface{}, error) {
+		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
+		}
+		return []byte(h.jwtSecret), nil
+	})
+
+	if err != nil || !token.Valid {
+		logger.WarnContext(ctx, "Invalid gallery token", "code", videoCode, "error", err)
+		return c.Status(fiber.StatusUnauthorized).SendString("Invalid token")
+	}
+
+	// Construct storage path: gallery/{code}/{filepath}
+	storagePath := fmt.Sprintf("gallery/%s/%s", videoCode, filePath)
+
+	// Set content type for images
+	ext := strings.ToLower(filepath.Ext(filePath))
+	contentType := "application/octet-stream"
+	switch ext {
+	case ".jpg", ".jpeg":
+		contentType = "image/jpeg"
+	case ".png":
+		contentType = "image/png"
+	case ".webp":
+		contentType = "image/webp"
+	}
+
+	// Set headers
+	c.Set("Content-Type", contentType)
+	c.Set("Cache-Control", "public, max-age=31536000") // Cache 1 year (images don't change)
+
+	// Get file from storage
+	reader, _, err := h.storage.GetFileContent(storagePath)
+	if err != nil {
+		logger.WarnContext(ctx, "Gallery file not found", "path", storagePath, "error", err)
+		return c.Status(fiber.StatusNotFound).SendString("File not found")
+	}
+	defer reader.Close()
+
+	// Stream the file
+	_, err = io.Copy(c.Response().BodyWriter(), reader)
+	if err != nil {
+		logger.ErrorContext(ctx, "Failed to stream gallery file", "path", storagePath, "error", err)
+		return c.Status(fiber.StatusInternalServerError).SendString("Stream error")
+	}
+
+	return nil
+}
+
 // serveRangeRequest handles HTTP Range requests for byte-range HLS
 func (h *HLSHandler) serveRangeRequest(c *fiber.Ctx, storagePath, rangeHeader string) error {
 	ctx := c.UserContext()

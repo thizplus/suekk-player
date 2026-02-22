@@ -32,4 +32,10 @@ func SetupHLSRoutes(app *fiber.App, h *handlers.HLSHandler) {
 	// GET /stream/reels/:reelId/output.mp4, /stream/reels/:reelId/thumb.jpg
 	// Storage: reels/{reelId}/output.mp4
 	app.Get("/stream/reels/:code/*", h.ServeReel) // :code is actually reel_id
+
+	// Gallery Streaming - CDN จะ proxy มาที่นี่
+	// URL: cdn.suekk.com/gallery/{code}/* → api:8080/gallery/{code}/*
+	// GET /gallery/:code/001.jpg, /gallery/:code/002.jpg
+	// Storage: gallery/{code}/001.jpg
+	app.Get("/gallery/:code/*", h.ServeGallery)
 }
