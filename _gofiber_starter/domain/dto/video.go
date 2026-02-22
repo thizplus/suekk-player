@@ -16,9 +16,11 @@ type CreateVideoRequest struct {
 }
 
 type UpdateVideoRequest struct {
-	Title       *string    `json:"title" validate:"omitempty,min=1,max=255"`
-	Description *string    `json:"description" validate:"omitempty,max=5000"`
-	CategoryID  *uuid.UUID `json:"categoryId" validate:"omitempty,uuid"`
+	Title        *string    `json:"title" validate:"omitempty,min=1,max=255"`
+	Description  *string    `json:"description" validate:"omitempty,max=5000"`
+	CategoryID   *uuid.UUID `json:"categoryId" validate:"omitempty,uuid"`
+	GalleryPath  *string    `json:"gallery_path"`  // S3 path prefix (worker callback)
+	GalleryCount *int       `json:"gallery_count"` // Number of gallery images (worker callback)
 }
 
 type VideoFilterRequest struct {

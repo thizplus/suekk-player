@@ -906,3 +906,59 @@ func (h *VideoHandler) getBestAvailableQuality(video *models.Video) string {
 
 	return ""
 }
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Internal API - Worker Callbacks
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// UpdateGalleryRequest request body for updating gallery
+type UpdateGalleryRequest struct {
+	GalleryPath  string `json:"gallery_path"`
+	GalleryCount int    `json:"gallery_count"`
+}
+
+// UpdateGallery updates video gallery info (called by worker after gallery generation)
+func (h *VideoHandler) UpdateGallery(c *fiber.Ctx) error {
+	ctx := c.UserContext()
+	idParam := c.Params("id")
+
+	id, err := uuid.Parse(idParam)
+	if err != nil {
+		return utils.BadRequestResponse(c, "Invalid video ID")
+	}
+
+	var req UpdateGalleryRequest
+	if err := c.BodyParser(&req); err != nil {
+		logger.WarnContext(ctx, "Invalid request body", "error", err)
+		return utils.BadRequestResponse(c, "Invalid request body")
+	}
+
+	// Update gallery fields via service
+	updateReq := &dto.UpdateVideoRequest{
+		GalleryPath:  &req.GalleryPath,
+		GalleryCount: &req.GalleryCount,
+	}
+
+	video, err := h.videoService.Update(ctx, id, updateReq)
+	if err != nil {
+		logger.ErrorContext(ctx, "Failed to update video gallery",
+			"video_id", id,
+			"error", err,
+		)
+		return utils.InternalServerErrorResponse(c)
+	}
+
+	logger.InfoContext(ctx, "Gallery updated",
+		"video_id", id,
+		"video_code", video.Code,
+		"gallery_path", req.GalleryPath,
+		"gallery_count", req.GalleryCount,
+	)
+
+	return utils.SuccessResponse(c, fiber.Map{
+		"message":       "Gallery updated",
+		"video_id":      video.ID,
+		"video_code":    video.Code,
+		"gallery_count": req.GalleryCount,
+	})
+}

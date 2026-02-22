@@ -368,6 +368,14 @@ func (s *VideoServiceImpl) Update(ctx context.Context, id uuid.UUID, req *dto.Up
 		video.CategoryID = req.CategoryID
 	}
 
+	// Gallery fields (set by worker callback)
+	if req.GalleryPath != nil {
+		video.GalleryPath = *req.GalleryPath
+	}
+	if req.GalleryCount != nil {
+		video.GalleryCount = *req.GalleryCount
+	}
+
 	video.UpdatedAt = time.Now()
 
 	if err := s.videoRepo.Update(ctx, video); err != nil {

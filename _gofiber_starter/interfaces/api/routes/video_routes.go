@@ -14,6 +14,10 @@ func SetupVideoRoutes(api fiber.Router, h *handlers.Handlers) {
 	videos.Get("/code/:code", h.VideoHandler.GetByCode)       // ดึง video ตาม code (สำหรับ embed)
 	videos.Get("/embed/:code", h.VideoHandler.GetEmbed)       // ดึงข้อมูลสำหรับ embed player
 
+	// Internal routes (for worker callbacks)
+	internal := api.Group("/internal/videos")
+	internal.Patch("/:id/gallery", h.VideoHandler.UpdateGallery) // Worker callback เมื่อ gallery เสร็จ
+
 	// Protected routes (ต้อง login)
 	protected := videos.Group("", middleware.Protected())
 	protected.Post("/", h.VideoHandler.Upload)                // อัปโหลดวิดีโอใหม่
