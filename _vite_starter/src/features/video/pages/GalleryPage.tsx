@@ -31,7 +31,9 @@ export function GalleryPage() {
     if (!galleryPath || !streamAccess?.token) return ''
     const imageNum = String(index + 1).padStart(3, '0')
     // CDN URL: cdnUrl/{galleryPath}/{imageNum}.jpg
-    return `${APP_CONFIG.cdnUrl}/${galleryPath}/${imageNum}.jpg`
+    // Remove trailing slash from galleryPath to avoid double slash
+    const cleanPath = galleryPath.replace(/\/+$/, '')
+    return `${APP_CONFIG.cdnUrl}/${cleanPath}/${imageNum}.jpg`
   }, [galleryPath, streamAccess?.token])
 
   // Image fetch headers (need token)
