@@ -365,6 +365,20 @@ func (s *S3Storage) AbortMultipartUpload(path string, uploadID string) error {
 	return nil
 }
 
+// GetPresignedDownloadURL สร้าง presigned URL สำหรับ download ไฟล์
+func (s *S3Storage) GetPresignedDownloadURL(path string, expiry time.Duration) (string, error) {
+	path = strings.TrimPrefix(path, "/")
+	path = strings.ReplaceAll(path, "\\", "/")
+
+	// สร้าง presigned URL สำหรับ GET
+	presignedURL, err := s.client.PresignedGetObject(context.Background(), s.bucket, path, expiry, nil)
+	if err != nil {
+		return "", fmt.Errorf("failed to generate presigned download URL: %w", err)
+	}
+
+	return presignedURL.String(), nil
+}
+
 
 
 

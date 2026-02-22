@@ -228,3 +228,14 @@ export function useGenerateGallery() {
     },
   })
 }
+
+// ดึง presigned URLs สำหรับ gallery images
+export function useGalleryUrls(videoCode: string, options?: { enabled?: boolean }) {
+  return useQuery({
+    queryKey: [...videoKeys.byCode(videoCode), 'gallery-urls'],
+    queryFn: () => videoService.getGalleryUrls(videoCode),
+    enabled: options?.enabled ?? !!videoCode,
+    staleTime: 30 * 60 * 1000, // Cache 30 นาที (URLs หมดอายุใน 1 ชม.)
+    gcTime: 60 * 60 * 1000,    // Keep in cache 1 ชม.
+  })
+}

@@ -169,6 +169,14 @@ export const REEL_ROUTES = {
   BY_VIDEO: (videoId: string) => `/api/v1/videos/${videoId}/reels`,
 }
 
+// HLS - Streaming access and gallery
+export const HLS_ROUTES = {
+  // Get HLS access token and playlist URL
+  ACCESS: (code: string) => `/api/v1/hls/${code}/access`,
+  // Get presigned URLs for gallery images (single API call)
+  GALLERY_URLS: (code: string) => `/api/v1/hls/${code}/gallery`,
+}
+
 // Subtitle - จัดการ subtitle และ translation
 export const SUBTITLE_ROUTES = {
   // ภาษาที่รองรับ

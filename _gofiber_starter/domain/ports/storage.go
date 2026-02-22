@@ -55,6 +55,10 @@ type StoragePort interface {
 
 	// AbortMultipartUpload ยกเลิก multipart upload ที่ค้าง
 	AbortMultipartUpload(path string, uploadId string) error
+
+	// GetPresignedDownloadURL สร้าง presigned URL สำหรับ download ไฟล์
+	// expiry: ระยะเวลาที่ URL ใช้ได้
+	GetPresignedDownloadURL(path string, expiry time.Duration) (url string, err error)
 }
 
 // CompletedPart ข้อมูล part ที่ upload สำเร็จ

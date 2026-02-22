@@ -253,3 +253,8 @@ func (l *LocalStorage) CompleteMultipartUpload(path string, uploadID string, par
 func (l *LocalStorage) AbortMultipartUpload(path string, uploadID string) error {
 	return ErrNotSupported
 }
+
+// GetPresignedDownloadURL ไม่รองรับใน Local Storage
+func (l *LocalStorage) GetPresignedDownloadURL(path string, expiry time.Duration) (string, error) {
+	return "", ErrNotSupported
+}

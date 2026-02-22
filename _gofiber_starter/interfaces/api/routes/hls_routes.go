@@ -14,6 +14,10 @@ func SetupHLSRoutes(app *fiber.App, h *handlers.HLSHandler) {
 	// Response: { playlist_url, token, expires_at }
 	hls.Get("/:code/access", h.GetAccess)
 
+	// GET /api/v1/hls/:code/gallery - รับ presigned URLs สำหรับ gallery images ทั้งหมด
+	// Response: { urls: string[], count, expires_at }
+	hls.Get("/:code/gallery", h.GetGalleryUrls)
+
 	// GET /api/v1/hls/verify - Verify token (debug endpoint)
 	hls.Get("/verify", h.VerifyToken)
 

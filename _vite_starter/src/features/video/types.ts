@@ -210,3 +210,11 @@ export interface UploadLimits {
   part_size: number          // bytes
   allowed_types: string[]
 }
+
+// Gallery URLs Response (presigned URLs for all gallery images)
+export interface GalleryUrlsResponse {
+  code: string
+  count: number
+  urls: string[]
+  expires_at: number // Unix timestamp
+}

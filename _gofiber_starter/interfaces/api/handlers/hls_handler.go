@@ -535,6 +535,71 @@ func (h *HLSHandler) ServeGallery(c *fiber.Ctx) error {
 	return nil
 }
 
+// GetGalleryUrls returns presigned URLs for all gallery images (single API call)
+// GET /api/v1/hls/:code/gallery
+func (h *HLSHandler) GetGalleryUrls(c *fiber.Ctx) error {
+	ctx := c.UserContext()
+	code := c.Params("code")
+
+	if code == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"success": false,
+			"error":   "Video code is required",
+		})
+	}
+
+	// Get video to check galleryCount
+	video, err := h.videoService.GetByCode(ctx, code)
+	if err != nil {
+		logger.WarnContext(ctx, "Video not found for gallery", "code", code)
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+			"success": false,
+			"error":   "Video not found",
+		})
+	}
+
+	if video.GalleryCount == 0 {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+			"success": false,
+			"error":   "Gallery not available",
+		})
+	}
+
+	// Generate presigned URLs for all images (expires in 1 hour)
+	expiry := 1 * time.Hour
+	urls := make([]string, 0, video.GalleryCount)
+
+	for i := 1; i <= video.GalleryCount; i++ {
+		// Storage path: gallery/{code}/001.jpg
+		imagePath := fmt.Sprintf("gallery/%s/%03d.jpg", code, i)
+		presignedURL, err := h.storage.GetPresignedDownloadURL(imagePath, expiry)
+		if err != nil {
+			logger.WarnContext(ctx, "Failed to generate presigned URL", "path", imagePath, "error", err)
+			continue
+		}
+		urls = append(urls, presignedURL)
+	}
+
+	if len(urls) == 0 {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"success": false,
+			"error":   "Failed to generate gallery URLs",
+		})
+	}
+
+	logger.InfoContext(ctx, "Gallery URLs generated", "code", code, "count", len(urls))
+
+	return c.JSON(fiber.Map{
+		"success": true,
+		"data": fiber.Map{
+			"code":       code,
+			"count":      len(urls),
+			"urls":       urls,
+			"expires_at": time.Now().Add(expiry).Unix(),
+		},
+	})
+}
+
 // serveRangeRequest handles HTTP Range requests for byte-range HLS
 func (h *HLSHandler) serveRangeRequest(c *fiber.Ctx, storagePath, rangeHeader string) error {
 	ctx := c.UserContext()

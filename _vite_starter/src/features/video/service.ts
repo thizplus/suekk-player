@@ -1,5 +1,5 @@
 import { apiClient, type PaginationMeta } from '@/lib/api-client'
-import { VIDEO_ROUTES, TRANSCODING_ROUTES, CONFIG_ROUTES } from '@/constants/api-routes'
+import { VIDEO_ROUTES, TRANSCODING_ROUTES, CONFIG_ROUTES, HLS_ROUTES } from '@/constants/api-routes'
 import type {
   Video,
   VideoUploadResponse,
@@ -11,6 +11,7 @@ import type {
   WorkersResponse,
   DLQVideo,
   UploadLimits,
+  GalleryUrlsResponse,
 } from './types'
 
 export const videoService = {
@@ -120,5 +121,10 @@ export const videoService = {
   // สร้าง gallery จาก HLS (สำหรับ video ที่ยังไม่มี gallery)
   async generateGallery(videoId: string): Promise<{ message: string }> {
     return apiClient.post<{ message: string }>(VIDEO_ROUTES.GENERATE_GALLERY(videoId))
+  },
+
+  // ดึง presigned URLs สำหรับ gallery images ทั้งหมด (single API call)
+  async getGalleryUrls(videoCode: string): Promise<GalleryUrlsResponse> {
+    return apiClient.get<GalleryUrlsResponse>(HLS_ROUTES.GALLERY_URLS(videoCode))
   },
 }

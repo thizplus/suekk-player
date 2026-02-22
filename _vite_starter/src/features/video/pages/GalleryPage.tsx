@@ -2,9 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { ArrowLeft, Loader2, X, ChevronLeft, ChevronRight, ImageOff } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { useVideoByCode } from '../hooks'
-import { useStreamAccess } from '@/features/embed'
-import { APP_CONFIG } from '@/constants/app-config'
+import { useVideoByCode, useGalleryUrls } from '../hooks'
 
 export function GalleryPage() {
   const { code } = useParams<{ code: string }>()
@@ -13,9 +11,9 @@ export function GalleryPage() {
   // Fetch video data
   const { data: video, isLoading: videoLoading, error: videoError } = useVideoByCode(code ?? '')
 
-  // Get stream token for CDN access
-  const { data: streamAccess, isLoading: tokenLoading } = useStreamAccess(code ?? '', {
-    enabled: !!code && !!video && video.status === 'ready',
+  // Fetch presigned URLs for all gallery images (single API call)
+  const { data: galleryData, isLoading: galleryLoading } = useGalleryUrls(code ?? '', {
+    enabled: !!code && !!video && video.status === 'ready' && (video.galleryCount ?? 0) > 0,
   })
 
   // State
@@ -23,23 +21,8 @@ export function GalleryPage() {
   const [loadedImages, setLoadedImages] = useState<Set<number>>(new Set())
   const [failedImages, setFailedImages] = useState<Set<number>>(new Set())
 
-  const galleryCount = video?.galleryCount ?? 0
-  const galleryPath = video?.galleryPath ?? ''
-
-  // Build image URL with token
-  const getImageUrl = useCallback((index: number) => {
-    if (!galleryPath || !streamAccess?.token) return ''
-    const imageNum = String(index + 1).padStart(3, '0')
-    // CDN URL: cdnUrl/{galleryPath}/{imageNum}.jpg
-    // Remove trailing slash from galleryPath to avoid double slash
-    const cleanPath = galleryPath.replace(/\/+$/, '')
-    return `${APP_CONFIG.cdnUrl}/${cleanPath}/${imageNum}.jpg`
-  }, [galleryPath, streamAccess?.token])
-
-  // Image fetch headers (need token)
-  const fetchHeaders: Record<string, string> = streamAccess?.token
-    ? { 'X-Stream-Token': streamAccess.token }
-    : {}
+  const galleryCount = galleryData?.count ?? video?.galleryCount ?? 0
+  const imageUrls = galleryData?.urls ?? []
 
   // Lightbox navigation
   const openLightbox = (index: number) => setLightboxIndex(index)
@@ -78,7 +61,7 @@ export function GalleryPage() {
   }, [lightboxIndex, goToPrev, goToNext])
 
   // Loading state
-  if (videoLoading || tokenLoading) {
+  if (videoLoading || galleryLoading) {
     return (
       <div className="fixed inset-0 bg-background flex items-center justify-center">
         <Loader2 className="size-8 animate-spin text-muted-foreground" />
@@ -101,7 +84,7 @@ export function GalleryPage() {
   }
 
   // No gallery state
-  if (!galleryCount || galleryCount === 0) {
+  if (!galleryCount || galleryCount === 0 || imageUrls.length === 0) {
     return (
       <div className="fixed inset-0 bg-background flex flex-col items-center justify-center gap-4">
         <ImageOff className="size-12 text-muted-foreground" />
@@ -132,12 +115,11 @@ export function GalleryPage() {
       {/* Gallery Grid */}
       <main className="max-w-7xl mx-auto px-4 py-6">
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2 sm:gap-3">
-          {Array.from({ length: galleryCount }, (_, index) => (
+          {imageUrls.map((url, index) => (
             <GalleryImage
               key={index}
               index={index}
-              url={getImageUrl(index)}
-              headers={fetchHeaders}
+              url={url}
               loaded={loadedImages.has(index)}
               failed={failedImages.has(index)}
               onLoad={() => setLoadedImages(prev => new Set(prev).add(index))}
@@ -149,10 +131,9 @@ export function GalleryPage() {
       </main>
 
       {/* Lightbox */}
-      {lightboxIndex !== null && (
+      {lightboxIndex !== null && imageUrls[lightboxIndex] && (
         <Lightbox
-          url={getImageUrl(lightboxIndex)}
-          headers={fetchHeaders}
+          url={imageUrls[lightboxIndex]}
           index={lightboxIndex}
           total={galleryCount}
           onClose={closeLightbox}
@@ -164,11 +145,10 @@ export function GalleryPage() {
   )
 }
 
-// Gallery Image Component with lazy loading
+// Gallery Image Component with lazy loading (presigned URL - no headers needed)
 interface GalleryImageProps {
   index: number
   url: string
-  headers: Record<string, string>
   loaded: boolean
   failed: boolean
   onLoad: () => void
@@ -176,8 +156,7 @@ interface GalleryImageProps {
   onClick: () => void
 }
 
-function GalleryImage({ index, url, headers, loaded, failed, onLoad, onError, onClick }: GalleryImageProps) {
-  const [blobUrl, setBlobUrl] = useState<string | undefined>()
+function GalleryImage({ index, url, loaded, failed, onLoad, onError, onClick }: GalleryImageProps) {
   const [isVisible, setIsVisible] = useState(false)
 
   // Intersection Observer for lazy loading
@@ -198,75 +177,50 @@ function GalleryImage({ index, url, headers, loaded, failed, onLoad, onError, on
     return () => observer.disconnect()
   }, [index])
 
-  // Fetch image when visible
-  useEffect(() => {
-    if (!isVisible || !url || loaded || failed) return
-
-    let cancelled = false
-
-    const fetchImage = async () => {
-      try {
-        const response = await fetch(url, { headers })
-        if (!response.ok || cancelled) {
-          if (!cancelled) onError()
-          return
-        }
-
-        const blob = await response.blob()
-        if (cancelled) return
-
-        const newBlobUrl = URL.createObjectURL(blob)
-        setBlobUrl(newBlobUrl)
-        onLoad()
-      } catch {
-        if (!cancelled) onError()
-      }
-    }
-
-    fetchImage()
-
-    return () => {
-      cancelled = true
-    }
-  }, [isVisible, url, headers, loaded, failed, onLoad, onError])
-
-  // Cleanup blob URL
-  useEffect(() => {
-    return () => {
-      if (blobUrl) URL.revokeObjectURL(blobUrl)
-    }
-  }, [blobUrl])
-
   return (
     <div
       id={`gallery-img-${index}`}
       className="aspect-video bg-muted rounded-lg overflow-hidden cursor-pointer hover:ring-2 hover:ring-primary transition-all"
       onClick={onClick}
     >
-      {blobUrl ? (
+      {isVisible && !failed ? (
         <img
-          src={blobUrl}
+          src={url}
           alt={`Gallery ${index + 1}`}
-          className="w-full h-full object-cover"
+          className={`w-full h-full object-cover ${loaded ? '' : 'opacity-0'}`}
           loading="lazy"
+          onLoad={onLoad}
+          onError={onError}
         />
-      ) : failed ? (
+      ) : null}
+
+      {/* Loading state */}
+      {isVisible && !loaded && !failed && (
+        <div className="absolute inset-0 flex items-center justify-center">
+          <Loader2 className="size-5 animate-spin text-muted-foreground/50" />
+        </div>
+      )}
+
+      {/* Failed state */}
+      {failed && (
         <div className="w-full h-full flex items-center justify-center">
           <ImageOff className="size-6 text-muted-foreground/50" />
         </div>
-      ) : (
+      )}
+
+      {/* Placeholder before visible */}
+      {!isVisible && (
         <div className="w-full h-full flex items-center justify-center">
-          <Loader2 className="size-5 animate-spin text-muted-foreground/50" />
+          <div className="size-4 rounded-full bg-muted-foreground/20" />
         </div>
       )}
     </div>
   )
 }
 
-// Lightbox Component
+// Lightbox Component (presigned URL - no headers needed)
 interface LightboxProps {
   url: string
-  headers: Record<string, string>
   index: number
   total: number
   onClose: () => void
@@ -274,49 +228,15 @@ interface LightboxProps {
   onNext: () => void
 }
 
-function Lightbox({ url, headers, index, total, onClose, onPrev, onNext }: LightboxProps) {
-  const [blobUrl, setBlobUrl] = useState<string | undefined>()
+function Lightbox({ url, index, total, onClose, onPrev, onNext }: LightboxProps) {
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(false)
 
-  // Fetch image for lightbox
+  // Reset state when URL changes
   useEffect(() => {
-    if (!url) return
-
-    let cancelled = false
     setLoading(true)
-
-    const fetchImage = async () => {
-      try {
-        const response = await fetch(url, { headers })
-        if (!response.ok || cancelled) return
-
-        const blob = await response.blob()
-        if (cancelled) return
-
-        const newBlobUrl = URL.createObjectURL(blob)
-        setBlobUrl(prev => {
-          if (prev) URL.revokeObjectURL(prev)
-          return newBlobUrl
-        })
-        setLoading(false)
-      } catch {
-        setLoading(false)
-      }
-    }
-
-    fetchImage()
-
-    return () => {
-      cancelled = true
-    }
-  }, [url, headers])
-
-  // Cleanup
-  useEffect(() => {
-    return () => {
-      if (blobUrl) URL.revokeObjectURL(blobUrl)
-    }
-  }, [blobUrl])
+    setError(false)
+  }, [url])
 
   return (
     <div
@@ -362,13 +282,20 @@ function Lightbox({ url, headers, index, total, onClose, onPrev, onNext }: Light
         className="max-w-[90vw] max-h-[90vh] flex items-center justify-center"
         onClick={(e) => e.stopPropagation()}
       >
-        {loading ? (
+        {loading && !error && (
           <Loader2 className="size-10 animate-spin text-white/50" />
-        ) : blobUrl ? (
+        )}
+
+        {!error ? (
           <img
-            src={blobUrl}
+            src={url}
             alt={`Gallery ${index + 1}`}
-            className="max-w-full max-h-[90vh] object-contain"
+            className={`max-w-full max-h-[90vh] object-contain ${loading ? 'hidden' : ''}`}
+            onLoad={() => setLoading(false)}
+            onError={() => {
+              setLoading(false)
+              setError(true)
+            }}
           />
         ) : (
           <ImageOff className="size-12 text-white/50" />
