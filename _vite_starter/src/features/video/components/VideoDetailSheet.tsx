@@ -6,6 +6,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
+import { Progress } from '@/components/ui/progress'
 import {
   Select,
   SelectContent,
@@ -24,6 +25,7 @@ import { useCategories } from '@/features/category/hooks'
 import { EmbedCodeDialog } from './EmbedCodeDialog'
 import { SubtitlePanel } from '@/features/subtitle'
 import { useStreamAccess } from '@/features/embed'
+import { useVideoProgressById } from '@/lib/websocket-provider'
 import { APP_CONFIG } from '@/constants/app-config'
 import { VIDEO_STATUS_LABELS, VIDEO_STATUS_STYLES, VIDEO_STATUS_DESCRIPTIONS } from '@/constants/enums'
 import { toast } from 'sonner'
@@ -41,6 +43,7 @@ export function VideoDetailSheet({ videoId, open, onOpenChange }: VideoDetailShe
   const updateVideo = useUpdateVideo()
   const generateGallery = useGenerateGallery()
   const regenerateGallery = useRegenerateGallery()
+  const galleryProgress = useVideoProgressById(video?.id ?? '', 'gallery')
   const [copiedField, setCopiedField] = useState<string | null>(null)
   const [embedDialogOpen, setEmbedDialogOpen] = useState(false)
 
@@ -490,6 +493,21 @@ export function VideoDetailSheet({ videoId, open, onOpenChange }: VideoDetailShe
             {/* Gallery Section */}
             {video.status === 'ready' && (
               <div className="pt-2 border-t">
+                {/* Show progress when gallery is generating */}
+                {galleryProgress && galleryProgress.status !== 'completed' && (
+                  <div className="space-y-2 mb-3 p-3 bg-muted rounded-lg">
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="flex items-center gap-1.5">
+                        <Loader2 className="size-4 animate-spin text-primary" />
+                        กำลังสร้าง Gallery...
+                      </span>
+                      <span className="font-mono text-muted-foreground">{galleryProgress.progress}%</span>
+                    </div>
+                    <Progress value={galleryProgress.progress} className="h-2" />
+                    <p className="text-xs text-muted-foreground">{galleryProgress.message}</p>
+                  </div>
+                )}
+
                 {video.galleryCount && video.galleryCount > 0 ? (
                   <div className="flex gap-2">
                     <Button variant="outline" className="flex-1" asChild>
@@ -510,10 +528,10 @@ export function VideoDetailSheet({ videoId, open, onOpenChange }: VideoDetailShe
                           },
                         })
                       }}
-                      disabled={regenerateGallery.isPending}
+                      disabled={regenerateGallery.isPending || !!galleryProgress}
                       title="สร้าง Gallery ใหม่"
                     >
-                      {regenerateGallery.isPending ? (
+                      {regenerateGallery.isPending || galleryProgress ? (
                         <Loader2 className="size-4 animate-spin" />
                       ) : (
                         <RefreshCw className="size-4" />
@@ -534,14 +552,14 @@ export function VideoDetailSheet({ videoId, open, onOpenChange }: VideoDetailShe
                         },
                       })
                     }}
-                    disabled={generateGallery.isPending}
+                    disabled={generateGallery.isPending || !!galleryProgress}
                   >
-                    {generateGallery.isPending ? (
+                    {generateGallery.isPending || galleryProgress ? (
                       <Loader2 className="size-4 mr-1.5 animate-spin" />
                     ) : (
                       <Images className="size-4 mr-1.5" />
                     )}
-                    สร้าง Gallery
+                    {galleryProgress ? 'กำลังสร้าง...' : 'สร้าง Gallery'}
                   </Button>
                 )}
               </div>

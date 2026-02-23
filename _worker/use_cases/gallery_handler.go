@@ -471,10 +471,10 @@ func (h *GalleryHandler) updateVideoGalleryClassified(ctx context.Context, video
 	url := fmt.Sprintf("%s/api/v1/internal/videos/%s/gallery", h.config.APIURL, videoID)
 
 	payload := map[string]interface{}{
-		"gallery_path":  galleryPath,
-		"gallery_count": safeCount, // Use safe_count as main gallery_count
-		"safe_count":    safeCount,
-		"nsfw_count":    nsfwCount,
+		"gallery_path":       galleryPath,
+		"gallery_count":      safeCount, // Use safe_count as main gallery_count
+		"gallery_safe_count": safeCount,
+		"gallery_nsfw_count": nsfwCount,
 	}
 
 	data, err := json.Marshal(payload)
@@ -518,11 +518,11 @@ func (h *GalleryHandler) updateVideoGalleryClassifiedThreeTier(ctx context.Conte
 	totalPublicCount := superSafeCount + safeCount
 
 	payload := map[string]interface{}{
-		"gallery_path":       galleryPath,
-		"gallery_count":      totalPublicCount,        // Total safe images (backward compatible)
-		"super_safe_count":   superSafeCount,          // NEW: super_safe (< 0.15 + face) for Public SEO
-		"safe_count":         safeCount,               // borderline (0.15-0.3)
-		"nsfw_count":         nsfwCount,               // nsfw (>= 0.3)
+		"gallery_path":             galleryPath,
+		"gallery_count":            totalPublicCount,  // Total safe images (backward compatible)
+		"gallery_super_safe_count": superSafeCount,    // super_safe (< 0.15 + face) for Public SEO
+		"gallery_safe_count":       safeCount,         // borderline (0.15-0.3)
+		"gallery_nsfw_count":       nsfwCount,         // nsfw (>= 0.3)
 	}
 
 	data, err := json.Marshal(payload)
