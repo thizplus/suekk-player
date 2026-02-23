@@ -548,8 +548,8 @@ func (h *HLSHandler) GetGalleryUrls(c *fiber.Ctx) error {
 		})
 	}
 
-	// Get video to check galleryCount
-	video, err := h.videoService.GetByCode(ctx, code)
+	// ตรวจสอบว่า video มีอยู่จริง
+	_, err := h.videoService.GetByCode(ctx, code)
 	if err != nil {
 		logger.WarnContext(ctx, "Video not found for gallery", "code", code)
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
@@ -558,69 +558,45 @@ func (h *HLSHandler) GetGalleryUrls(c *fiber.Ctx) error {
 		})
 	}
 
-	// ตรวจสอบว่ามี gallery หรือไม่
-	// - GallerySafeCount > 0: videos ใหม่ที่มี /safe/ subfolder
-	// - GalleryCount > 0: videos เก่าที่ยังไม่มี classification
-	if video.GalleryCount == 0 && video.GallerySafeCount == 0 {
-		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
-			"success": false,
-			"error":   "Gallery not available",
-		})
-	}
-
 	// Generate presigned URLs (expires in 1 hour)
 	expiry := 1 * time.Hour
 
-	// Videos ใหม่: มี /safe/ และ /nsfw/ subfolders
-	// Videos เก่า: ภาพอยู่ที่ root folder (ยังไม่ classify)
-	isClassified := video.GallerySafeCount > 0 || video.GalleryNsfwCount > 0
-
 	var safeUrls, nsfwUrls []string
 
-	if isClassified {
-		// List actual safe files from storage
-		safeFiles, err := h.storage.ListFiles(fmt.Sprintf("gallery/%s/safe", code))
-		if err != nil {
-			logger.WarnContext(ctx, "Failed to list safe files", "code", code, "error", err)
-		} else {
-			safeUrls = make([]string, 0, len(safeFiles))
-			for _, filePath := range safeFiles {
-				presignedURL, err := h.storage.GetPresignedDownloadURL(filePath, expiry)
-				if err != nil {
-					logger.WarnContext(ctx, "Failed to generate safe URL", "path", filePath, "error", err)
-					continue
-				}
-				safeUrls = append(safeUrls, presignedURL)
+	// ไม่พึ่ง database count - list ไฟล์จริงจาก storage
+	// ลอง list safe/nsfw folders ก่อน
+	safeFiles, _ := h.storage.ListFiles(fmt.Sprintf("gallery/%s/safe", code))
+	nsfwFiles, _ := h.storage.ListFiles(fmt.Sprintf("gallery/%s/nsfw", code))
+
+	if len(safeFiles) > 0 || len(nsfwFiles) > 0 {
+		// มีไฟล์ใน safe/nsfw folders
+		safeUrls = make([]string, 0, len(safeFiles))
+		for _, filePath := range safeFiles {
+			presignedURL, err := h.storage.GetPresignedDownloadURL(filePath, expiry)
+			if err != nil {
+				logger.WarnContext(ctx, "Failed to generate safe URL", "path", filePath, "error", err)
+				continue
 			}
+			safeUrls = append(safeUrls, presignedURL)
 		}
 
-		// List actual nsfw files from storage
-		nsfwFiles, err := h.storage.ListFiles(fmt.Sprintf("gallery/%s/nsfw", code))
-		if err != nil {
-			logger.WarnContext(ctx, "Failed to list nsfw files", "code", code, "error", err)
-		} else {
-			nsfwUrls = make([]string, 0, len(nsfwFiles))
-			for _, filePath := range nsfwFiles {
-				presignedURL, err := h.storage.GetPresignedDownloadURL(filePath, expiry)
-				if err != nil {
-					logger.WarnContext(ctx, "Failed to generate nsfw URL", "path", filePath, "error", err)
-					continue
-				}
-				nsfwUrls = append(nsfwUrls, presignedURL)
+		nsfwUrls = make([]string, 0, len(nsfwFiles))
+		for _, filePath := range nsfwFiles {
+			presignedURL, err := h.storage.GetPresignedDownloadURL(filePath, expiry)
+			if err != nil {
+				logger.WarnContext(ctx, "Failed to generate nsfw URL", "path", filePath, "error", err)
+				continue
 			}
+			nsfwUrls = append(nsfwUrls, presignedURL)
 		}
 	} else {
-		// Fallback: videos เก่าที่ยังไม่ classify - list files from root folder
+		// Fallback: videos เก่าที่ไฟล์อยู่ root folder
 		files, err := h.storage.ListFiles(fmt.Sprintf("gallery/%s", code))
 		if err != nil {
 			logger.WarnContext(ctx, "Failed to list gallery files", "code", code, "error", err)
 		} else {
 			safeUrls = make([]string, 0, len(files))
 			for _, filePath := range files {
-				// Skip files in safe/ or nsfw/ subfolders (เผื่อ data ไม่ตรง)
-				if strings.Contains(filePath, "/safe/") || strings.Contains(filePath, "/nsfw/") {
-					continue
-				}
 				presignedURL, err := h.storage.GetPresignedDownloadURL(filePath, expiry)
 				if err != nil {
 					logger.WarnContext(ctx, "Failed to generate URL", "path", filePath, "error", err)
