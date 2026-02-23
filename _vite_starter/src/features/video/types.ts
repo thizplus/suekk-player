@@ -38,8 +38,9 @@ export interface Video {
   reelCount?: number                 // จำนวน reels ที่สร้างจาก video นี้
   galleryPath?: string               // S3 path prefix e.g., "gallery/ABC123"
   galleryCount?: number              // จำนวนภาพทั้งหมด (0 = ไม่มี)
-  gallerySafeCount?: number          // จำนวนภาพ safe (SFW)
-  galleryNsfwCount?: number          // จำนวนภาพ nsfw
+  gallerySuperSafeCount?: number     // จำนวนภาพ super_safe (< 0.15 + face) สำหรับ Public SEO
+  gallerySafeCount?: number          // จำนวนภาพ safe (0.15-0.3) Lazy load
+  galleryNsfwCount?: number          // จำนวนภาพ nsfw (>= 0.3) Member only
   createdAt: string
   updatedAt: string
 }
@@ -213,14 +214,16 @@ export interface UploadLimits {
   allowed_types: string[]
 }
 
-// Gallery URLs Response (presigned URLs for all gallery images)
+// Gallery URLs Response (presigned URLs for all gallery images) - Three-Tier
 export interface GalleryUrlsResponse {
   code: string
-  count: number           // total (safe + nsfw)
-  safeCount: number       // จำนวนภาพ safe
-  nsfwCount: number       // จำนวนภาพ nsfw
-  urls: string[]          // backward compatible: safe URLs
-  safeUrls: string[]      // presigned URLs for safe images
-  nsfwUrls: string[]      // presigned URLs for nsfw images
-  expires_at: number      // Unix timestamp
+  count: number              // total (super_safe + safe + nsfw)
+  superSafeCount: number     // จำนวนภาพ super_safe (< 0.15 + face) สำหรับ Public SEO
+  safeCount: number          // จำนวนภาพ safe (0.15-0.3) Lazy load
+  nsfwCount: number          // จำนวนภาพ nsfw (>= 0.3) Member only
+  urls: string[]             // backward compatible: super_safe URLs
+  superSafeUrls: string[]    // presigned URLs for super_safe images (Public SEO)
+  safeUrls: string[]         // presigned URLs for safe images (Lazy load)
+  nsfwUrls: string[]         // presigned URLs for nsfw images (Member only)
+  expires_at: number         // Unix timestamp
 }

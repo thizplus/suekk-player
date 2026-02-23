@@ -16,13 +16,14 @@ type CreateVideoRequest struct {
 }
 
 type UpdateVideoRequest struct {
-	Title            *string    `json:"title" validate:"omitempty,min=1,max=255"`
-	Description      *string    `json:"description" validate:"omitempty,max=5000"`
-	CategoryID       *uuid.UUID `json:"categoryId" validate:"omitempty,uuid"`
-	GalleryPath      *string    `json:"gallery_path"`       // S3 path prefix (worker callback)
-	GalleryCount     *int       `json:"gallery_count"`      // Total gallery images (worker callback)
-	GallerySafeCount *int       `json:"gallery_safe_count"` // Safe (SFW) images count
-	GalleryNsfwCount *int       `json:"gallery_nsfw_count"` // NSFW images count
+	Title                 *string    `json:"title" validate:"omitempty,min=1,max=255"`
+	Description           *string    `json:"description" validate:"omitempty,max=5000"`
+	CategoryID            *uuid.UUID `json:"categoryId" validate:"omitempty,uuid"`
+	GalleryPath           *string    `json:"gallery_path"`            // S3 path prefix (worker callback)
+	GalleryCount          *int       `json:"gallery_count"`           // Total gallery images (worker callback)
+	GallerySuperSafeCount *int       `json:"gallery_super_safe_count"` // Super safe (< 0.15 + face) for Public SEO
+	GallerySafeCount      *int       `json:"gallery_safe_count"`      // Safe (0.15-0.3) Lazy load
+	GalleryNsfwCount      *int       `json:"gallery_nsfw_count"`      // NSFW (>= 0.3) Member only
 }
 
 type VideoFilterRequest struct {
@@ -66,11 +67,12 @@ type VideoResponse struct {
 	// Reel info
 	ReelCount int64 `json:"reelCount"` // จำนวน reels ที่สร้างจาก video นี้
 
-	// Gallery info (สำหรับ video > 20 นาที)
-	GalleryPath      string `json:"galleryPath,omitempty"`      // S3 path prefix e.g., "gallery/ABC123"
-	GalleryCount     int    `json:"galleryCount,omitempty"`     // จำนวนภาพทั้งหมด (0 = ไม่มี)
-	GallerySafeCount int    `json:"gallerySafeCount,omitempty"` // จำนวนภาพ safe (SFW)
-	GalleryNsfwCount int    `json:"galleryNsfwCount,omitempty"` // จำนวนภาพ nsfw
+	// Gallery info (สำหรับ video > 20 นาที) - Three-Tier
+	GalleryPath           string `json:"galleryPath,omitempty"`           // S3 path prefix e.g., "gallery/ABC123"
+	GalleryCount          int    `json:"galleryCount,omitempty"`          // จำนวนภาพทั้งหมด (0 = ไม่มี)
+	GallerySuperSafeCount int    `json:"gallerySuperSafeCount,omitempty"` // จำนวนภาพ super_safe (< 0.15 + face) สำหรับ Public SEO
+	GallerySafeCount      int    `json:"gallerySafeCount,omitempty"`      // จำนวนภาพ safe (0.15-0.3) Lazy load
+	GalleryNsfwCount      int    `json:"galleryNsfwCount,omitempty"`      // จำนวนภาพ nsfw (>= 0.3) Member only
 
 	CreatedAt time.Time `json:"createdAt"`
 	UpdatedAt time.Time `json:"updatedAt"`
@@ -160,14 +162,15 @@ func VideoToVideoResponse(video *models.Video) *VideoResponse {
 		QualitySizes:     video.QualitySizes,
 		Status:           video.Status,
 		Views:            video.Views,
-		HasAudio:         video.AudioPath != "",
-		DetectedLanguage: video.DetectedLanguage,
-		GalleryPath:      video.GalleryPath,
-		GalleryCount:     video.GalleryCount,
-		GallerySafeCount: video.GallerySafeCount,
-		GalleryNsfwCount: video.GalleryNsfwCount,
-		CreatedAt:        video.CreatedAt,
-		UpdatedAt:        video.UpdatedAt,
+		HasAudio:              video.AudioPath != "",
+		DetectedLanguage:      video.DetectedLanguage,
+		GalleryPath:           video.GalleryPath,
+		GalleryCount:          video.GalleryCount,
+		GallerySuperSafeCount: video.GallerySuperSafeCount,
+		GallerySafeCount:      video.GallerySafeCount,
+		GalleryNsfwCount:      video.GalleryNsfwCount,
+		CreatedAt:             video.CreatedAt,
+		UpdatedAt:             video.UpdatedAt,
 	}
 
 	if video.Category != nil {

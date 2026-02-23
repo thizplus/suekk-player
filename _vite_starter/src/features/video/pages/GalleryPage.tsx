@@ -1,12 +1,12 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { ArrowLeft, Loader2, X, ChevronLeft, ChevronRight, ImageOff, Shield, ShieldAlert } from 'lucide-react'
+import { ArrowLeft, Loader2, X, ChevronLeft, ChevronRight, ImageOff, Shield, ShieldCheck, ShieldAlert } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Badge } from '@/components/ui/badge'
 import { useVideoByCode, useGalleryUrls } from '../hooks'
 
-type GalleryTab = 'safe' | 'nsfw' | 'all'
+type GalleryTab = 'super_safe' | 'safe' | 'nsfw' | 'all'
 
 export function GalleryPage() {
   const { code } = useParams<{ code: string }>()
@@ -21,28 +21,32 @@ export function GalleryPage() {
   })
 
   // State
-  const [activeTab, setActiveTab] = useState<GalleryTab>('safe')
+  const [activeTab, setActiveTab] = useState<GalleryTab>('super_safe')
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null)
   const [loadedImages, setLoadedImages] = useState<Set<number>>(new Set())
   const [failedImages, setFailedImages] = useState<Set<number>>(new Set())
 
-  // Compute URLs based on active tab
-  const safeUrls = galleryData?.safeUrls ?? galleryData?.urls ?? []
+  // Compute URLs based on active tab (Three-Tier)
+  const superSafeUrls = galleryData?.superSafeUrls ?? galleryData?.urls ?? []
+  const safeUrls = galleryData?.safeUrls ?? []
   const nsfwUrls = galleryData?.nsfwUrls ?? []
+  const hasSafe = safeUrls.length > 0
   const hasNsfw = nsfwUrls.length > 0
 
   const imageUrls = useMemo(() => {
     switch (activeTab) {
+      case 'super_safe':
+        return superSafeUrls
       case 'safe':
         return safeUrls
       case 'nsfw':
         return nsfwUrls
       case 'all':
-        return [...safeUrls, ...nsfwUrls]
+        return [...superSafeUrls, ...safeUrls, ...nsfwUrls]
       default:
-        return safeUrls
+        return superSafeUrls
     }
-  }, [activeTab, safeUrls, nsfwUrls])
+  }, [activeTab, superSafeUrls, safeUrls, nsfwUrls])
 
   const galleryCount = imageUrls.length
 
@@ -112,8 +116,8 @@ export function GalleryPage() {
     )
   }
 
-  // No gallery state (check total from API, not filtered count)
-  const totalGalleryCount = (galleryData?.safeCount ?? 0) + (galleryData?.nsfwCount ?? 0) || (galleryData?.count ?? 0)
+  // No gallery state (check total from API, not filtered count) - Three-Tier
+  const totalGalleryCount = (galleryData?.superSafeCount ?? 0) + (galleryData?.safeCount ?? 0) + (galleryData?.nsfwCount ?? 0) || (galleryData?.count ?? 0)
   if (totalGalleryCount === 0) {
     return (
       <div className="fixed inset-0 bg-background flex flex-col items-center justify-center gap-4">
@@ -142,24 +146,29 @@ export function GalleryPage() {
             </div>
           </div>
 
-          {/* Tabs สำหรับ safe/nsfw */}
-          {hasNsfw && (
+          {/* Tabs สำหรับ Three-Tier (super_safe/safe/nsfw) */}
+          {(hasSafe || hasNsfw) && (
             <div className="mt-3">
               <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as GalleryTab)}>
-                <TabsList className="grid w-full grid-cols-3">
-                  <TabsTrigger value="safe" className="gap-1.5">
-                    <Shield className="size-4" />
+                <TabsList className="grid w-full grid-cols-4">
+                  <TabsTrigger value="super_safe" className="gap-1 text-xs px-2">
+                    <ShieldCheck className="size-3.5" />
+                    <span className="hidden sm:inline">Super</span>Safe
+                    <Badge variant="secondary" className="ml-1 text-[10px]">{superSafeUrls.length}</Badge>
+                  </TabsTrigger>
+                  <TabsTrigger value="safe" className="gap-1 text-xs px-2">
+                    <Shield className="size-3.5" />
                     Safe
-                    <Badge variant="secondary" className="ml-1 text-xs">{safeUrls.length}</Badge>
+                    <Badge variant="secondary" className="ml-1 text-[10px]">{safeUrls.length}</Badge>
                   </TabsTrigger>
-                  <TabsTrigger value="nsfw" className="gap-1.5">
-                    <ShieldAlert className="size-4" />
+                  <TabsTrigger value="nsfw" className="gap-1 text-xs px-2">
+                    <ShieldAlert className="size-3.5" />
                     NSFW
-                    <Badge variant="secondary" className="ml-1 text-xs">{nsfwUrls.length}</Badge>
+                    <Badge variant="secondary" className="ml-1 text-[10px]">{nsfwUrls.length}</Badge>
                   </TabsTrigger>
-                  <TabsTrigger value="all" className="gap-1.5">
+                  <TabsTrigger value="all" className="gap-1 text-xs px-2">
                     All
-                    <Badge variant="secondary" className="ml-1 text-xs">{safeUrls.length + nsfwUrls.length}</Badge>
+                    <Badge variant="secondary" className="ml-1 text-[10px]">{superSafeUrls.length + safeUrls.length + nsfwUrls.length}</Badge>
                   </TabsTrigger>
                 </TabsList>
               </Tabs>

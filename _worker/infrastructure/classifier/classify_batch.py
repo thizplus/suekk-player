@@ -22,10 +22,13 @@ from PIL import Image
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# Configuration
+# Configuration (Three-Tier System)
 # ═══════════════════════════════════════════════════════════════════════════════
 
-NSFW_THRESHOLD = 0.3  # Score above this = NSFW
+# Three-Tier Thresholds
+SUPER_SAFE_THRESHOLD = 0.15  # Score below this + face = super safe (Public SEO)
+NSFW_THRESHOLD = 0.3         # Score above this = NSFW
+MIN_FACE_SCORE = 0.1         # Minimum face score for super_safe
 
 # NudeNet labels that indicate NSFW content (NudeNet v2/v3 format)
 # Used as secondary detection
@@ -99,8 +102,13 @@ class NSFWClassifier:
 
     def classify(self, image_path: str) -> Dict[str, Any]:
         """
-        Classify a single image using dual models
-        Returns: {filename, is_safe, nsfw_score, falconsai_score, nudenet_score, face_score, aesthetic_score, error}
+        Classify a single image using dual models (Three-Tier System)
+        Returns: {filename, is_super_safe, is_safe, nsfw_score, face_score, aesthetic_score, error}
+
+        Three-Tier Classification:
+        - super_safe: nsfw_score < 0.15 AND face_score > 0.1 (Public SEO)
+        - safe: nsfw_score < 0.30 (Lazy load)
+        - nsfw: nsfw_score >= 0.30 (Member only)
         """
         filename = os.path.basename(image_path)
 
@@ -113,10 +121,9 @@ class NSFWClassifier:
             if cv_image is None:
                 return {
                     "filename": filename,
+                    "is_super_safe": False,
                     "is_safe": False,
                     "nsfw_score": 1.0,
-                    "falconsai_score": 1.0,
-                    "nudenet_score": 1.0,
                     "face_score": 0.0,
                     "aesthetic_score": 0.0,
                     "error": "Failed to load image"
@@ -130,20 +137,26 @@ class NSFWClassifier:
 
             # Combined NSFW score: use MAX of both models (stricter)
             nsfw_score = max(falconsai_score, nudenet_score)
-            is_safe = nsfw_score < NSFW_THRESHOLD
 
-            # Calculate face score
+            # Calculate face score (ต้องมีหน้าคนสำหรับ super_safe)
             face_score = self._calculate_face_score(cv_image)
 
             # Simple aesthetic score
             aesthetic_score = self._calculate_aesthetic_score(cv_image)
 
+            # Three-Tier Classification
+            # super_safe: ต้องมีหน้าคน + nsfw ต่ำมาก (ป้องกันภาพห้องเปล่า)
+            is_super_safe = (
+                nsfw_score < SUPER_SAFE_THRESHOLD and
+                face_score > MIN_FACE_SCORE
+            )
+            is_safe = nsfw_score < NSFW_THRESHOLD
+
             return {
                 "filename": filename,
+                "is_super_safe": is_super_safe,
                 "is_safe": is_safe,
                 "nsfw_score": round(nsfw_score, 4),
-                "falconsai_score": round(falconsai_score, 4),
-                "nudenet_score": round(nudenet_score, 4),
                 "face_score": round(face_score, 4),
                 "aesthetic_score": round(aesthetic_score, 4),
                 "error": ""
@@ -152,10 +165,9 @@ class NSFWClassifier:
         except Exception as e:
             return {
                 "filename": filename,
+                "is_super_safe": False,
                 "is_safe": False,
                 "nsfw_score": 1.0,
-                "falconsai_score": 1.0,
-                "nudenet_score": 1.0,
                 "face_score": 0.0,
                 "aesthetic_score": 0.0,
                 "error": str(e)

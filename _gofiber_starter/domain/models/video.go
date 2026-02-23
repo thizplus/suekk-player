@@ -132,11 +132,12 @@ type Video struct {
 	CacheError      string     `gorm:"type:text"`               // error message if failed
 	LastWarmedAt    *time.Time `gorm:"type:timestamptz"`        // last warm time
 
-	// Gallery fields (สร้างหลัง transcode สำหรับ video > 20 นาที)
-	GalleryPath      string `gorm:"type:text"`  // S3 path prefix e.g., "gallery/ABC123"
-	GalleryCount     int    `gorm:"default:0"`  // จำนวนภาพทั้งหมด (safe + nsfw)
-	GallerySafeCount int    `gorm:"default:0"`  // จำนวนภาพ safe (SFW)
-	GalleryNsfwCount int    `gorm:"default:0"`  // จำนวนภาพ nsfw
+	// Gallery fields (สร้างหลัง transcode สำหรับ video > 20 นาที) - Three-Tier
+	GalleryPath           string `gorm:"type:text"`  // S3 path prefix e.g., "gallery/ABC123"
+	GalleryCount          int    `gorm:"default:0"`  // จำนวนภาพทั้งหมด (super_safe + safe + nsfw)
+	GallerySuperSafeCount int    `gorm:"default:0"`  // จำนวนภาพ super_safe (< 0.15 + face) สำหรับ Public SEO
+	GallerySafeCount      int    `gorm:"default:0"`  // จำนวนภาพ safe (0.15-0.3) Lazy load
+	GalleryNsfwCount      int    `gorm:"default:0"`  // จำนวนภาพ nsfw (>= 0.3) Member only
 
 	CreatedAt time.Time
 	UpdatedAt time.Time

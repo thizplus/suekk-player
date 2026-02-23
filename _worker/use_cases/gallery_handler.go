@@ -146,13 +146,14 @@ func (h *GalleryHandler) ProcessJobWithClassification(ctx context.Context, job *
 	// Publish initial progress
 	h.publishProgress(ctx, job, 0, "เริ่มสร้าง Gallery + NSFW Classification...")
 
-	// 1. Create temp directories
+	// 1. Create temp directories (Three-Tier)
 	baseDir := filepath.Join(h.config.TempDir, "gallery", job.VideoCode)
 	allFramesDir := filepath.Join(baseDir, "all")
-	safeDir := filepath.Join(baseDir, "safe")
-	nsfwDir := filepath.Join(baseDir, "nsfw")
+	superSafeDir := filepath.Join(baseDir, "super_safe") // < 0.15 + face (Public SEO)
+	safeDir := filepath.Join(baseDir, "safe")            // 0.15-0.3 (Lazy load)
+	nsfwDir := filepath.Join(baseDir, "nsfw")            // >= 0.3 (Member only)
 
-	for _, dir := range []string{allFramesDir, safeDir, nsfwDir} {
+	for _, dir := range []string{allFramesDir, superSafeDir, safeDir, nsfwDir} {
 		if err := os.MkdirAll(dir, 0755); err != nil {
 			h.publishFailed(ctx, job, err.Error())
 			return fmt.Errorf("create dir %s: %w", dir, err)
@@ -174,18 +175,22 @@ func (h *GalleryHandler) ProcessJobWithClassification(ctx context.Context, job *
 		return fmt.Errorf("no segments found in playlist")
 	}
 
-	// 3. Initialize classifier
+	// 3. Initialize classifier (Three-Tier config)
 	classifierConfig := classifier.ClassifierConfig{
-		PythonPath:    "python",
-		ScriptPath:    "infrastructure/classifier/classify_batch.py",
-		NsfwThreshold: 0.3,
-		Timeout:       90,
-		MaxNsfwImages: 30,
-		MinSafeImages: 12,
+		PythonPath:         "python",
+		ScriptPath:         "infrastructure/classifier/classify_batch.py",
+		NsfwThreshold:      0.3,
+		SuperSafeThreshold: 0.15,
+		MinFaceScore:       0.1,
+		Timeout:            90,
+		MaxNsfwImages:      30,
+		MinSafeImages:      12,
+		MinSuperSafeImages: 10,
 	}
 	nsfwClassifier := classifier.NewNSFWClassifier(classifierConfig, h.logger)
 
-	// 4. Multi-Round extraction with classification
+	// 4. Multi-Round extraction with classification (Three-Tier)
+	var allSuperSafeResults []classifier.ClassificationResult
 	var allSafeResults []classifier.ClassificationResult
 	var allNsfwResults []classifier.ClassificationResult
 	totalFrames := 0
@@ -209,8 +214,12 @@ func (h *GalleryHandler) ProcessJobWithClassification(ctx context.Context, job *
 	minGap := 3 // minimum 3 seconds between frames
 
 	for _, round := range extractionRounds {
-		// Stop if we have enough safe images
-		if len(allSafeResults) >= classifierConfig.MinSafeImages {
+		// Stop if we have enough super_safe AND safe images (Three-Tier)
+		hasEnoughSuperSafe := len(allSuperSafeResults) >= classifierConfig.MinSuperSafeImages
+		totalSafeCount := len(allSuperSafeResults) + len(allSafeResults)
+		hasEnoughSafe := totalSafeCount >= classifierConfig.MinSafeImages
+
+		if hasEnoughSuperSafe && hasEnoughSafe {
 			break
 		}
 
@@ -219,8 +228,10 @@ func (h *GalleryHandler) ProcessJobWithClassification(ctx context.Context, job *
 
 		h.logger.Info("extraction round",
 			"round", round.name,
+			"current_super_safe", len(allSuperSafeResults),
 			"current_safe", len(allSafeResults),
-			"target", classifierConfig.MinSafeImages,
+			"target_super_safe", classifierConfig.MinSuperSafeImages,
+			"target_safe", classifierConfig.MinSafeImages,
 		)
 
 		// Extract frames for this round
@@ -243,16 +254,19 @@ func (h *GalleryHandler) ProcessJobWithClassification(ctx context.Context, job *
 			continue
 		}
 
-		// Separate and move files
+		// Separate and move files (Three-Tier)
 		separated := nsfwClassifier.SeparateResults(result.Results)
-		h.moveClassifiedFiles(allFramesDir, safeDir, nsfwDir, separated)
+		h.moveClassifiedFilesThreeTier(allFramesDir, superSafeDir, safeDir, nsfwDir, separated)
 
+		allSuperSafeResults = append(allSuperSafeResults, separated.SuperSafe...)
 		allSafeResults = append(allSafeResults, separated.Safe...)
 		allNsfwResults = append(allNsfwResults, separated.Nsfw...)
 
 		h.logger.Info("round complete",
 			"round", round.name,
+			"super_safe_found", len(separated.SuperSafe),
 			"safe_found", len(separated.Safe),
+			"total_super_safe", len(allSuperSafeResults),
 			"total_safe", len(allSafeResults),
 		)
 	}
@@ -272,7 +286,12 @@ func (h *GalleryHandler) ProcessJobWithClassification(ctx context.Context, job *
 
 	h.publishProgress(ctx, job, 85, "กำลังอัพโหลดภาพ...")
 
-	// 6. Upload safe and nsfw folders
+	// 6. Upload super_safe, safe, and nsfw folders (Three-Tier)
+	superSafeUploaded, err := h.uploadGalleryImages(ctx, superSafeDir, job.OutputPath+"/super_safe", job.VideoCode)
+	if err != nil {
+		h.logger.Warn("failed to upload super_safe images", "error", err)
+	}
+
 	safeUploaded, err := h.uploadGalleryImages(ctx, safeDir, job.OutputPath+"/safe", job.VideoCode)
 	if err != nil {
 		h.logger.Warn("failed to upload safe images", "error", err)
@@ -283,37 +302,41 @@ func (h *GalleryHandler) ProcessJobWithClassification(ctx context.Context, job *
 		h.logger.Warn("failed to upload nsfw images", "error", err)
 	}
 
-	h.logger.Info("classified gallery uploaded",
+	h.logger.Info("three-tier gallery uploaded",
 		"video_code", job.VideoCode,
+		"super_safe_uploaded", superSafeUploaded,
 		"safe_uploaded", safeUploaded,
 		"nsfw_uploaded", nsfwUploaded,
 	)
 
 	h.publishProgress(ctx, job, 95, "กำลังบันทึกข้อมูล...")
 
-	// 7. Update video in database via API
-	if err := h.updateVideoGalleryClassified(ctx, job.VideoID, job.OutputPath, safeUploaded, nsfwUploaded); err != nil {
+	// 7. Update video in database via API (Three-Tier)
+	if err := h.updateVideoGalleryClassifiedThreeTier(ctx, job.VideoID, job.OutputPath, superSafeUploaded, safeUploaded, nsfwUploaded); err != nil {
 		h.logger.Warn("failed to update classified gallery in DB",
 			"video_id", job.VideoID,
 			"error", err,
 		)
 	}
 
-	// 8. Log classification stats
+	// 8. Log classification stats (Three-Tier)
 	h.logger.Info("classification_stats",
 		"video_code", job.VideoCode,
 		"total_frames", totalFrames,
+		"super_safe_count", len(allSuperSafeResults),
 		"safe_count", len(allSafeResults),
 		"nsfw_count", len(allNsfwResults),
 		"rounds_used", roundsUsed,
+		"super_safe_target_met", len(allSuperSafeResults) >= classifierConfig.MinSuperSafeImages,
 	)
 
 	// Publish completed
 	h.publishCompleted(ctx, job)
 
-	h.logger.Info("classified gallery job completed",
+	h.logger.Info("classified gallery job completed (three-tier)",
 		"video_id", job.VideoID,
 		"video_code", job.VideoCode,
+		"super_safe_images", superSafeUploaded,
 		"safe_images", safeUploaded,
 		"nsfw_images", nsfwUploaded,
 	)
@@ -400,9 +423,18 @@ func (h *GalleryHandler) extractRoundFramesFromHLS(
 	return extracted
 }
 
-// moveClassifiedFiles moves files to appropriate directories based on classification
-func (h *GalleryHandler) moveClassifiedFiles(srcDir, safeDir, nsfwDir string, separated *classifier.SeparatedImages) {
-	// Move safe files
+// moveClassifiedFilesThreeTier moves files to appropriate directories based on classification (Three-Tier)
+func (h *GalleryHandler) moveClassifiedFilesThreeTier(srcDir, superSafeDir, safeDir, nsfwDir string, separated *classifier.SeparatedImages) {
+	// Move super_safe files (< 0.15 + face) - สำหรับ Public SEO
+	for _, img := range separated.SuperSafe {
+		src := filepath.Join(srcDir, img.Filename)
+		dst := filepath.Join(superSafeDir, img.Filename)
+		if err := os.Rename(src, dst); err != nil {
+			h.logger.Warn("failed to move super_safe image", "file", img.Filename, "error", err)
+		}
+	}
+
+	// Move safe files (0.15-0.3) - Lazy load
 	for _, img := range separated.Safe {
 		src := filepath.Join(srcDir, img.Filename)
 		dst := filepath.Join(safeDir, img.Filename)
@@ -411,7 +443,7 @@ func (h *GalleryHandler) moveClassifiedFiles(srcDir, safeDir, nsfwDir string, se
 		}
 	}
 
-	// Move nsfw files
+	// Move nsfw files (>= 0.3) - Member only
 	for _, img := range separated.Nsfw {
 		src := filepath.Join(srcDir, img.Filename)
 		dst := filepath.Join(nsfwDir, img.Filename)
@@ -430,7 +462,7 @@ func (h *GalleryHandler) moveClassifiedFiles(srcDir, safeDir, nsfwDir string, se
 	}
 }
 
-// updateVideoGalleryClassified updates video with safe/nsfw counts via API
+// updateVideoGalleryClassified updates video with safe/nsfw counts via API (deprecated, use Three-Tier)
 func (h *GalleryHandler) updateVideoGalleryClassified(ctx context.Context, videoID, galleryPath string, safeCount, nsfwCount int) error {
 	if h.config.APIURL == "" {
 		return nil
@@ -443,6 +475,54 @@ func (h *GalleryHandler) updateVideoGalleryClassified(ctx context.Context, video
 		"gallery_count": safeCount, // Use safe_count as main gallery_count
 		"safe_count":    safeCount,
 		"nsfw_count":    nsfwCount,
+	}
+
+	data, err := json.Marshal(payload)
+	if err != nil {
+		return err
+	}
+
+	req, err := http.NewRequestWithContext(ctx, "PATCH", url, bytes.NewReader(data))
+	if err != nil {
+		return err
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+	if h.config.APIToken != "" {
+		req.Header.Set("Authorization", "Bearer "+h.config.APIToken)
+	}
+
+	client := &http.Client{Timeout: 30 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= 400 {
+		return fmt.Errorf("API returned %d", resp.StatusCode)
+	}
+
+	return nil
+}
+
+// updateVideoGalleryClassifiedThreeTier updates video with super_safe/safe/nsfw counts via API (Three-Tier)
+func (h *GalleryHandler) updateVideoGalleryClassifiedThreeTier(ctx context.Context, videoID, galleryPath string, superSafeCount, safeCount, nsfwCount int) error {
+	if h.config.APIURL == "" {
+		return nil
+	}
+
+	url := fmt.Sprintf("%s/api/v1/internal/videos/%s/gallery", h.config.APIURL, videoID)
+
+	// gallery_count = super_safe + safe (total public-accessible images)
+	totalPublicCount := superSafeCount + safeCount
+
+	payload := map[string]interface{}{
+		"gallery_path":       galleryPath,
+		"gallery_count":      totalPublicCount,        // Total safe images (backward compatible)
+		"super_safe_count":   superSafeCount,          // NEW: super_safe (< 0.15 + face) for Public SEO
+		"safe_count":         safeCount,               // borderline (0.15-0.3)
+		"nsfw_count":         nsfwCount,               // nsfw (>= 0.3)
 	}
 
 	data, err := json.Marshal(payload)
