@@ -258,3 +258,40 @@ func (l *LocalStorage) AbortMultipartUpload(path string, uploadID string) error 
 func (l *LocalStorage) GetPresignedDownloadURL(path string, expiry time.Duration) (string, error) {
 	return "", ErrNotSupported
 }
+
+// ListFiles list ไฟล์ทั้งหมดใน prefix (folder)
+func (l *LocalStorage) ListFiles(prefix string) ([]string, error) {
+	prefix = strings.ReplaceAll(prefix, "\\", "/")
+	prefix = strings.TrimPrefix(prefix, "/")
+	fullPath := filepath.Join(l.basePath, prefix)
+
+	// ตรวจสอบว่า folder มีอยู่
+	if _, err := os.Stat(fullPath); os.IsNotExist(err) {
+		return []string{}, nil
+	}
+
+	var files []string
+	err := filepath.Walk(fullPath, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		// Skip directories
+		if info.IsDir() {
+			return nil
+		}
+		// Get relative path from basePath
+		relPath, err := filepath.Rel(l.basePath, path)
+		if err != nil {
+			return err
+		}
+		// Normalize to forward slashes
+		relPath = strings.ReplaceAll(relPath, "\\", "/")
+		files = append(files, relPath)
+		return nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to list files: %w", err)
+	}
+
+	return files, nil
+}
