@@ -123,6 +123,11 @@ export const videoService = {
     return apiClient.post<{ message: string }>(VIDEO_ROUTES.GENERATE_GALLERY(videoId))
   },
 
+  // สร้าง gallery ใหม่ (ลบของเก่าแล้วสร้างใหม่)
+  async regenerateGallery(videoId: string): Promise<{ message: string }> {
+    return apiClient.post<{ message: string }>(VIDEO_ROUTES.REGENERATE_GALLERY(videoId))
+  },
+
   // ดึง presigned URLs สำหรับ gallery images ทั้งหมด (single API call)
   async getGalleryUrls(videoCode: string): Promise<GalleryUrlsResponse> {
     return apiClient.get<GalleryUrlsResponse>(HLS_ROUTES.GALLERY_URLS(videoCode))

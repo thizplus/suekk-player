@@ -229,6 +229,19 @@ export function useGenerateGallery() {
   })
 }
 
+// สร้าง gallery ใหม่ (ลบของเก่าแล้วสร้างใหม่)
+export function useRegenerateGallery() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (videoId: string) => videoService.regenerateGallery(videoId),
+    onSuccess: (_, videoId) => {
+      queryClient.invalidateQueries({ queryKey: videoKeys.detail(videoId) })
+      queryClient.invalidateQueries({ queryKey: videoKeys.lists() })
+    },
+  })
+}
+
 // ดึง presigned URLs สำหรับ gallery images
 export function useGalleryUrls(videoCode: string, options?: { enabled?: boolean }) {
   return useQuery({

@@ -19,7 +19,7 @@ import {
   SheetHeader,
   SheetTitle,
 } from '@/components/ui/sheet'
-import { useVideo, useQueueTranscoding, useUpdateVideo, useGenerateGallery } from '../hooks'
+import { useVideo, useQueueTranscoding, useUpdateVideo, useGenerateGallery, useRegenerateGallery } from '../hooks'
 import { useCategories } from '@/features/category/hooks'
 import { EmbedCodeDialog } from './EmbedCodeDialog'
 import { SubtitlePanel } from '@/features/subtitle'
@@ -40,6 +40,7 @@ export function VideoDetailSheet({ videoId, open, onOpenChange }: VideoDetailShe
   const queueTranscoding = useQueueTranscoding()
   const updateVideo = useUpdateVideo()
   const generateGallery = useGenerateGallery()
+  const regenerateGallery = useRegenerateGallery()
   const [copiedField, setCopiedField] = useState<string | null>(null)
   const [embedDialogOpen, setEmbedDialogOpen] = useState(false)
 
@@ -490,12 +491,35 @@ export function VideoDetailSheet({ videoId, open, onOpenChange }: VideoDetailShe
             {video.status === 'ready' && (
               <div className="pt-2 border-t">
                 {video.galleryCount && video.galleryCount > 0 ? (
-                  <Button variant="outline" className="w-full" asChild>
-                    <Link to={`/gallery/${video.code}`}>
-                      <Images className="size-4 mr-1.5" />
-                      ดู Gallery ({video.galleryCount} ภาพ)
-                    </Link>
-                  </Button>
+                  <div className="flex gap-2">
+                    <Button variant="outline" className="flex-1" asChild>
+                      <Link to={`/gallery/${video.code}`}>
+                        <Images className="size-4 mr-1.5" />
+                        ดู Gallery ({video.galleryCount} ภาพ)
+                      </Link>
+                    </Button>
+                    <Button
+                      variant="outline"
+                      onClick={() => {
+                        regenerateGallery.mutate(video.id, {
+                          onSuccess: () => {
+                            toast.success('เริ่มสร้าง Gallery ใหม่แล้ว')
+                          },
+                          onError: () => {
+                            toast.error('ไม่สามารถสร้าง Gallery ใหม่ได้')
+                          },
+                        })
+                      }}
+                      disabled={regenerateGallery.isPending}
+                      title="สร้าง Gallery ใหม่"
+                    >
+                      {regenerateGallery.isPending ? (
+                        <Loader2 className="size-4 animate-spin" />
+                      ) : (
+                        <RefreshCw className="size-4" />
+                      )}
+                    </Button>
+                  </div>
                 ) : (
                   <Button
                     variant="outline"

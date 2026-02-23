@@ -33,6 +33,7 @@ export const VIDEO_ROUTES = {
   UPDATE_STATUS: (id: string) => `/api/v1/videos/${id}/status`,
   // Gallery Generation
   GENERATE_GALLERY: (id: string) => `/api/v1/videos/${id}/generate-gallery`,
+  REGENERATE_GALLERY: (id: string) => `/api/v1/videos/${id}/regenerate-gallery`,
   // Dead Letter Queue (DLQ) Management
   DLQ_LIST: '/api/v1/videos/dlq',
   DLQ_RETRY: (id: string) => `/api/v1/videos/dlq/${id}/retry`,
