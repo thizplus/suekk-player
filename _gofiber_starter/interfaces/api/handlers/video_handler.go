@@ -913,8 +913,10 @@ func (h *VideoHandler) getBestAvailableQuality(video *models.Video) string {
 
 // UpdateGalleryRequest request body for updating gallery
 type UpdateGalleryRequest struct {
-	GalleryPath  string `json:"gallery_path"`
-	GalleryCount int    `json:"gallery_count"`
+	GalleryPath      string `json:"gallery_path"`
+	GalleryCount     int    `json:"gallery_count"`      // Total count (safe + nsfw)
+	GallerySafeCount int    `json:"gallery_safe_count"` // Safe images count
+	GalleryNsfwCount int    `json:"gallery_nsfw_count"` // NSFW images count
 }
 
 // UpdateGallery updates video gallery info (called by worker after gallery generation)
@@ -933,10 +935,18 @@ func (h *VideoHandler) UpdateGallery(c *fiber.Ctx) error {
 		return utils.BadRequestResponse(c, "Invalid request body")
 	}
 
+	// Calculate total if not provided
+	galleryCount := req.GalleryCount
+	if galleryCount == 0 && (req.GallerySafeCount > 0 || req.GalleryNsfwCount > 0) {
+		galleryCount = req.GallerySafeCount + req.GalleryNsfwCount
+	}
+
 	// Update gallery fields via service
 	updateReq := &dto.UpdateVideoRequest{
-		GalleryPath:  &req.GalleryPath,
-		GalleryCount: &req.GalleryCount,
+		GalleryPath:      &req.GalleryPath,
+		GalleryCount:     &galleryCount,
+		GallerySafeCount: &req.GallerySafeCount,
+		GalleryNsfwCount: &req.GalleryNsfwCount,
 	}
 
 	video, err := h.videoService.Update(ctx, id, updateReq)
@@ -952,13 +962,17 @@ func (h *VideoHandler) UpdateGallery(c *fiber.Ctx) error {
 		"video_id", id,
 		"video_code", video.Code,
 		"gallery_path", req.GalleryPath,
-		"gallery_count", req.GalleryCount,
+		"gallery_count", galleryCount,
+		"safe_count", req.GallerySafeCount,
+		"nsfw_count", req.GalleryNsfwCount,
 	)
 
 	return utils.SuccessResponse(c, fiber.Map{
 		"message":       "Gallery updated",
 		"video_id":      video.ID,
 		"video_code":    video.Code,
-		"gallery_count": req.GalleryCount,
+		"gallery_count": galleryCount,
+		"safe_count":    req.GallerySafeCount,
+		"nsfw_count":    req.GalleryNsfwCount,
 	})
 }

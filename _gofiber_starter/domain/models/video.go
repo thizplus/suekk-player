@@ -133,8 +133,10 @@ type Video struct {
 	LastWarmedAt    *time.Time `gorm:"type:timestamptz"`        // last warm time
 
 	// Gallery fields (สร้างหลัง transcode สำหรับ video > 20 นาที)
-	GalleryPath  string `gorm:"type:text"`  // S3 path prefix e.g., "gallery/ABC123"
-	GalleryCount int    `gorm:"default:0"`  // จำนวนภาพ (0 = ไม่มี gallery, 100 = full)
+	GalleryPath      string `gorm:"type:text"`  // S3 path prefix e.g., "gallery/ABC123"
+	GalleryCount     int    `gorm:"default:0"`  // จำนวนภาพทั้งหมด (safe + nsfw)
+	GallerySafeCount int    `gorm:"default:0"`  // จำนวนภาพ safe (SFW)
+	GalleryNsfwCount int    `gorm:"default:0"`  // จำนวนภาพ nsfw
 
 	CreatedAt time.Time
 	UpdatedAt time.Time

@@ -375,6 +375,12 @@ func (s *VideoServiceImpl) Update(ctx context.Context, id uuid.UUID, req *dto.Up
 	if req.GalleryCount != nil {
 		video.GalleryCount = *req.GalleryCount
 	}
+	if req.GallerySafeCount != nil {
+		video.GallerySafeCount = *req.GallerySafeCount
+	}
+	if req.GalleryNsfwCount != nil {
+		video.GalleryNsfwCount = *req.GalleryNsfwCount
+	}
 
 	video.UpdatedAt = time.Now()
 

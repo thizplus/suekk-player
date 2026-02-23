@@ -16,11 +16,13 @@ type CreateVideoRequest struct {
 }
 
 type UpdateVideoRequest struct {
-	Title        *string    `json:"title" validate:"omitempty,min=1,max=255"`
-	Description  *string    `json:"description" validate:"omitempty,max=5000"`
-	CategoryID   *uuid.UUID `json:"categoryId" validate:"omitempty,uuid"`
-	GalleryPath  *string    `json:"gallery_path"`  // S3 path prefix (worker callback)
-	GalleryCount *int       `json:"gallery_count"` // Number of gallery images (worker callback)
+	Title            *string    `json:"title" validate:"omitempty,min=1,max=255"`
+	Description      *string    `json:"description" validate:"omitempty,max=5000"`
+	CategoryID       *uuid.UUID `json:"categoryId" validate:"omitempty,uuid"`
+	GalleryPath      *string    `json:"gallery_path"`       // S3 path prefix (worker callback)
+	GalleryCount     *int       `json:"gallery_count"`      // Total gallery images (worker callback)
+	GallerySafeCount *int       `json:"gallery_safe_count"` // Safe (SFW) images count
+	GalleryNsfwCount *int       `json:"gallery_nsfw_count"` // NSFW images count
 }
 
 type VideoFilterRequest struct {
@@ -65,8 +67,10 @@ type VideoResponse struct {
 	ReelCount int64 `json:"reelCount"` // จำนวน reels ที่สร้างจาก video นี้
 
 	// Gallery info (สำหรับ video > 20 นาที)
-	GalleryPath  string `json:"galleryPath,omitempty"`  // S3 path prefix e.g., "gallery/ABC123"
-	GalleryCount int    `json:"galleryCount,omitempty"` // จำนวนภาพ (0 = ไม่มี)
+	GalleryPath      string `json:"galleryPath,omitempty"`      // S3 path prefix e.g., "gallery/ABC123"
+	GalleryCount     int    `json:"galleryCount,omitempty"`     // จำนวนภาพทั้งหมด (0 = ไม่มี)
+	GallerySafeCount int    `json:"gallerySafeCount,omitempty"` // จำนวนภาพ safe (SFW)
+	GalleryNsfwCount int    `json:"galleryNsfwCount,omitempty"` // จำนวนภาพ nsfw
 
 	CreatedAt time.Time `json:"createdAt"`
 	UpdatedAt time.Time `json:"updatedAt"`
@@ -160,6 +164,8 @@ func VideoToVideoResponse(video *models.Video) *VideoResponse {
 		DetectedLanguage: video.DetectedLanguage,
 		GalleryPath:      video.GalleryPath,
 		GalleryCount:     video.GalleryCount,
+		GallerySafeCount: video.GallerySafeCount,
+		GalleryNsfwCount: video.GalleryNsfwCount,
 		CreatedAt:        video.CreatedAt,
 		UpdatedAt:        video.UpdatedAt,
 	}

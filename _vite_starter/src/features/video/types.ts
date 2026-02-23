@@ -37,7 +37,9 @@ export interface Video {
   subtitles?: Subtitle[]             // Full subtitle list (สำหรับ embed/preview)
   reelCount?: number                 // จำนวน reels ที่สร้างจาก video นี้
   galleryPath?: string               // S3 path prefix e.g., "gallery/ABC123"
-  galleryCount?: number              // จำนวนภาพ (0 = ไม่มี, 100 = full)
+  galleryCount?: number              // จำนวนภาพทั้งหมด (0 = ไม่มี)
+  gallerySafeCount?: number          // จำนวนภาพ safe (SFW)
+  galleryNsfwCount?: number          // จำนวนภาพ nsfw
   createdAt: string
   updatedAt: string
 }
