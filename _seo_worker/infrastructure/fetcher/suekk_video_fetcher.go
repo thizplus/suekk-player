@@ -119,36 +119,63 @@ func (f *SuekkVideoFetcher) FetchVideoInfo(ctx context.Context, videoCode string
 }
 
 // ListGalleryImages ดึงรายการ gallery images จาก storage (ใช้ presigned URLs)
-// ใช้ภาพจาก /safe/ subfolder ที่ _worker classify ไว้แล้ว
+// Three-Tier Priority: super_safe → safe → fallback to main gallery
+// super_safe = NSFW < 0.15 + มีหน้าคน (ดีที่สุดสำหรับ SEO)
 func (f *SuekkVideoFetcher) ListGalleryImages(ctx context.Context, galleryPath string) ([]string, error) {
 	if galleryPath == "" {
 		return nil, nil
 	}
 
-	// ใช้ safe subfolder เท่านั้น (pre-classified by _worker)
-	safePath := galleryPath + "/safe"
+	// Trim trailing slash เพื่อป้องกัน double slash
+	galleryPath = strings.TrimSuffix(galleryPath, "/")
 
-	// List files from storage
-	files, err := f.storage.ListFiles(safePath)
-	if err != nil || len(files) == 0 {
-		// Fallback: ถ้าไม่มี /safe subfolder (legacy videos) ใช้ path เดิม
-		f.logger.WarnContext(ctx, "Safe gallery not found, falling back to main gallery",
-			"safe_path", safePath,
-			"error", err,
+	var files []string
+	var err error
+	var usedPath string
+
+	// Priority 1: super_safe (NSFW < 0.15 + face) - ดีที่สุดสำหรับ SEO
+	superSafePath := galleryPath + "/super_safe"
+	files, err = f.storage.ListFiles(superSafePath)
+	if err == nil && len(files) > 0 {
+		usedPath = superSafePath
+		f.logger.InfoContext(ctx, "Using super_safe gallery (Three-Tier)",
+			"path", superSafePath,
+			"count", len(files),
 		)
-		files, err = f.storage.ListFiles(galleryPath)
-		if err != nil {
-			return nil, err
+	} else {
+		// Priority 2: safe (NSFW 0.15-0.3)
+		safePath := galleryPath + "/safe"
+		files, err = f.storage.ListFiles(safePath)
+		if err == nil && len(files) > 0 {
+			usedPath = safePath
+			f.logger.InfoContext(ctx, "Using safe gallery (fallback from super_safe)",
+				"path", safePath,
+				"count", len(files),
+			)
+		} else {
+			// Priority 3: Fallback to main gallery (legacy videos)
+			f.logger.WarnContext(ctx, "No classified gallery found, falling back to main gallery",
+				"super_safe_path", superSafePath,
+				"safe_path", safePath,
+			)
+			files, err = f.storage.ListFiles(galleryPath)
+			if err != nil {
+				return nil, err
+			}
+			usedPath = galleryPath
 		}
 	}
 
 	// Filter only image files and build presigned URLs
-	// IMPORTANT: ต้องกรอง /nsfw/ ออก เพราะ fallback อาจ list ทั้ง folder
+	// IMPORTANT: ต้องกรอง subfolder ออกเฉพาะเมื่อใช้ main gallery (fallback)
 	var imageURLs []string
+	isUsingMainGallery := usedPath == galleryPath
 	for _, file := range files {
-		// Skip NSFW files (ป้องกัน fallback ดึงภาพจาก /nsfw/ subfolder มา)
-		if strings.Contains(file, "/nsfw/") {
-			continue
+		// Skip subfolders เฉพาะเมื่อใช้ main gallery (ป้องกัน fallback ดึงภาพจาก subfolder มา)
+		if isUsingMainGallery {
+			if strings.Contains(file, "/nsfw/") || strings.Contains(file, "/safe/") || strings.Contains(file, "/super_safe/") {
+				continue
+			}
 		}
 
 		// Check if it's an image
@@ -166,8 +193,8 @@ func (f *SuekkVideoFetcher) ListGalleryImages(ctx context.Context, galleryPath s
 		}
 	}
 
-	f.logger.InfoContext(ctx, "Gallery images listed (safe only)",
-		"path", safePath,
+	f.logger.InfoContext(ctx, "Gallery images listed (SEO-safe)",
+		"path", usedPath,
 		"count", len(imageURLs),
 	)
 
