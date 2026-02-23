@@ -67,7 +67,7 @@ func NewHandlers(services *Services) *Handlers {
 		TaskHandler:          NewTaskHandler(services.TaskService),
 		FileHandler:          NewFileHandler(services.FileService),
 		JobHandler:           NewJobHandler(services.JobService),
-		VideoHandler:         NewVideoHandler(services.VideoService, services.TranscodingService, services.SettingService, services.NATSPublisher, services.StorageBasePath, services.StorageType),
+		VideoHandler:         NewVideoHandler(services.VideoService, services.TranscodingService, services.SettingService, services.NATSPublisher, services.StoragePort, services.StorageBasePath, services.StorageType),
 		CategoryHandler:      NewCategoryHandler(services.CategoryService),
 		AuthHandler:          NewAuthHandler(services.UserService, services.GoogleConfig),
 		TranscodingHandler:   NewTranscodingHandler(services.VideoService, services.SettingService, services.NATSPublisher),

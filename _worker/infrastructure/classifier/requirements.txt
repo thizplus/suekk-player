@@ -1,0 +1,14 @@
+# NSFW Classifier Dependencies
+# Install: pip install -r requirements.txt
+
+# Falconsai model (primary NSFW detection)
+transformers>=4.30.0
+torch>=2.0.0
+
+# NudeNet (secondary detection)
+nudenet>=3.0.0
+
+# Image processing
+opencv-python>=4.8.0
+Pillow>=10.0.0
+numpy>=1.24.0

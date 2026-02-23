@@ -11,6 +11,7 @@ import (
 
 	"gofiber-template/domain/dto"
 	"gofiber-template/domain/models"
+	"gofiber-template/domain/ports"
 	"gofiber-template/domain/services"
 	natspkg "gofiber-template/infrastructure/nats"
 	"gofiber-template/pkg/logger"
@@ -23,6 +24,7 @@ type VideoHandler struct {
 	transcodingService services.TranscodingService
 	settingService     services.SettingService
 	natsPublisher      *natspkg.Publisher // NATS JetStream publisher (ใช้แทน asynqClient เมื่อ STORAGE_TYPE=s3)
+	storage            ports.StoragePort  // Storage for deleting old gallery files
 	storagePath        string
 	storageType        string // "local" หรือ "s3"
 }
@@ -32,6 +34,7 @@ func NewVideoHandler(
 	transcodingService services.TranscodingService,
 	settingService services.SettingService,
 	natsPublisher *natspkg.Publisher,
+	storage ports.StoragePort,
 	storagePath string,
 	storageType string,
 ) *VideoHandler {
@@ -40,6 +43,7 @@ func NewVideoHandler(
 		transcodingService: transcodingService,
 		settingService:     settingService,
 		natsPublisher:      natsPublisher,
+		storage:            storage,
 		storagePath:        storagePath,
 		storageType:        storageType,
 	}
@@ -917,7 +921,27 @@ func (h *VideoHandler) RegenerateGallery(c *fiber.Ctx) error {
 		return utils.BadRequestResponse(c, "NATS publisher not available")
 	}
 
-	// Reset gallery counts ก่อน (worker จะ update ใหม่เมื่อเสร็จ)
+	// ลบ gallery เก่าใน E2/S3 ก่อน
+	galleryPrefix := fmt.Sprintf("gallery/%s/", video.Code)
+	if h.storage != nil {
+		if err := h.storage.DeleteFolder(galleryPrefix); err != nil {
+			logger.WarnContext(ctx, "Failed to delete old gallery files",
+				"video_id", id,
+				"video_code", video.Code,
+				"prefix", galleryPrefix,
+				"error", err,
+			)
+			// Continue anyway - new files will overwrite
+		} else {
+			logger.InfoContext(ctx, "Deleted old gallery files",
+				"video_id", id,
+				"video_code", video.Code,
+				"prefix", galleryPrefix,
+			)
+		}
+	}
+
+	// Reset gallery counts ใน DB (worker จะ update ใหม่เมื่อเสร็จ)
 	zero := 0
 	emptyPath := ""
 	resetReq := &dto.UpdateVideoRequest{

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 NSFW Batch Classifier
-Classifies all images in a folder using NudeNet
+Classifies all images in a folder using Falconsai + NudeNet (dual model)
 Outputs JSON result to stdout or file
 
 Usage:
@@ -14,7 +14,7 @@ import json
 import argparse
 import time
 from pathlib import Path
-from typing import Dict, List, Any
+from typing import Dict, List, Any, Optional
 
 import cv2
 import numpy as np
@@ -28,6 +28,7 @@ from PIL import Image
 NSFW_THRESHOLD = 0.3  # Score above this = NSFW
 
 # NudeNet labels that indicate NSFW content (NudeNet v2/v3 format)
+# Used as secondary detection
 NSFW_LABELS = [
     "EXPOSED_BREAST_F",
     "EXPOSED_GENITALIA_F",
@@ -42,73 +43,107 @@ IMAGE_EXTENSIONS = {'.jpg', '.jpeg', '.png', '.webp'}
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# NudeNet Classifier
+# Dual Model NSFW Classifier (Falconsai + NudeNet)
 # ═══════════════════════════════════════════════════════════════════════════════
 
 class NSFWClassifier:
-    """NSFW classifier using NudeNet"""
+    """
+    NSFW classifier using dual models:
+    - Falconsai/nsfw_image_detection (primary, more accurate)
+    - NudeNet (secondary, region-based detection)
+    """
 
     def __init__(self):
-        self.detector = None
+        self.falconsai_model = None
+        self.nudenet_detector = None
         self.face_cascade = None
         self._loaded = False
 
     def load(self):
-        """Load NudeNet model (lazy loading)"""
+        """Load all models (lazy loading)"""
         if self._loaded:
             return
 
+        # 1. Load Falconsai model (primary NSFW classifier)
+        try:
+            from transformers import pipeline
+            import torch
+
+            device = 0 if torch.cuda.is_available() else -1
+            self.falconsai_model = pipeline(
+                "image-classification",
+                model="Falconsai/nsfw_image_detection",
+                device=device
+            )
+            print("[OK] Falconsai NSFW model loaded", file=sys.stderr)
+        except Exception as e:
+            print(f"[WARN] Could not load Falconsai model: {e}", file=sys.stderr)
+
+        # 2. Load NudeNet (secondary, region-based)
         try:
             from nudenet import NudeDetector
-            self.detector = NudeDetector()
-
-            # Load face cascade for face detection
-            cascade_path = cv2.data.haarcascades + 'haarcascade_frontalface_default.xml'
-            self.face_cascade = cv2.CascadeClassifier(cascade_path)
-
-            self._loaded = True
+            self.nudenet_detector = NudeDetector()
             print("[OK] NudeNet loaded", file=sys.stderr)
         except Exception as e:
-            print(f"[ERROR] Failed to load NudeNet: {e}", file=sys.stderr)
-            raise
+            print(f"[WARN] Could not load NudeNet: {e}", file=sys.stderr)
+
+        # 3. Load face cascade for face detection
+        try:
+            cascade_path = cv2.data.haarcascades + 'haarcascade_frontalface_default.xml'
+            self.face_cascade = cv2.CascadeClassifier(cascade_path)
+            print("[OK] Face cascade loaded", file=sys.stderr)
+        except Exception as e:
+            print(f"[WARN] Could not load face cascade: {e}", file=sys.stderr)
+
+        self._loaded = True
 
     def classify(self, image_path: str) -> Dict[str, Any]:
         """
-        Classify a single image
-        Returns: {filename, is_safe, nsfw_score, face_score, aesthetic_score, error}
+        Classify a single image using dual models
+        Returns: {filename, is_safe, nsfw_score, falconsai_score, nudenet_score, face_score, aesthetic_score, error}
         """
         filename = os.path.basename(image_path)
 
         try:
-            # Load image
-            img = cv2.imread(image_path)
-            if img is None:
+            # Load image with PIL for Falconsai
+            pil_image = Image.open(image_path).convert("RGB")
+
+            # Load image with OpenCV for NudeNet
+            cv_image = cv2.imread(image_path)
+            if cv_image is None:
                 return {
                     "filename": filename,
-                    "is_safe": False,  # Safety first
+                    "is_safe": False,
                     "nsfw_score": 1.0,
+                    "falconsai_score": 1.0,
+                    "nudenet_score": 1.0,
                     "face_score": 0.0,
                     "aesthetic_score": 0.0,
                     "error": "Failed to load image"
                 }
 
-            # Run NudeNet detection
-            detections = self.detector.detect(img)
+            # 1. Falconsai classification (primary)
+            falconsai_score = self._score_falconsai(pil_image)
 
-            # Calculate NSFW score based on detected regions
-            nsfw_score = self._calculate_nsfw_score(detections)
+            # 2. NudeNet detection (secondary)
+            nudenet_score = self._score_nudenet(cv_image)
+
+            # Combined NSFW score: use MAX of both models (stricter)
+            nsfw_score = max(falconsai_score, nudenet_score)
             is_safe = nsfw_score < NSFW_THRESHOLD
 
             # Calculate face score
-            face_score = self._calculate_face_score(img)
+            face_score = self._calculate_face_score(cv_image)
 
-            # Simple aesthetic score (based on image quality)
-            aesthetic_score = self._calculate_aesthetic_score(img)
+            # Simple aesthetic score
+            aesthetic_score = self._calculate_aesthetic_score(cv_image)
 
             return {
                 "filename": filename,
                 "is_safe": is_safe,
                 "nsfw_score": round(nsfw_score, 4),
+                "falconsai_score": round(falconsai_score, 4),
+                "nudenet_score": round(nudenet_score, 4),
                 "face_score": round(face_score, 4),
                 "aesthetic_score": round(aesthetic_score, 4),
                 "error": ""
@@ -117,24 +152,51 @@ class NSFWClassifier:
         except Exception as e:
             return {
                 "filename": filename,
-                "is_safe": False,  # Safety first
+                "is_safe": False,
                 "nsfw_score": 1.0,
+                "falconsai_score": 1.0,
+                "nudenet_score": 1.0,
                 "face_score": 0.0,
                 "aesthetic_score": 0.0,
                 "error": str(e)
             }
 
-    def _calculate_nsfw_score(self, detections: List[Dict]) -> float:
-        """Calculate overall NSFW score from detections"""
-        if not detections:
+    def _score_falconsai(self, pil_image: Image.Image) -> float:
+        """Score image using Falconsai model (0=safe, 1=nsfw)"""
+        if self.falconsai_model is None:
             return 0.0
 
-        max_nsfw_score = 0.0
-        for det in detections:
-            if det['class'] in NSFW_LABELS:
-                max_nsfw_score = max(max_nsfw_score, det['score'])
+        try:
+            results = self.falconsai_model(pil_image)
+            for r in results:
+                label = r["label"].lower()
+                if label in ["nsfw", "porn", "sexy", "hentai"]:
+                    return r["score"]
+            return 0.0
+        except Exception as e:
+            print(f"[WARN] Falconsai error: {e}", file=sys.stderr)
+            return 0.0
 
-        return max_nsfw_score
+    def _score_nudenet(self, cv_image: np.ndarray) -> float:
+        """Score image using NudeNet region detection (0=safe, 1=nsfw)"""
+        if self.nudenet_detector is None:
+            return 0.0
+
+        try:
+            detections = self.nudenet_detector.detect(cv_image)
+
+            if not detections:
+                return 0.0
+
+            max_nsfw_score = 0.0
+            for det in detections:
+                if det['class'] in NSFW_LABELS:
+                    max_nsfw_score = max(max_nsfw_score, det['score'])
+
+            return max_nsfw_score
+        except Exception as e:
+            print(f"[WARN] NudeNet error: {e}", file=sys.stderr)
+            return 0.0
 
     def _calculate_face_score(self, img: np.ndarray) -> float:
         """Calculate face visibility score (0-1)"""
@@ -164,11 +226,10 @@ class NSFWClassifier:
                 max_face_ratio = max(max_face_ratio, face_ratio)
 
             # Normalize: face taking 5-20% of image is ideal
-            # Score peaks at ~10% and decreases for very large/small faces
             if max_face_ratio < 0.01:
-                return max_face_ratio * 10  # Too small
+                return max_face_ratio * 10
             elif max_face_ratio > 0.5:
-                return 0.5  # Too large (cropped face)
+                return 0.5
             else:
                 return min(1.0, max_face_ratio * 5)
 
@@ -178,23 +239,17 @@ class NSFWClassifier:
     def _calculate_aesthetic_score(self, img: np.ndarray) -> float:
         """Simple aesthetic score based on image properties"""
         try:
-            # Check image sharpness using Laplacian variance
             gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
             laplacian_var = cv2.Laplacian(gray, cv2.CV_64F).var()
-
-            # Normalize sharpness (higher is better, cap at 1.0)
             sharpness = min(1.0, laplacian_var / 500)
 
-            # Check brightness
             brightness = np.mean(gray) / 255.0
-            # Penalize too dark or too bright
             brightness_score = 1.0 - abs(brightness - 0.5) * 2
 
-            # Combined score
             return (sharpness * 0.6 + brightness_score * 0.4)
 
         except Exception:
-            return 0.5  # Default middle score
+            return 0.5
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -295,7 +350,7 @@ def classify_batch(input_path: str) -> Dict[str, Any]:
 # ═══════════════════════════════════════════════════════════════════════════════
 
 def main():
-    parser = argparse.ArgumentParser(description="NSFW Batch Classifier")
+    parser = argparse.ArgumentParser(description="NSFW Batch Classifier (Falconsai + NudeNet)")
     parser.add_argument("--input", "-i", required=True, help="Input folder or image file")
     parser.add_argument("--output", "-o", help="Output JSON file (default: stdout)")
     parser.add_argument("--threshold", "-t", type=float, default=0.3, help="NSFW threshold (default: 0.3)")
