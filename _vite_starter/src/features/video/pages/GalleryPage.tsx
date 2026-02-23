@@ -1,8 +1,12 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { ArrowLeft, Loader2, X, ChevronLeft, ChevronRight, ImageOff } from 'lucide-react'
+import { ArrowLeft, Loader2, X, ChevronLeft, ChevronRight, ImageOff, Shield, ShieldAlert } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Badge } from '@/components/ui/badge'
 import { useVideoByCode, useGalleryUrls } from '../hooks'
+
+type GalleryTab = 'safe' | 'nsfw' | 'all'
 
 export function GalleryPage() {
   const { code } = useParams<{ code: string }>()
@@ -17,12 +21,37 @@ export function GalleryPage() {
   })
 
   // State
+  const [activeTab, setActiveTab] = useState<GalleryTab>('safe')
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null)
   const [loadedImages, setLoadedImages] = useState<Set<number>>(new Set())
   const [failedImages, setFailedImages] = useState<Set<number>>(new Set())
 
-  const galleryCount = galleryData?.count ?? video?.galleryCount ?? 0
-  const imageUrls = galleryData?.urls ?? []
+  // Compute URLs based on active tab
+  const safeUrls = galleryData?.safeUrls ?? galleryData?.urls ?? []
+  const nsfwUrls = galleryData?.nsfwUrls ?? []
+  const hasNsfw = nsfwUrls.length > 0
+
+  const imageUrls = useMemo(() => {
+    switch (activeTab) {
+      case 'safe':
+        return safeUrls
+      case 'nsfw':
+        return nsfwUrls
+      case 'all':
+        return [...safeUrls, ...nsfwUrls]
+      default:
+        return safeUrls
+    }
+  }, [activeTab, safeUrls, nsfwUrls])
+
+  const galleryCount = imageUrls.length
+
+  // Reset loaded/failed state when tab changes
+  useEffect(() => {
+    setLoadedImages(new Set())
+    setFailedImages(new Set())
+    setLightboxIndex(null)
+  }, [activeTab])
 
   // Lightbox navigation
   const openLightbox = (index: number) => setLightboxIndex(index)
@@ -83,8 +112,9 @@ export function GalleryPage() {
     )
   }
 
-  // No gallery state
-  if (!galleryCount || galleryCount === 0 || imageUrls.length === 0) {
+  // No gallery state (check total from API, not filtered count)
+  const totalGalleryCount = (galleryData?.safeCount ?? 0) + (galleryData?.nsfwCount ?? 0) || (galleryData?.count ?? 0)
+  if (totalGalleryCount === 0) {
     return (
       <div className="fixed inset-0 bg-background flex flex-col items-center justify-center gap-4">
         <ImageOff className="size-12 text-muted-foreground" />
@@ -101,14 +131,40 @@ export function GalleryPage() {
     <div className="min-h-screen bg-background">
       {/* Header */}
       <header className="sticky top-0 z-10 bg-background/95 backdrop-blur border-b">
-        <div className="max-w-7xl mx-auto px-4 py-3 flex items-center gap-3">
-          <Button variant="ghost" size="icon" onClick={() => navigate(-1)}>
-            <ArrowLeft className="size-5" />
-          </Button>
-          <div className="flex-1 min-w-0">
-            <h1 className="font-semibold truncate">Gallery: {video.code}</h1>
-            <p className="text-sm text-muted-foreground">{galleryCount} ภาพ</p>
+        <div className="max-w-7xl mx-auto px-4 py-3">
+          <div className="flex items-center gap-3">
+            <Button variant="ghost" size="icon" onClick={() => navigate(-1)}>
+              <ArrowLeft className="size-5" />
+            </Button>
+            <div className="flex-1 min-w-0">
+              <h1 className="font-semibold truncate">Gallery: {video.code}</h1>
+              <p className="text-sm text-muted-foreground">{galleryCount} ภาพ</p>
+            </div>
           </div>
+
+          {/* Tabs สำหรับ safe/nsfw */}
+          {hasNsfw && (
+            <div className="mt-3">
+              <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as GalleryTab)}>
+                <TabsList className="grid w-full grid-cols-3">
+                  <TabsTrigger value="safe" className="gap-1.5">
+                    <Shield className="size-4" />
+                    Safe
+                    <Badge variant="secondary" className="ml-1 text-xs">{safeUrls.length}</Badge>
+                  </TabsTrigger>
+                  <TabsTrigger value="nsfw" className="gap-1.5">
+                    <ShieldAlert className="size-4" />
+                    NSFW
+                    <Badge variant="secondary" className="ml-1 text-xs">{nsfwUrls.length}</Badge>
+                  </TabsTrigger>
+                  <TabsTrigger value="all" className="gap-1.5">
+                    All
+                    <Badge variant="secondary" className="ml-1 text-xs">{safeUrls.length + nsfwUrls.length}</Badge>
+                  </TabsTrigger>
+                </TabsList>
+              </Tabs>
+            </div>
+          )}
         </div>
       </header>
 
@@ -117,7 +173,7 @@ export function GalleryPage() {
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2 sm:gap-3">
           {imageUrls.map((url, index) => (
             <GalleryImage
-              key={index}
+              key={`${activeTab}-${index}`}
               index={index}
               url={url}
               loaded={loadedImages.has(index)}

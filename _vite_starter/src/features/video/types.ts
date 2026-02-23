@@ -216,7 +216,11 @@ export interface UploadLimits {
 // Gallery URLs Response (presigned URLs for all gallery images)
 export interface GalleryUrlsResponse {
   code: string
-  count: number
-  urls: string[]
-  expires_at: number // Unix timestamp
+  count: number           // total (safe + nsfw)
+  safeCount: number       // จำนวนภาพ safe
+  nsfwCount: number       // จำนวนภาพ nsfw
+  urls: string[]          // backward compatible: safe URLs
+  safeUrls: string[]      // presigned URLs for safe images
+  nsfwUrls: string[]      // presigned URLs for nsfw images
+  expires_at: number      // Unix timestamp
 }
