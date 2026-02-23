@@ -561,15 +561,26 @@ func (h *HLSHandler) GetGalleryUrls(c *fiber.Ctx) error {
 	// Generate presigned URLs (expires in 1 hour)
 	expiry := 1 * time.Hour
 
-	var safeUrls, nsfwUrls []string
+	var superSafeUrls, safeUrls, nsfwUrls []string
 
 	// ไม่พึ่ง database count - list ไฟล์จริงจาก storage
-	// ลอง list safe/nsfw folders ก่อน
+	// Three-Tier: super_safe / safe / nsfw folders
+	superSafeFiles, _ := h.storage.ListFiles(fmt.Sprintf("gallery/%s/super_safe", code))
 	safeFiles, _ := h.storage.ListFiles(fmt.Sprintf("gallery/%s/safe", code))
 	nsfwFiles, _ := h.storage.ListFiles(fmt.Sprintf("gallery/%s/nsfw", code))
 
-	if len(safeFiles) > 0 || len(nsfwFiles) > 0 {
-		// มีไฟล์ใน safe/nsfw folders
+	if len(superSafeFiles) > 0 || len(safeFiles) > 0 || len(nsfwFiles) > 0 {
+		// Three-Tier: มีไฟล์ใน super_safe/safe/nsfw folders
+		superSafeUrls = make([]string, 0, len(superSafeFiles))
+		for _, filePath := range superSafeFiles {
+			presignedURL, err := h.storage.GetPresignedDownloadURL(filePath, expiry)
+			if err != nil {
+				logger.WarnContext(ctx, "Failed to generate super_safe URL", "path", filePath, "error", err)
+				continue
+			}
+			superSafeUrls = append(superSafeUrls, presignedURL)
+		}
+
 		safeUrls = make([]string, 0, len(safeFiles))
 		for _, filePath := range safeFiles {
 			presignedURL, err := h.storage.GetPresignedDownloadURL(filePath, expiry)
@@ -590,11 +601,12 @@ func (h *HLSHandler) GetGalleryUrls(c *fiber.Ctx) error {
 			nsfwUrls = append(nsfwUrls, presignedURL)
 		}
 	} else {
-		// Fallback: videos เก่าที่ไฟล์อยู่ root folder
+		// Fallback: videos เก่าที่ไฟล์อยู่ root folder (backward compatible)
 		files, err := h.storage.ListFiles(fmt.Sprintf("gallery/%s", code))
 		if err != nil {
 			logger.WarnContext(ctx, "Failed to list gallery files", "code", code, "error", err)
 		} else {
+			// ถือว่าทั้งหมดเป็น safe (backward compatible)
 			safeUrls = make([]string, 0, len(files))
 			for _, filePath := range files {
 				presignedURL, err := h.storage.GetPresignedDownloadURL(filePath, expiry)
@@ -605,19 +617,22 @@ func (h *HLSHandler) GetGalleryUrls(c *fiber.Ctx) error {
 				safeUrls = append(safeUrls, presignedURL)
 			}
 		}
+		superSafeUrls = []string{}
 		nsfwUrls = []string{}
 	}
 
 	// ต้องมีภาพอย่างน้อย 1 ภาพ
-	if len(safeUrls) == 0 && len(nsfwUrls) == 0 {
+	totalCount := len(superSafeUrls) + len(safeUrls) + len(nsfwUrls)
+	if totalCount == 0 {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"success": false,
 			"error":   "Failed to generate gallery URLs",
 		})
 	}
 
-	logger.InfoContext(ctx, "Gallery URLs generated",
+	logger.InfoContext(ctx, "Gallery URLs generated (three-tier)",
 		"code", code,
+		"super_safe_count", len(superSafeUrls),
 		"safe_count", len(safeUrls),
 		"nsfw_count", len(nsfwUrls),
 	)
@@ -625,14 +640,16 @@ func (h *HLSHandler) GetGalleryUrls(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{
 		"success": true,
 		"data": fiber.Map{
-			"code":       code,
-			"count":      len(safeUrls) + len(nsfwUrls),
-			"safeCount":  len(safeUrls),
-			"nsfwCount":  len(nsfwUrls),
-			"urls":       safeUrls, // backward compatible: default เป็น safe
-			"safeUrls":   safeUrls,
-			"nsfwUrls":   nsfwUrls,
-			"expires_at": time.Now().Add(expiry).Unix(),
+			"code":           code,
+			"count":          totalCount,
+			"superSafeCount": len(superSafeUrls),
+			"safeCount":      len(safeUrls),
+			"nsfwCount":      len(nsfwUrls),
+			"urls":           superSafeUrls,    // backward compatible: default เป็น super_safe
+			"superSafeUrls":  superSafeUrls,    // Three-Tier: super_safe (< 0.15 + face)
+			"safeUrls":       safeUrls,         // Three-Tier: safe (0.15-0.3)
+			"nsfwUrls":       nsfwUrls,         // Three-Tier: nsfw (>= 0.3)
+			"expires_at":     time.Now().Add(expiry).Unix(),
 		},
 	})
 }

@@ -183,7 +183,7 @@ class NSFWClassifier:
             for r in results:
                 label = r["label"].lower()
                 if label in ["nsfw", "porn", "sexy", "hentai"]:
-                    return r["score"]
+                    return float(r["score"])  # Convert numpy to native float
             return 0.0
         except Exception as e:
             print(f"[WARN] Falconsai error: {e}", file=sys.stderr)
@@ -203,7 +203,7 @@ class NSFWClassifier:
             max_nsfw_score = 0.0
             for det in detections:
                 if det['class'] in NSFW_LABELS:
-                    max_nsfw_score = max(max_nsfw_score, det['score'])
+                    max_nsfw_score = max(max_nsfw_score, float(det['score']))  # Convert numpy
 
             return max_nsfw_score
         except Exception as e:
@@ -239,11 +239,11 @@ class NSFWClassifier:
 
             # Normalize: face taking 5-20% of image is ideal
             if max_face_ratio < 0.01:
-                return max_face_ratio * 10
+                return float(max_face_ratio * 10)  # Convert numpy
             elif max_face_ratio > 0.5:
                 return 0.5
             else:
-                return min(1.0, max_face_ratio * 5)
+                return float(min(1.0, max_face_ratio * 5))  # Convert numpy
 
         except Exception:
             return 0.0
@@ -252,13 +252,13 @@ class NSFWClassifier:
         """Simple aesthetic score based on image properties"""
         try:
             gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-            laplacian_var = cv2.Laplacian(gray, cv2.CV_64F).var()
+            laplacian_var = float(cv2.Laplacian(gray, cv2.CV_64F).var())  # Convert numpy
             sharpness = min(1.0, laplacian_var / 500)
 
-            brightness = np.mean(gray) / 255.0
+            brightness = float(np.mean(gray)) / 255.0  # Convert numpy
             brightness_score = 1.0 - abs(brightness - 0.5) * 2
 
-            return (sharpness * 0.6 + brightness_score * 0.4)
+            return float(sharpness * 0.6 + brightness_score * 0.4)  # Ensure native float
 
         except Exception:
             return 0.5
