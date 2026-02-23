@@ -152,42 +152,65 @@ func (h *SEOHandler) ProcessJob(ctx context.Context, job *models.SEOArticleJob) 
 
 		// ภาพจาก /safe/ folder เป็น SFW ทั้งหมดแล้ว
 		if len(imageURLs) > 0 {
-			// ใช้ ImageSelector เพื่อเลือก cover ที่ดีที่สุด (face + aesthetic scoring)
+			// ใช้ ImageSelector เพื่อเลือก cover และ gallery ที่ดีที่สุด
+			// - กรองภาพที่ไม่มีคน (face_score = 0) ออก
+			// - เลือก cover ที่เห็นหน้าชัด + aesthetic score สูง
+			// - เลือก gallery ที่หลากหลายและคุณภาพดี
 			if h.imageSelector != nil {
 				selectionResult, err := h.imageSelector.SelectImages(ctx, imageURLs)
 				if err != nil {
-					h.logger.WarnContext(ctx, "Image selection failed, using first image as cover",
+					h.logger.WarnContext(ctx, "Image selection failed, using all images",
 						"error", err,
 					)
+					// Fallback: ใช้ภาพแรกเป็น cover และทุกภาพเป็น gallery
 					coverImage = &models.ImageScore{
 						URL:    imageURLs[0],
 						IsSafe: true,
 					}
-				} else if selectionResult.Cover != nil {
-					coverImage = selectionResult.Cover
-					h.logger.InfoContext(ctx, "Best cover selected",
-						"cover_url", coverImage.URL,
-						"face_score", coverImage.FaceScore,
-						"aesthetic_score", coverImage.AestheticScore,
-						"combined_score", coverImage.CombinedScore,
+					for _, url := range imageURLs {
+						galleryImages = append(galleryImages, models.GalleryImage{
+							URL: url,
+						})
+					}
+				} else {
+					// ใช้ cover ที่คัดเลือกแล้ว
+					if selectionResult.Cover != nil {
+						coverImage = selectionResult.Cover
+						h.logger.InfoContext(ctx, "Best cover selected",
+							"cover_url", coverImage.URL,
+							"face_score", coverImage.FaceScore,
+							"aesthetic_score", coverImage.AestheticScore,
+							"combined_score", coverImage.CombinedScore,
+						)
+					}
+
+					// ใช้ gallery ที่คัดเลือกแล้ว (กรองภาพไม่มีคน/คุณภาพต่ำ)
+					for _, img := range selectionResult.Gallery {
+						galleryImages = append(galleryImages, models.GalleryImage{
+							URL: img.URL,
+						})
+					}
+
+					h.logger.InfoContext(ctx, "Gallery images selected",
+						"input_count", len(imageURLs),
+						"selected_count", len(galleryImages),
+						"safe_count", selectionResult.SafeImages,
 					)
 				}
 			} else {
-				// Fallback: ใช้ภาพแรกเป็น cover
+				// Fallback: ใช้ภาพแรกเป็น cover และทุกภาพเป็น gallery
 				coverImage = &models.ImageScore{
 					URL:    imageURLs[0],
 					IsSafe: true,
 				}
+				for _, url := range imageURLs {
+					galleryImages = append(galleryImages, models.GalleryImage{
+						URL: url,
+					})
+				}
 			}
 
-			// เพิ่มทุกภาพเข้า gallery
-			for _, url := range imageURLs {
-				galleryImages = append(galleryImages, models.GalleryImage{
-					URL: url,
-				})
-			}
-
-			h.logger.InfoContext(ctx, "Gallery images ready (pre-classified safe)",
+			h.logger.InfoContext(ctx, "Gallery images ready",
 				"gallery_count", len(galleryImages),
 				"has_cover", coverImage != nil,
 			)
@@ -407,9 +430,20 @@ func (h *SEOHandler) buildArticle(
 	}
 
 	// Add alt texts to gallery images
+	// ใช้ format ง่ายๆ ที่ถูกต้อง เพราะ AI ไม่เห็นภาพจริง
+	castName := ""
+	if len(casts) > 0 {
+		castName = casts[0].Name
+		if casts[0].NameTH != "" {
+			castName = casts[0].NameTH
+		}
+	}
 	for i := range galleryImages {
-		if i < len(aiOutput.GalleryAlts) {
-			galleryImages[i].Alt = aiOutput.GalleryAlts[i]
+		// Format: "ฉากจาก DLDSS-471 - Zemba Mami (ภาพที่ 1)"
+		if castName != "" {
+			galleryImages[i].Alt = fmt.Sprintf("ฉากจาก %s - %s (ภาพที่ %d)", metadata.RealCode, castName, i+1)
+		} else {
+			galleryImages[i].Alt = fmt.Sprintf("ฉากจาก %s (ภาพที่ %d)", metadata.RealCode, i+1)
 		}
 	}
 
