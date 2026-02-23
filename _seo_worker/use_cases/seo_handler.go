@@ -430,20 +430,13 @@ func (h *SEOHandler) buildArticle(
 	}
 
 	// Add alt texts to gallery images
-	// ใช้ format ง่ายๆ ที่ถูกต้อง เพราะ AI ไม่เห็นภาพจริง
-	castName := ""
-	if len(casts) > 0 {
-		castName = casts[0].Name
-		if casts[0].NameTH != "" {
-			castName = casts[0].NameTH
-		}
-	}
+	// ใช้ AI-generated alt ที่อธิบายฉากจาก script (ดูดีกว่า format แห้งๆ)
 	for i := range galleryImages {
-		// Format: "ฉากจาก DLDSS-471 - Zemba Mami (ภาพที่ 1)"
-		if castName != "" {
-			galleryImages[i].Alt = fmt.Sprintf("ฉากจาก %s - %s (ภาพที่ %d)", metadata.RealCode, castName, i+1)
+		if i < len(aiOutput.GalleryAlts) {
+			galleryImages[i].Alt = aiOutput.GalleryAlts[i]
 		} else {
-			galleryImages[i].Alt = fmt.Sprintf("ฉากจาก %s (ภาพที่ %d)", metadata.RealCode, i+1)
+			// Fallback สำหรับภาพที่เกินจำนวน alt ที่ AI generate
+			galleryImages[i].Alt = fmt.Sprintf("ฉากจาก %s", metadata.RealCode)
 		}
 	}
 
