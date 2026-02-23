@@ -7,6 +7,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
 	"seo-worker/domain/models"
@@ -142,8 +143,14 @@ func (f *SuekkVideoFetcher) ListGalleryImages(ctx context.Context, galleryPath s
 	}
 
 	// Filter only image files and build presigned URLs
+	// IMPORTANT: ต้องกรอง /nsfw/ ออก เพราะ fallback อาจ list ทั้ง folder
 	var imageURLs []string
 	for _, file := range files {
+		// Skip NSFW files (ป้องกัน fallback ดึงภาพจาก /nsfw/ subfolder มา)
+		if strings.Contains(file, "/nsfw/") {
+			continue
+		}
+
 		// Check if it's an image
 		if isImageFile(file) {
 			// ใช้ presigned URL เพราะ E2 bucket เป็น private
