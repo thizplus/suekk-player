@@ -150,12 +150,34 @@ func (h *SEOHandler) ProcessJob(ctx context.Context, job *models.SEOArticleJob) 
 			)
 		}
 
-		// ภาพจาก /safe/ folder เป็น SFW ทั้งหมดแล้ว - ใช้ได้โดยตรง
+		// ภาพจาก /safe/ folder เป็น SFW ทั้งหมดแล้ว
 		if len(imageURLs) > 0 {
-			// ใช้ภาพแรกเป็น cover (TODO: อาจเพิ่ม face detection เลือก cover ที่ดีกว่า)
-			coverImage = &models.ImageScore{
-				URL:    imageURLs[0],
-				IsSafe: true,
+			// ใช้ ImageSelector เพื่อเลือก cover ที่ดีที่สุด (face + aesthetic scoring)
+			if h.imageSelector != nil {
+				selectionResult, err := h.imageSelector.SelectImages(ctx, imageURLs)
+				if err != nil {
+					h.logger.WarnContext(ctx, "Image selection failed, using first image as cover",
+						"error", err,
+					)
+					coverImage = &models.ImageScore{
+						URL:    imageURLs[0],
+						IsSafe: true,
+					}
+				} else if selectionResult.Cover != nil {
+					coverImage = selectionResult.Cover
+					h.logger.InfoContext(ctx, "Best cover selected",
+						"cover_url", coverImage.URL,
+						"face_score", coverImage.FaceScore,
+						"aesthetic_score", coverImage.AestheticScore,
+						"combined_score", coverImage.CombinedScore,
+					)
+				}
+			} else {
+				// Fallback: ใช้ภาพแรกเป็น cover
+				coverImage = &models.ImageScore{
+					URL:    imageURLs[0],
+					IsSafe: true,
+				}
 			}
 
 			// เพิ่มทุกภาพเข้า gallery
