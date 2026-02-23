@@ -22,6 +22,7 @@ type SEOHandler struct {
 	ttsService        ports.TTSPort
 	embeddingService  ports.EmbeddingPort
 	articlePublisher  ports.ArticlePublisherPort
+	imageCopier       ports.ImageCopierPort
 	messenger         ports.MessengerPort
 	storage           ports.StoragePort
 
@@ -37,6 +38,7 @@ func NewSEOHandler(
 	ttsService ports.TTSPort,
 	embeddingService ports.EmbeddingPort,
 	articlePublisher ports.ArticlePublisherPort,
+	imageCopier ports.ImageCopierPort,
 	messenger ports.MessengerPort,
 	storage ports.StoragePort,
 ) *SEOHandler {
@@ -49,6 +51,7 @@ func NewSEOHandler(
 		ttsService:        ttsService,
 		embeddingService:  embeddingService,
 		articlePublisher:  articlePublisher,
+		imageCopier:       imageCopier,
 		messenger:         messenger,
 		storage:           storage,
 		logger:            slog.Default().With("component", "seo_handler"),
@@ -233,6 +236,7 @@ func (h *SEOHandler) ProcessJob(ctx context.Context, job *models.SEOArticleJob) 
 		SRTContent:    srtContent,
 		VideoMetadata: metadata,
 		Casts:         casts,
+		Tags:          tags,
 		PreviousWorks: previousWorks,
 		GalleryCount:  len(galleryImages),
 	}
@@ -333,15 +337,51 @@ func (h *SEOHandler) ProcessJob(ctx context.Context, job *models.SEOArticleJob) 
 
 	h.sendProgress(ctx, job.VideoID, ports.StageTTSEmbedComplete, 90)
 
-	// === Stage 4: Build Article ===
+	// === Stage 4: Copy Images & Build Article ===
+	h.sendProgress(ctx, job.VideoID, ports.StagePublishing, 92)
+
+	// Copy gallery images from e2 (suekk) to r2 (subth)
+	if h.imageCopier != nil && len(galleryImages) > 0 {
+		h.logger.InfoContext(ctx, "Copying gallery images to r2",
+			"video_code", job.VideoCode,
+			"count", len(galleryImages),
+		)
+
+		copiedImages, err := h.imageCopier.CopyGalleryImages(ctx, job.VideoCode, galleryImages)
+		if err != nil {
+			h.logger.WarnContext(ctx, "Image copy failed (non-critical, using original URLs)",
+				"video_code", job.VideoCode,
+				"error", err,
+			)
+		} else {
+			galleryImages = copiedImages
+			h.logger.InfoContext(ctx, "Gallery images copied to r2",
+				"video_code", job.VideoCode,
+				"count", len(copiedImages),
+			)
+		}
+
+		// Copy cover image too if different from gallery
+		if coverImage != nil && coverImage.URL != "" {
+			newCoverURL, err := h.imageCopier.CopyImage(ctx, job.VideoCode, coverImage.URL, "cover.jpg")
+			if err != nil {
+				h.logger.WarnContext(ctx, "Cover image copy failed (using original URL)",
+					"error", err,
+				)
+			} else {
+				coverImage.URL = newCoverURL
+			}
+		}
+	}
+
 	h.sendProgress(ctx, job.VideoID, ports.StagePublishing, 95)
 
 	article := h.buildArticle(job, metadata, aiOutput, casts, makerInfo, tags, previousWorks, galleryImages, coverImage, audioURL, audioDuration)
 
-	// === DEBUG MODE: Save JSON for review instead of publishing ===
+	// Save JSON for debug/review (always)
 	outputPath := fmt.Sprintf("output/%s_article.json", job.VideoCode)
 	if err := h.saveArticleJSON(article, outputPath); err != nil {
-		h.logger.ErrorContext(ctx, "Failed to save article JSON", "error", err)
+		h.logger.WarnContext(ctx, "Failed to save article JSON", "error", err)
 	} else {
 		h.logger.InfoContext(ctx, "Article saved to JSON for review",
 			"path", outputPath,
@@ -349,11 +389,16 @@ func (h *SEOHandler) ProcessJob(ctx context.Context, job *models.SEOArticleJob) 
 		)
 	}
 
-	// TODO: Uncomment when ready to publish
-	// if err := h.articlePublisher.PublishArticle(ctx, article); err != nil {
-	// 	h.messenger.SendFailed(ctx, job.VideoID, err)
-	// 	return fmt.Errorf("publish failed: %w", err)
-	// }
+	// Publish article to api.subth.com
+	if err := h.articlePublisher.PublishArticle(ctx, article); err != nil {
+		h.messenger.SendFailed(ctx, job.VideoID, err)
+		return fmt.Errorf("publish failed: %w", err)
+	}
+
+	h.logger.InfoContext(ctx, "Article published successfully",
+		"video_id", job.VideoID,
+		"video_code", job.VideoCode,
+	)
 
 	// === Done ===
 	h.messenger.SendCompleted(ctx, job.VideoID)
@@ -361,7 +406,6 @@ func (h *SEOHandler) ProcessJob(ctx context.Context, job *models.SEOArticleJob) 
 	h.logger.InfoContext(ctx, "SEO job completed",
 		"video_id", job.VideoID,
 		"video_code", job.VideoCode,
-		"output_file", outputPath,
 		"duration", time.Since(startTime),
 	)
 
@@ -440,17 +484,47 @@ func (h *SEOHandler) buildArticle(
 		}
 	}
 
-	// Add URLs to key moments และแปลงหน่วยจาก ms เป็น seconds ถ้าจำเป็น
-	for i := range aiOutput.KeyMoments {
-		// ถ้า startOffset > 10000 แสดงว่าเป็น milliseconds ให้แปลงเป็น seconds
-		if aiOutput.KeyMoments[i].StartOffset > 10000 {
-			aiOutput.KeyMoments[i].StartOffset = aiOutput.KeyMoments[i].StartOffset / 1000
+	// Filter & validate key moments
+	// Option B: เก็บเฉพาะ moments ในช่วง 10 นาทีแรก (600 วินาที) เพื่อหลีกเลี่ยง explicit content
+	const safeThresholdSeconds = 600 // 10 นาที - ช่วง intro/story setup
+
+	originalCount := len(aiOutput.KeyMoments)
+	var safeKeyMoments []models.KeyMoment
+	for _, km := range aiOutput.KeyMoments {
+		// แปลง milliseconds เป็น seconds ถ้าจำเป็น
+		if km.StartOffset > 10000 {
+			km.StartOffset = km.StartOffset / 1000
 		}
-		if aiOutput.KeyMoments[i].EndOffset > 10000 {
-			aiOutput.KeyMoments[i].EndOffset = aiOutput.KeyMoments[i].EndOffset / 1000
+		if km.EndOffset > 10000 {
+			km.EndOffset = km.EndOffset / 1000
 		}
-		aiOutput.KeyMoments[i].URL = fmt.Sprintf("/videos/%s?t=%d", job.VideoCode, aiOutput.KeyMoments[i].StartOffset)
+
+		// กรองเฉพาะ moments ที่อยู่ในช่วง safe (10 นาทีแรก)
+		if km.StartOffset > safeThresholdSeconds {
+			continue // ข้าม moments หลังช่วง safe
+		}
+
+		// Validate minimum duration: ต้องยาวอย่างน้อย 30 วินาที
+		duration := km.EndOffset - km.StartOffset
+		if duration < 30 {
+			km.EndOffset = km.StartOffset + 30
+			if metadata.Duration > 0 && km.EndOffset > metadata.Duration {
+				km.EndOffset = metadata.Duration
+			}
+		}
+
+		km.URL = fmt.Sprintf("/videos/%s?t=%d", job.VideoCode, km.StartOffset)
+		safeKeyMoments = append(safeKeyMoments, km)
 	}
+
+	// ใช้เฉพาะ safe moments
+	aiOutput.KeyMoments = safeKeyMoments
+
+	h.logger.Info("Key moments filtered for safety",
+		"original_count", originalCount,
+		"safe_count", len(safeKeyMoments),
+		"threshold_seconds", safeThresholdSeconds,
+	)
 
 	// Build MakerInfo
 	var makerInfo *models.MakerInfo
@@ -557,6 +631,10 @@ func (h *SEOHandler) buildArticle(
 		TranslationNote:   aiOutput.TranslationNote,
 		SubtitleQuality:   aiOutput.SubtitleQuality,
 		TechnicalFAQ:      aiOutput.TechnicalFAQ,
+
+		// === Technical Specs ===
+		VideoQuality: aiOutput.VideoQuality,
+		AudioQuality: aiOutput.AudioQuality,
 
 		// === SEO Enhancement ===
 		ExpertAnalysis:   aiOutput.ExpertAnalysis,

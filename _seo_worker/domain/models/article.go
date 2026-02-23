@@ -66,6 +66,10 @@ type ArticleContent struct {
 	SubtitleQuality   string    `json:"subtitleQuality,omitempty"`   // คุณภาพซับ
 	TechnicalFAQ      []FAQItem `json:"technicalFaq,omitempty"`      // FAQ เทคนิค
 
+	// === Technical Specs (เพิ่มความน่าเชื่อถือเชิงเทคนิค) ===
+	VideoQuality string `json:"videoQuality,omitempty"` // คุณภาพวิดีโอ เช่น "1080p Full HD"
+	AudioQuality string `json:"audioQuality,omitempty"` // คุณภาพเสียง เช่น "Stereo 320kbps"
+
 	// === SEO Enhancement ===
 	ExpertAnalysis   string   `json:"expertAnalysis,omitempty"`   // บทวิเคราะห์ผู้เชี่ยวชาญ
 	QualityScore     int      `json:"qualityScore"`               // AI rating 1-10
