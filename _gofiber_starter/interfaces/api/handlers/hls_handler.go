@@ -578,40 +578,56 @@ func (h *HLSHandler) GetGalleryUrls(c *fiber.Ctx) error {
 	var safeUrls, nsfwUrls []string
 
 	if isClassified {
-		// Generate safe URLs
-		safeUrls = make([]string, 0, video.GallerySafeCount)
-		for i := 1; i <= video.GallerySafeCount; i++ {
-			imagePath := fmt.Sprintf("gallery/%s/safe/%03d.jpg", code, i)
-			presignedURL, err := h.storage.GetPresignedDownloadURL(imagePath, expiry)
-			if err != nil {
-				logger.WarnContext(ctx, "Failed to generate safe URL", "path", imagePath, "error", err)
-				continue
+		// List actual safe files from storage
+		safeFiles, err := h.storage.ListFiles(fmt.Sprintf("gallery/%s/safe", code))
+		if err != nil {
+			logger.WarnContext(ctx, "Failed to list safe files", "code", code, "error", err)
+		} else {
+			safeUrls = make([]string, 0, len(safeFiles))
+			for _, filePath := range safeFiles {
+				presignedURL, err := h.storage.GetPresignedDownloadURL(filePath, expiry)
+				if err != nil {
+					logger.WarnContext(ctx, "Failed to generate safe URL", "path", filePath, "error", err)
+					continue
+				}
+				safeUrls = append(safeUrls, presignedURL)
 			}
-			safeUrls = append(safeUrls, presignedURL)
 		}
 
-		// Generate nsfw URLs
-		nsfwUrls = make([]string, 0, video.GalleryNsfwCount)
-		for i := 1; i <= video.GalleryNsfwCount; i++ {
-			imagePath := fmt.Sprintf("gallery/%s/nsfw/%03d.jpg", code, i)
-			presignedURL, err := h.storage.GetPresignedDownloadURL(imagePath, expiry)
-			if err != nil {
-				logger.WarnContext(ctx, "Failed to generate nsfw URL", "path", imagePath, "error", err)
-				continue
+		// List actual nsfw files from storage
+		nsfwFiles, err := h.storage.ListFiles(fmt.Sprintf("gallery/%s/nsfw", code))
+		if err != nil {
+			logger.WarnContext(ctx, "Failed to list nsfw files", "code", code, "error", err)
+		} else {
+			nsfwUrls = make([]string, 0, len(nsfwFiles))
+			for _, filePath := range nsfwFiles {
+				presignedURL, err := h.storage.GetPresignedDownloadURL(filePath, expiry)
+				if err != nil {
+					logger.WarnContext(ctx, "Failed to generate nsfw URL", "path", filePath, "error", err)
+					continue
+				}
+				nsfwUrls = append(nsfwUrls, presignedURL)
 			}
-			nsfwUrls = append(nsfwUrls, presignedURL)
 		}
 	} else {
-		// Fallback: videos เก่าที่ยังไม่ classify (ใส่ทั้งหมดเป็น safe)
-		safeUrls = make([]string, 0, video.GalleryCount)
-		for i := 1; i <= video.GalleryCount; i++ {
-			imagePath := fmt.Sprintf("gallery/%s/%03d.jpg", code, i)
-			presignedURL, err := h.storage.GetPresignedDownloadURL(imagePath, expiry)
-			if err != nil {
-				logger.WarnContext(ctx, "Failed to generate URL", "path", imagePath, "error", err)
-				continue
+		// Fallback: videos เก่าที่ยังไม่ classify - list files from root folder
+		files, err := h.storage.ListFiles(fmt.Sprintf("gallery/%s", code))
+		if err != nil {
+			logger.WarnContext(ctx, "Failed to list gallery files", "code", code, "error", err)
+		} else {
+			safeUrls = make([]string, 0, len(files))
+			for _, filePath := range files {
+				// Skip files in safe/ or nsfw/ subfolders (เผื่อ data ไม่ตรง)
+				if strings.Contains(filePath, "/safe/") || strings.Contains(filePath, "/nsfw/") {
+					continue
+				}
+				presignedURL, err := h.storage.GetPresignedDownloadURL(filePath, expiry)
+				if err != nil {
+					logger.WarnContext(ctx, "Failed to generate URL", "path", filePath, "error", err)
+					continue
+				}
+				safeUrls = append(safeUrls, presignedURL)
 			}
-			safeUrls = append(safeUrls, presignedURL)
 		}
 		nsfwUrls = []string{}
 	}

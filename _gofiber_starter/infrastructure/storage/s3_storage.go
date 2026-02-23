@@ -379,6 +379,35 @@ func (s *S3Storage) GetPresignedDownloadURL(path string, expiry time.Duration) (
 	return presignedURL.String(), nil
 }
 
+// ListFiles list ไฟล์ทั้งหมดใน prefix (folder)
+func (s *S3Storage) ListFiles(prefix string) ([]string, error) {
+	ctx := context.Background()
+
+	prefix = strings.TrimPrefix(prefix, "/")
+	prefix = strings.ReplaceAll(prefix, "\\", "/")
+	if prefix != "" && !strings.HasSuffix(prefix, "/") {
+		prefix = prefix + "/"
+	}
+
+	objectsCh := s.client.ListObjects(ctx, s.bucket, minio.ListObjectsOptions{
+		Prefix:    prefix,
+		Recursive: true,
+	})
+
+	var files []string
+	for obj := range objectsCh {
+		if obj.Err != nil {
+			return nil, fmt.Errorf("failed to list objects: %w", obj.Err)
+		}
+		// Skip directories (keys ending with /)
+		if !strings.HasSuffix(obj.Key, "/") {
+			files = append(files, obj.Key)
+		}
+	}
+
+	return files, nil
+}
+
 
 
 

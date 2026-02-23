@@ -59,6 +59,10 @@ type StoragePort interface {
 	// GetPresignedDownloadURL สร้าง presigned URL สำหรับ download ไฟล์
 	// expiry: ระยะเวลาที่ URL ใช้ได้
 	GetPresignedDownloadURL(path string, expiry time.Duration) (url string, err error)
+
+	// ListFiles list ไฟล์ทั้งหมดใน prefix (folder)
+	// return: slice ของ file paths
+	ListFiles(prefix string) ([]string, error)
 }
 
 // CompletedPart ข้อมูล part ที่ upload สำเร็จ
