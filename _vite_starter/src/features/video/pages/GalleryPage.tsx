@@ -201,6 +201,20 @@ export function GalleryPage() {
   )
 }
 
+// Extract filename from presigned URL (e.g., gallery/code/safe/001.jpg?X-Amz-... → 001.jpg)
+function extractFilename(url: string): string {
+  try {
+    const urlPath = new URL(url).pathname
+    const parts = urlPath.split('/')
+    return parts[parts.length - 1] || `image`
+  } catch {
+    // Fallback: try to extract before query string
+    const pathPart = url.split('?')[0]
+    const parts = pathPart.split('/')
+    return parts[parts.length - 1] || `image`
+  }
+}
+
 // Gallery Image Component with lazy loading (presigned URL - no headers needed)
 interface GalleryImageProps {
   index: number
@@ -214,6 +228,7 @@ interface GalleryImageProps {
 
 function GalleryImage({ index, url, loaded, failed, onLoad, onError, onClick }: GalleryImageProps) {
   const [isVisible, setIsVisible] = useState(false)
+  const filename = extractFilename(url)
 
   // Intersection Observer for lazy loading
   useEffect(() => {
@@ -236,19 +251,26 @@ function GalleryImage({ index, url, loaded, failed, onLoad, onError, onClick }: 
   return (
     <div
       id={`gallery-img-${index}`}
-      className="aspect-video bg-muted rounded-lg overflow-hidden cursor-pointer hover:ring-2 hover:ring-primary transition-all"
+      className="relative aspect-video bg-muted rounded-lg overflow-hidden cursor-pointer hover:ring-2 hover:ring-primary transition-all"
       onClick={onClick}
     >
       {isVisible && !failed ? (
         <img
           src={url}
-          alt={`Gallery ${index + 1}`}
+          alt={filename}
           className={`w-full h-full object-cover ${loaded ? '' : 'opacity-0'}`}
           loading="lazy"
           onLoad={onLoad}
           onError={onError}
         />
       ) : null}
+
+      {/* Filename badge */}
+      {loaded && (
+        <div className="absolute bottom-1 left-1 px-1.5 py-0.5 rounded bg-black/70 text-white text-xs font-mono">
+          {filename}
+        </div>
+      )}
 
       {/* Loading state */}
       {isVisible && !loaded && !failed && (
@@ -307,9 +329,14 @@ function Lightbox({ url, index, total, onClose, onPrev, onNext }: LightboxProps)
         <X className="size-6 text-white" />
       </button>
 
-      {/* Image counter */}
-      <div className="absolute top-4 left-4 px-3 py-1.5 rounded bg-white/10 text-white text-sm">
-        {index + 1} / {total}
+      {/* Image counter + filename */}
+      <div className="absolute top-4 left-4 flex items-center gap-2">
+        <div className="px-3 py-1.5 rounded bg-white/10 text-white text-sm">
+          {index + 1} / {total}
+        </div>
+        <div className="px-3 py-1.5 rounded bg-white/10 text-white text-sm font-mono">
+          {extractFilename(url)}
+        </div>
       </div>
 
       {/* Navigation buttons */}
