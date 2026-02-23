@@ -880,6 +880,94 @@ func (h *VideoHandler) GenerateGallery(c *fiber.Ctx) error {
 	})
 }
 
+// RegenerateGallery สร้าง gallery ใหม่ (ลบของเก่าแล้วสร้างใหม่)
+func (h *VideoHandler) RegenerateGallery(c *fiber.Ctx) error {
+	ctx := c.UserContext()
+	idParam := c.Params("id")
+
+	id, err := uuid.Parse(idParam)
+	if err != nil {
+		return utils.BadRequestResponse(c, "Invalid video ID")
+	}
+
+	video, err := h.videoService.GetByID(ctx, id)
+	if err != nil {
+		logger.WarnContext(ctx, "Video not found for gallery regeneration", "video_id", id)
+		return utils.NotFoundResponse(c, "Video not found")
+	}
+
+	// ตรวจสอบว่า video ready แล้ว
+	if video.Status != models.VideoStatusReady {
+		return utils.BadRequestResponse(c, "Video must be ready before regenerating gallery")
+	}
+
+	// ตรวจสอบว่ามี HLS path
+	if video.HLSPath == "" {
+		return utils.BadRequestResponse(c, "Video has no HLS content")
+	}
+
+	// หา best quality ที่มี
+	bestQuality := h.getBestAvailableQuality(video)
+	if bestQuality == "" {
+		return utils.BadRequestResponse(c, "No quality available for gallery generation")
+	}
+
+	// สร้าง gallery job
+	if h.natsPublisher == nil {
+		return utils.BadRequestResponse(c, "NATS publisher not available")
+	}
+
+	// Reset gallery counts ก่อน (worker จะ update ใหม่เมื่อเสร็จ)
+	zero := 0
+	emptyPath := ""
+	resetReq := &dto.UpdateVideoRequest{
+		GalleryPath:      &emptyPath,
+		GalleryCount:     &zero,
+		GallerySafeCount: &zero,
+		GalleryNsfwCount: &zero,
+	}
+	if _, err := h.videoService.Update(ctx, id, resetReq); err != nil {
+		logger.WarnContext(ctx, "Failed to reset gallery counts", "video_id", id, "error", err)
+		// Continue anyway - worker will overwrite
+	}
+
+	hlsPath := fmt.Sprintf("hls/%s/%s/playlist.m3u8", video.Code, bestQuality)
+	outputPath := fmt.Sprintf("gallery/%s/", video.Code)
+
+	job := natspkg.NewGalleryJob(
+		video.ID.String(),
+		video.Code,
+		hlsPath,
+		bestQuality,
+		video.Duration,
+		outputPath,
+		100, // default 100 images
+	)
+
+	if err := h.natsPublisher.PublishGalleryJob(ctx, job); err != nil {
+		logger.ErrorContext(ctx, "Failed to publish gallery regeneration job",
+			"video_id", id,
+			"video_code", video.Code,
+			"error", err,
+		)
+		return utils.BadRequestResponse(c, "Failed to queue gallery regeneration")
+	}
+
+	logger.InfoContext(ctx, "Gallery regeneration job published",
+		"video_id", id,
+		"video_code", video.Code,
+		"quality", bestQuality,
+		"duration", video.Duration,
+	)
+
+	return utils.SuccessResponse(c, fiber.Map{
+		"message":    "Gallery regeneration queued",
+		"video_id":   video.ID,
+		"video_code": video.Code,
+		"quality":    bestQuality,
+	})
+}
+
 // getBestAvailableQuality หา quality สูงสุดที่มี
 func (h *VideoHandler) getBestAvailableQuality(video *models.Video) string {
 	// ลำดับความสำคัญ: 1080p > 720p > 480p > 360p
