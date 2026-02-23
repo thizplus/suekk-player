@@ -558,43 +558,88 @@ func (h *HLSHandler) GetGalleryUrls(c *fiber.Ctx) error {
 		})
 	}
 
-	if video.GalleryCount == 0 {
+	// ตรวจสอบว่ามี gallery หรือไม่
+	// - GallerySafeCount > 0: videos ใหม่ที่มี /safe/ subfolder
+	// - GalleryCount > 0: videos เก่าที่ยังไม่มี classification
+	if video.GalleryCount == 0 && video.GallerySafeCount == 0 {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
 			"success": false,
 			"error":   "Gallery not available",
 		})
 	}
 
-	// Generate presigned URLs for all images (expires in 1 hour)
+	// Generate presigned URLs (expires in 1 hour)
 	expiry := 1 * time.Hour
-	urls := make([]string, 0, video.GalleryCount)
 
-	for i := 1; i <= video.GalleryCount; i++ {
-		// Storage path: gallery/{code}/001.jpg
-		imagePath := fmt.Sprintf("gallery/%s/%03d.jpg", code, i)
-		presignedURL, err := h.storage.GetPresignedDownloadURL(imagePath, expiry)
-		if err != nil {
-			logger.WarnContext(ctx, "Failed to generate presigned URL", "path", imagePath, "error", err)
-			continue
+	// Videos ใหม่: มี /safe/ และ /nsfw/ subfolders
+	// Videos เก่า: ภาพอยู่ที่ root folder (ยังไม่ classify)
+	isClassified := video.GallerySafeCount > 0 || video.GalleryNsfwCount > 0
+
+	var safeUrls, nsfwUrls []string
+
+	if isClassified {
+		// Generate safe URLs
+		safeUrls = make([]string, 0, video.GallerySafeCount)
+		for i := 1; i <= video.GallerySafeCount; i++ {
+			imagePath := fmt.Sprintf("gallery/%s/safe/%03d.jpg", code, i)
+			presignedURL, err := h.storage.GetPresignedDownloadURL(imagePath, expiry)
+			if err != nil {
+				logger.WarnContext(ctx, "Failed to generate safe URL", "path", imagePath, "error", err)
+				continue
+			}
+			safeUrls = append(safeUrls, presignedURL)
 		}
-		urls = append(urls, presignedURL)
+
+		// Generate nsfw URLs
+		nsfwUrls = make([]string, 0, video.GalleryNsfwCount)
+		for i := 1; i <= video.GalleryNsfwCount; i++ {
+			imagePath := fmt.Sprintf("gallery/%s/nsfw/%03d.jpg", code, i)
+			presignedURL, err := h.storage.GetPresignedDownloadURL(imagePath, expiry)
+			if err != nil {
+				logger.WarnContext(ctx, "Failed to generate nsfw URL", "path", imagePath, "error", err)
+				continue
+			}
+			nsfwUrls = append(nsfwUrls, presignedURL)
+		}
+	} else {
+		// Fallback: videos เก่าที่ยังไม่ classify (ใส่ทั้งหมดเป็น safe)
+		safeUrls = make([]string, 0, video.GalleryCount)
+		for i := 1; i <= video.GalleryCount; i++ {
+			imagePath := fmt.Sprintf("gallery/%s/%03d.jpg", code, i)
+			presignedURL, err := h.storage.GetPresignedDownloadURL(imagePath, expiry)
+			if err != nil {
+				logger.WarnContext(ctx, "Failed to generate URL", "path", imagePath, "error", err)
+				continue
+			}
+			safeUrls = append(safeUrls, presignedURL)
+		}
+		nsfwUrls = []string{}
 	}
 
-	if len(urls) == 0 {
+	// ต้องมีภาพอย่างน้อย 1 ภาพ
+	if len(safeUrls) == 0 && len(nsfwUrls) == 0 {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"success": false,
 			"error":   "Failed to generate gallery URLs",
 		})
 	}
 
-	logger.InfoContext(ctx, "Gallery URLs generated", "code", code, "count", len(urls))
+	logger.InfoContext(ctx, "Gallery URLs generated",
+		"code", code,
+		"safe_count", len(safeUrls),
+		"nsfw_count", len(nsfwUrls),
+	)
 
 	return c.JSON(fiber.Map{
 		"success": true,
 		"data": fiber.Map{
 			"code":       code,
-			"count":      len(urls),
-			"urls":       urls,
+			"count":      len(safeUrls) + len(nsfwUrls),
+			"safeCount":  len(safeUrls),
+			"nsfwCount":  len(nsfwUrls),
+			"urls":       safeUrls, // backward compatible: default เป็น safe
+			"safeUrls":   safeUrls,
+			"nsfwUrls":   nsfwUrls,
 			"expires_at": time.Now().Add(expiry).Unix(),
 		},
 	})
