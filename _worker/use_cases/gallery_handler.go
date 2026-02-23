@@ -158,14 +158,7 @@ func (h *GalleryHandler) ProcessJobWithClassification(ctx context.Context, job *
 			return fmt.Errorf("create dir %s: %w", dir, err)
 		}
 	}
-	// TEMP: Disabled for verification - uncomment after testing
-	// defer os.RemoveAll(baseDir) // Cleanup after done
-
-	h.logger.Info("gallery files will be kept for verification",
-		"base_dir", baseDir,
-		"safe_dir", safeDir,
-		"nsfw_dir", nsfwDir,
-	)
+	defer os.RemoveAll(baseDir) // Cleanup after done
 
 	h.publishProgress(ctx, job, 5, "กำลังวิเคราะห์ HLS playlist...")
 
