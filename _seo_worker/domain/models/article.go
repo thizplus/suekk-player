@@ -4,7 +4,7 @@ import "time"
 
 // ArticleContent - ข้อมูล SEO Article (E-E-A-T Framework)
 type ArticleContent struct {
-	VideoID string `json:"video_id"`
+	VideoID string `json:"videoId"`
 
 	// === Core SEO ===
 	Title           string `json:"title"`           // H1 title (50-60 chars)
@@ -36,8 +36,9 @@ type ArticleContent struct {
 	PreviousWorks []PreviousWork `json:"previousWorks,omitempty"` // ผลงานก่อนหน้าของ cast
 
 	// === Related Content ===
-	RelatedVideos   []RelatedVideo `json:"relatedVideos,omitempty"`
-	TagDescriptions []TagDesc      `json:"tagDescriptions,omitempty"`
+	RelatedVideos    []RelatedVideo    `json:"relatedVideos,omitempty"`
+	TagDescriptions  []TagDesc         `json:"tagDescriptions,omitempty"`
+	ContextualLinks  []ContextualLink  `json:"contextualLinks,omitempty"`  // SEO Internal Linking (AI generated)
 
 	// === [E] Experience Section ===
 	SceneLocations []string `json:"sceneLocations,omitempty"` // สถานที่ในเรื่อง
@@ -77,12 +78,40 @@ type ArticleContent struct {
 	LongTailKeywords []string `json:"longTailKeywords,omitempty"` // Long-tail keywords
 	ReadingTime      int      `json:"readingTime,omitempty"`      // minutes
 
+	// === Chunk 4: Deep Analysis (SEO Text boost) ===
+	// Section 1: Cinematography & Atmosphere
+	CinematographyAnalysis string   `json:"cinematographyAnalysis,omitempty"` // วิเคราะห์งานภาพ 300-500 คำ
+	VisualStyle            string   `json:"visualStyle,omitempty"`            // สไตล์ภาพโดยรวม
+	AtmosphereNotes        []string `json:"atmosphereNotes,omitempty"`        // จุดสังเกตบรรยากาศ
+
+	// Section 2: Character Emotional Journey
+	CharacterJourney string              `json:"characterJourney,omitempty"` // พัฒนาการทางอารมณ์ 400-600 คำ
+	EmotionalArc     []EmotionalArcPoint `json:"emotionalArc,omitempty"`     // จุดสำคัญ emotional arc
+
+	// Section 3: Educational Context
+	ThematicExplanation string   `json:"thematicExplanation,omitempty"` // อธิบายธีม 300-500 คำ
+	CulturalContext     string   `json:"culturalContext,omitempty"`     // บริบทวัฒนธรรม
+	GenreInsights       []string `json:"genreInsights,omitempty"`       // ข้อมูลเชิงลึกแนวเรื่อง
+
+	// Section 4: Comparative Analysis
+	StudioComparison string `json:"studioComparison,omitempty"` // เปรียบเทียบกับค่าย
+	ActorEvolution   string `json:"actorEvolution,omitempty"`   // พัฒนาการนักแสดง
+	GenreRanking     string `json:"genreRanking,omitempty"`     // ตำแหน่งในแนว
+
+	// Section 5: Viewing Experience
+	ViewingTips   string   `json:"viewingTips,omitempty"`   // คำแนะนำการรับชม
+	BestMoments   []string `json:"bestMoments,omitempty"`   // ช่วงเวลาดีที่สุด
+	AudienceMatch string   `json:"audienceMatch,omitempty"` // เหมาะกับใคร
+	ReplayValue   string   `json:"replayValue,omitempty"`   // ความคุ้มค่าดูซ้ำ
+
 	// === TTS ===
 	AudioSummaryURL string `json:"audioSummaryUrl,omitempty"` // ElevenLabs output
 	AudioDuration   int    `json:"audioDuration,omitempty"`   // seconds
 
 	// === Gallery ===
-	GalleryImages []GalleryImage `json:"galleryImages,omitempty"`
+	GalleryImages       []GalleryImage `json:"galleryImages,omitempty"`       // Public (super_safe)
+	MemberGalleryImages []GalleryImage `json:"memberGalleryImages,omitempty"` // Member only (safe + nsfw)
+	MemberGalleryCount  int            `json:"memberGalleryCount,omitempty"`  // จำนวนภาพ member
 
 	// === FAQ (AI Generated) ===
 	FAQItems []FAQItem `json:"faqItems"`
@@ -138,9 +167,33 @@ type GalleryImage struct {
 	Height int    `json:"height"`
 }
 
+// GalleryTier - ประเภทของ gallery (Three-Tier Classification)
+type GalleryTier string
+
+const (
+	GalleryTierSuperSafe GalleryTier = "super_safe" // NSFW < 0.15 + face
+	GalleryTierSafe      GalleryTier = "safe"       // NSFW 0.15-0.3
+	GalleryTierNSFW      GalleryTier = "nsfw"       // NSFW >= 0.3
+)
+
+// TieredGalleryImages - ภาพแยกตาม tier
+type TieredGalleryImages struct {
+	SuperSafe []string // Public (Google-safe)
+	Safe      []string // Member only
+	NSFW      []string // Member only
+}
+
 type FAQItem struct {
 	Question string `json:"question"`
 	Answer   string `json:"answer"`
+}
+
+// ContextualLink - ลิงก์เชื่อมโยงในบริบท (SEO Internal Linking)
+// AI สร้างประโยคเชื่อมโยงไปยัง related articles
+type ContextualLink struct {
+	Text        string `json:"text"`        // ประโยคเชื่อมโยง เช่น "ถ้าคุณประทับใจการแสดงแนว Medical ของ Zemba Mami คุณอาจจะสนใจ"
+	LinkedSlug  string `json:"linkedSlug"`  // Slug ของ article ที่ลิงก์ไป เช่น "dldss-470"
+	LinkedTitle string `json:"linkedTitle"` // Title สำหรับแสดง เช่น "DLDSS-470 ที่เน้นการสำรวจอารมณ์"
 }
 
 // TopQuote - ประโยคเด็ดจากซับไตเติ้ล
@@ -149,6 +202,13 @@ type TopQuote struct {
 	Timestamp int    `json:"timestamp"` // seconds
 	Emotion   string `json:"emotion"`   // อารมณ์
 	Context   string `json:"context"`   // บริบท
+}
+
+// EmotionalArcPoint - จุดสำคัญใน emotional arc ของตัวละคร
+type EmotionalArcPoint struct {
+	Phase       string `json:"phase"`       // ช่วงเวลา เช่น "เริ่มต้น", "ไคลแมกซ์"
+	Emotion     string `json:"emotion"`     // อารมณ์หลัก
+	Description string `json:"description"` // บรรยาย
 }
 
 // VideoMetadata - ข้อมูล video จาก api.subth.com
