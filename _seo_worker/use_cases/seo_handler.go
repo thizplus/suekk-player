@@ -6,8 +6,11 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"regexp"
+	"strings"
 	"sync"
 	"time"
+	"unicode"
 
 	"seo-worker/domain/models"
 	"seo-worker/domain/ports"
@@ -128,103 +131,72 @@ func (h *SEOHandler) ProcessJob(ctx context.Context, job *models.SEOArticleJob) 
 		"has_maker", makerInfo != nil,
 	)
 
-	// 1.7 Fetch gallery images from Suekk storage
+	// 1.7 Fetch ALL gallery images from Suekk storage (Three-Tier)
 	var galleryImages []models.GalleryImage
-	var coverImage *models.ImageScore
+	var memberGalleryImages []models.GalleryImage
+	var coverURL string
 
-	h.logger.InfoContext(ctx, "[DEBUG] Gallery fetch start",
+	h.logger.InfoContext(ctx, "[DEBUG] Gallery fetch start (Three-Tier)",
 		"gallery_path", suekkVideoInfo.GalleryPath,
 		"gallery_count", suekkVideoInfo.GalleryCount,
 		"gallery_safe_count", suekkVideoInfo.GallerySafeCount,
+		"gallery_nsfw_count", suekkVideoInfo.GalleryNsfwCount,
 	)
 
 	if suekkVideoInfo.GalleryPath != "" {
-		// ดึงเฉพาะภาพ safe (pre-classified by _worker)
-		imageURLs, err := h.suekkVideoFetcher.ListGalleryImages(ctx, suekkVideoInfo.GalleryPath)
+		// ดึงภาพจากทุก tier (super_safe, safe, nsfw)
+		tieredImages, err := h.suekkVideoFetcher.ListAllGalleryImages(ctx, suekkVideoInfo.GalleryPath)
 		if err != nil {
-			h.logger.WarnContext(ctx, "Failed to list gallery images",
+			h.logger.WarnContext(ctx, "Failed to list tiered gallery images",
 				"gallery_path", suekkVideoInfo.GalleryPath,
 				"error", err,
 			)
-		} else {
-			h.logger.InfoContext(ctx, "Gallery images fetched (safe only)",
-				"count", len(imageURLs),
-				"expected", suekkVideoInfo.GallerySafeCount,
+		} else if tieredImages != nil {
+			h.logger.InfoContext(ctx, "Tiered gallery images fetched",
+				"super_safe", len(tieredImages.SuperSafe),
+				"safe", len(tieredImages.Safe),
+				"nsfw", len(tieredImages.NSFW),
 			)
-		}
 
-		// ภาพจาก /safe/ folder เป็น SFW ทั้งหมดแล้ว
-		if len(imageURLs) > 0 {
-			// ใช้ ImageSelector เพื่อเลือก cover และ gallery ที่ดีที่สุด
-			// - กรองภาพที่ไม่มีคน (face_score = 0) ออก
-			// - เลือก cover ที่เห็นหน้าชัด + aesthetic score สูง
-			// - เลือก gallery ที่หลากหลายและคุณภาพดี
-			if h.imageSelector != nil {
-				selectionResult, err := h.imageSelector.SelectImages(ctx, imageURLs)
+			// Copy ทุก tier ไป R2 แยก path (public/ และ member/)
+			if h.imageCopier != nil {
+				copyResult, err := h.imageCopier.CopyTieredGallery(ctx, job.VideoCode, tieredImages)
 				if err != nil {
-					h.logger.WarnContext(ctx, "Image selection failed, using all images",
+					h.logger.WarnContext(ctx, "Tiered gallery copy failed",
 						"error", err,
 					)
-					// Fallback: ใช้ภาพแรกเป็น cover และทุกภาพเป็น gallery
-					coverImage = &models.ImageScore{
-						URL:    imageURLs[0],
-						IsSafe: true,
-					}
-					for _, url := range imageURLs {
-						galleryImages = append(galleryImages, models.GalleryImage{
-							URL: url,
-						})
-					}
-				} else {
-					// ใช้ cover ที่คัดเลือกแล้ว
-					if selectionResult.Cover != nil {
-						coverImage = selectionResult.Cover
-						h.logger.InfoContext(ctx, "Best cover selected",
-							"cover_url", coverImage.URL,
-							"face_score", coverImage.FaceScore,
-							"aesthetic_score", coverImage.AestheticScore,
-							"combined_score", coverImage.CombinedScore,
-						)
-					}
+				} else if copyResult != nil {
+					galleryImages = copyResult.PublicImages
+					memberGalleryImages = copyResult.MemberImages
+					coverURL = copyResult.CoverURL
 
-					// ใช้ gallery ที่คัดเลือกแล้ว (กรองภาพไม่มีคน/คุณภาพต่ำ)
-					for _, img := range selectionResult.Gallery {
-						galleryImages = append(galleryImages, models.GalleryImage{
-							URL: img.URL,
-						})
-					}
-
-					h.logger.InfoContext(ctx, "Gallery images selected",
-						"input_count", len(imageURLs),
-						"selected_count", len(galleryImages),
-						"safe_count", selectionResult.SafeImages,
+					h.logger.InfoContext(ctx, "Gallery copied to R2",
+						"public_count", len(galleryImages),
+						"member_count", len(memberGalleryImages),
+						"cover_url", coverURL,
 					)
 				}
 			} else {
-				// Fallback: ใช้ภาพแรกเป็น cover และทุกภาพเป็น gallery
-				coverImage = &models.ImageScore{
-					URL:    imageURLs[0],
-					IsSafe: true,
+				// Fallback: ใช้ super_safe URLs ตรงๆ (ไม่ copy)
+				for _, url := range tieredImages.SuperSafe {
+					galleryImages = append(galleryImages, models.GalleryImage{URL: url, Width: 1280, Height: 720})
 				}
-				for _, url := range imageURLs {
-					galleryImages = append(galleryImages, models.GalleryImage{
-						URL: url,
-					})
+				for _, url := range tieredImages.Safe {
+					memberGalleryImages = append(memberGalleryImages, models.GalleryImage{URL: url, Width: 1280, Height: 720})
+				}
+				for _, url := range tieredImages.NSFW {
+					memberGalleryImages = append(memberGalleryImages, models.GalleryImage{URL: url, Width: 1280, Height: 720})
 				}
 			}
-
-			h.logger.InfoContext(ctx, "Gallery images ready",
-				"gallery_count", len(galleryImages),
-				"has_cover", coverImage != nil,
-			)
 		}
 	} else {
 		h.logger.WarnContext(ctx, "[DEBUG] No gallery path available")
 	}
 
 	h.logger.InfoContext(ctx, "[DEBUG] Gallery images final",
-		"gallery_count", len(galleryImages),
-		"has_cover", coverImage != nil,
+		"public_count", len(galleryImages),
+		"member_count", len(memberGalleryImages),
+		"has_cover", coverURL != "",
 	)
 
 	h.sendProgress(ctx, job.VideoID, ports.StageDataFetched, 25)
@@ -232,13 +204,17 @@ func (h *SEOHandler) ProcessJob(ctx context.Context, job *models.SEOArticleJob) 
 	// === Stage 2: AI Processing (Gemini with JSON Mode) ===
 	h.sendProgress(ctx, job.VideoID, ports.StageAI, 30)
 
+	// Build related articles for contextual linking (from previous works)
+	relatedArticles := h.buildRelatedArticlesForAI(previousWorks, casts, tags)
+
 	aiInput := &ports.AIInput{
-		SRTContent:    srtContent,
-		VideoMetadata: metadata,
-		Casts:         casts,
-		Tags:          tags,
-		PreviousWorks: previousWorks,
-		GalleryCount:  len(galleryImages),
+		SRTContent:      srtContent,
+		VideoMetadata:   metadata,
+		Casts:           casts,
+		Tags:            tags,
+		PreviousWorks:   previousWorks,
+		GalleryCount:    len(galleryImages),
+		RelatedArticles: relatedArticles,
 	}
 
 	aiOutput, err := h.aiService.GenerateArticleContent(ctx, aiInput)
@@ -246,6 +222,9 @@ func (h *SEOHandler) ProcessJob(ctx context.Context, job *models.SEOArticleJob) 
 		h.messenger.SendFailed(ctx, job.VideoID, err)
 		return fmt.Errorf("AI generation failed: %w", err)
 	}
+
+	// Sanitize AI output: แก้ไขชื่อนักแสดงที่ผสมภาษา
+	h.sanitizeAIOutput(aiOutput, casts)
 
 	h.sendProgress(ctx, job.VideoID, ports.StageAIComplete, 60)
 
@@ -263,8 +242,12 @@ func (h *SEOHandler) ProcessJob(ctx context.Context, job *models.SEOArticleJob) 
 		go func() {
 			defer wg.Done()
 
-			// สกัดใจความสำคัญ ~500 ตัวอักษร
-			ttsScript := ports.ExtractTTSScript(aiOutput.Summary, aiOutput.Highlights)
+			// ใช้ SummaryShort ที่ AI สร้างมาเป็น TTS script โดยตรง
+			ttsScript := aiOutput.SummaryShort
+			if ttsScript == "" {
+				h.logger.WarnContext(ctx, "SummaryShort is empty, skipping TTS")
+				return
+			}
 
 			// Use empty string to use default voice from config
 			ttsResult, err := h.ttsService.GenerateAudio(ctx, ttsScript, "")
@@ -337,46 +320,11 @@ func (h *SEOHandler) ProcessJob(ctx context.Context, job *models.SEOArticleJob) 
 
 	h.sendProgress(ctx, job.VideoID, ports.StageTTSEmbedComplete, 90)
 
-	// === Stage 4: Copy Images & Build Article ===
-	h.sendProgress(ctx, job.VideoID, ports.StagePublishing, 92)
-
-	// Copy gallery images from e2 (suekk) to r2 (subth)
-	if h.imageCopier != nil && len(galleryImages) > 0 {
-		h.logger.InfoContext(ctx, "Copying gallery images to r2",
-			"video_code", job.VideoCode,
-			"count", len(galleryImages),
-		)
-
-		copiedImages, err := h.imageCopier.CopyGalleryImages(ctx, job.VideoCode, galleryImages)
-		if err != nil {
-			h.logger.WarnContext(ctx, "Image copy failed (non-critical, using original URLs)",
-				"video_code", job.VideoCode,
-				"error", err,
-			)
-		} else {
-			galleryImages = copiedImages
-			h.logger.InfoContext(ctx, "Gallery images copied to r2",
-				"video_code", job.VideoCode,
-				"count", len(copiedImages),
-			)
-		}
-
-		// Copy cover image too if different from gallery
-		if coverImage != nil && coverImage.URL != "" {
-			newCoverURL, err := h.imageCopier.CopyImage(ctx, job.VideoCode, coverImage.URL, "cover.jpg")
-			if err != nil {
-				h.logger.WarnContext(ctx, "Cover image copy failed (using original URL)",
-					"error", err,
-				)
-			} else {
-				coverImage.URL = newCoverURL
-			}
-		}
-	}
-
+	// === Stage 4: Build Article ===
+	// (Images already copied to R2 in Stage 1.7)
 	h.sendProgress(ctx, job.VideoID, ports.StagePublishing, 95)
 
-	article := h.buildArticle(job, metadata, aiOutput, casts, makerInfo, tags, previousWorks, galleryImages, coverImage, audioURL, audioDuration)
+	article := h.buildArticle(job, metadata, aiOutput, casts, makerInfo, tags, previousWorks, galleryImages, memberGalleryImages, coverURL, audioURL, audioDuration, relatedArticles)
 
 	// Save JSON for debug/review (always)
 	outputPath := fmt.Sprintf("output/%s_article.json", job.VideoCode)
@@ -447,9 +395,11 @@ func (h *SEOHandler) buildArticle(
 	tags []models.TagMetadata,
 	previousWorks []models.PreviousWork,
 	galleryImages []models.GalleryImage,
-	coverImage *models.ImageScore,
+	memberGalleryImages []models.GalleryImage,
+	coverURL string,
 	audioURL string,
 	audioDuration int,
+	relatedArticles []ports.RelatedArticleForAI,
 ) *models.ArticleContent {
 	now := time.Now()
 
@@ -573,10 +523,17 @@ func (h *SEOHandler) buildArticle(
 		readingTime = 1
 	}
 
-	// ใช้ cover image ที่คัดเลือกแล้ว (ถ้ามี) หรือ fallback เป็น thumbnail เดิม
+	// ใช้ cover image ที่ copy ไป R2 แล้ว (ถ้ามี) หรือ fallback เป็น thumbnail เดิม
 	thumbnailURL := metadata.Thumbnail
-	if coverImage != nil && coverImage.URL != "" {
-		thumbnailURL = coverImage.URL
+	if coverURL != "" {
+		thumbnailURL = coverURL
+	}
+
+	// ใช้ RealCode (movie code เช่น DLDSS-471) เป็น slug สำหรับ SEO
+	// Fallback เป็น internal code ถ้าไม่มี RealCode
+	slug := strings.ToLower(metadata.RealCode)
+	if slug == "" {
+		slug = job.VideoCode
 	}
 
 	return &models.ArticleContent{
@@ -585,7 +542,7 @@ func (h *SEOHandler) buildArticle(
 		Title:            aiOutput.Title,
 		MetaTitle:        aiOutput.MetaTitle,
 		MetaDescription:  aiOutput.MetaDescription,
-		Slug:             job.VideoCode,
+		Slug:             slug,
 		VideoName:        aiOutput.Title,
 		VideoDescription: aiOutput.MetaDescription,
 		ThumbnailURL:     thumbnailURL,
@@ -604,6 +561,7 @@ func (h *SEOHandler) buildArticle(
 		MakerInfo:       makerInfo,
 		PreviousWorks:   previousWorks,
 		TagDescriptions: tagDescs,
+		ContextualLinks: h.filterValidContextualLinks(aiOutput.ContextualLinks, relatedArticles),
 
 		// === [E] Experience ===
 		SceneLocations: aiOutput.SceneLocations,
@@ -643,18 +601,53 @@ func (h *SEOHandler) buildArticle(
 		LongTailKeywords: aiOutput.LongTailKeywords,
 		ReadingTime:      readingTime,
 
+		// === Chunk 4: Deep Analysis (SEO Text boost) ===
+		CinematographyAnalysis: aiOutput.CinematographyAnalysis,
+		VisualStyle:            aiOutput.VisualStyle,
+		AtmosphereNotes:        aiOutput.AtmosphereNotes,
+		CharacterJourney:       aiOutput.CharacterJourney,
+		EmotionalArc:           convertEmotionalArcToModels(aiOutput.EmotionalArc),
+		ThematicExplanation:    aiOutput.ThematicExplanation,
+		CulturalContext:        aiOutput.CulturalContext,
+		GenreInsights:          aiOutput.GenreInsights,
+		StudioComparison:       aiOutput.StudioComparison,
+		ActorEvolution:         aiOutput.ActorEvolution,
+		GenreRanking:           aiOutput.GenreRanking,
+		ViewingTips:            aiOutput.ViewingTips,
+		BestMoments:            aiOutput.BestMoments,
+		AudienceMatch:          aiOutput.AudienceMatch,
+		ReplayValue:            aiOutput.ReplayValue,
+
 		// === TTS ===
 		AudioSummaryURL: audioURL,
 		AudioDuration:   audioDuration,
 
 		// === Gallery & FAQ ===
-		GalleryImages: galleryImages,
-		FAQItems:      aiOutput.FAQItems,
+		GalleryImages:       galleryImages,       // Public (super_safe) - R2
+		MemberGalleryImages: memberGalleryImages, // Member only (safe + nsfw) - R2
+		MemberGalleryCount:  len(memberGalleryImages),
+		FAQItems:            aiOutput.FAQItems,
 
 		// === Timestamps ===
 		CreatedAt: now,
 		UpdatedAt: now,
 	}
+}
+
+// convertEmotionalArcToModels แปลง ports.EmotionalArcPoint เป็น models.EmotionalArcPoint
+func convertEmotionalArcToModels(arc []ports.EmotionalArcPoint) []models.EmotionalArcPoint {
+	if len(arc) == 0 {
+		return nil
+	}
+	result := make([]models.EmotionalArcPoint, len(arc))
+	for i, p := range arc {
+		result[i] = models.EmotionalArcPoint{
+			Phase:       p.Phase,
+			Emotion:     p.Emotion,
+			Description: p.Description,
+		}
+	}
+	return result
 }
 
 // formatDuration converts seconds to ISO 8601 duration (PT1H30M)
@@ -674,4 +667,272 @@ func formatDuration(seconds int) string {
 		result += fmt.Sprintf("%dS", secs)
 	}
 	return result
+}
+
+// filterValidContextualLinks กรอง contextual links ที่ valid (slug ต้องมีอยู่จริง)
+// ป้องกัน AI แต่ง slug ขึ้นมาเอง
+func (h *SEOHandler) filterValidContextualLinks(
+	links []models.ContextualLink,
+	validArticles []ports.RelatedArticleForAI,
+) []models.ContextualLink {
+	if len(links) == 0 || len(validArticles) == 0 {
+		return nil
+	}
+
+	// สร้าง map ของ valid slugs
+	validSlugs := make(map[string]bool)
+	for _, article := range validArticles {
+		validSlugs[article.Slug] = true
+	}
+
+	// กรองเฉพาะ links ที่ slug อยู่ใน valid slugs
+	filtered := make([]models.ContextualLink, 0, len(links))
+	for _, link := range links {
+		if validSlugs[link.LinkedSlug] {
+			filtered = append(filtered, link)
+		} else {
+			h.logger.Warn("Filtered out invalid contextual link",
+				"slug", link.LinkedSlug,
+				"reason", "slug not in valid articles",
+			)
+		}
+	}
+
+	h.logger.Info("Filtered contextual links",
+		"original", len(links),
+		"valid", len(filtered),
+	)
+
+	return filtered
+}
+
+// buildRelatedArticlesForAI สร้าง RelatedArticles สำหรับ AI ใช้สร้าง contextual links
+// ใช้ข้อมูลจาก previousWorks (ผลงานก่อนหน้าของ cast เดียวกัน)
+func (h *SEOHandler) buildRelatedArticlesForAI(
+	previousWorks []models.PreviousWork,
+	casts []models.CastMetadata,
+	tags []models.TagMetadata,
+) []ports.RelatedArticleForAI {
+	if len(previousWorks) == 0 {
+		return nil
+	}
+
+	// Extract cast names
+	castNames := make([]string, len(casts))
+	for i, cast := range casts {
+		castNames[i] = cast.Name
+	}
+
+	// Extract tag names
+	tagNames := make([]string, len(tags))
+	for i, tag := range tags {
+		tagNames[i] = tag.Name
+	}
+
+	// Convert previousWorks to RelatedArticleForAI (max 5)
+	maxRelated := 5
+	if len(previousWorks) < maxRelated {
+		maxRelated = len(previousWorks)
+	}
+
+	related := make([]ports.RelatedArticleForAI, maxRelated)
+	for i := 0; i < maxRelated; i++ {
+		work := previousWorks[i]
+		// Slug = lowercase video code
+		slug := strings.ToLower(work.VideoCode)
+
+		related[i] = ports.RelatedArticleForAI{
+			Slug:      slug,
+			Title:     work.Title,
+			RealCode:  work.VideoCode,
+			CastNames: castNames, // Same cast as current video
+			Tags:      tagNames,  // Use current video's tags (approximation)
+		}
+	}
+
+	h.logger.Info("Built related articles for contextual links",
+		"count", len(related),
+	)
+
+	return related
+}
+
+// ============================================================================
+// Cast Name Sanitization - ป้องกัน AI ผสมภาษาในชื่อนักแสดง
+// ============================================================================
+
+// containsThai ตรวจสอบว่า string มีตัวอักษรภาษาไทยหรือไม่
+func containsThai(s string) bool {
+	for _, r := range s {
+		if unicode.In(r, unicode.Thai) {
+			return true
+		}
+	}
+	return false
+}
+
+// containsEnglish ตรวจสอบว่า string มีตัวอักษรภาษาอังกฤษหรือไม่
+func containsEnglish(s string) bool {
+	for _, r := range s {
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') {
+			return true
+		}
+	}
+	return false
+}
+
+// isMixedLanguageName ตรวจสอบว่าชื่อมีทั้งภาษาไทยและอังกฤษผสมกัน
+func isMixedLanguageName(name string) bool {
+	return containsThai(name) && containsEnglish(name)
+}
+
+// buildCastNameReplacements สร้าง map สำหรับแทนที่ชื่อที่ผิด
+// สร้างรูปแบบที่เป็นไปได้หลายแบบที่ AI อาจสร้างผิด
+func buildCastNameReplacements(casts []models.CastMetadata) map[string]string {
+	replacements := make(map[string]string)
+
+	for _, cast := range casts {
+		englishName := cast.Name
+
+		// แยกชื่อเป็นส่วนๆ (first name, last name)
+		nameParts := strings.Fields(englishName)
+		if len(nameParts) < 2 {
+			continue
+		}
+
+		// สร้าง pattern ต่างๆ ที่ AI อาจผสมผิด
+		// เช่น "Zemba Mami" -> first="Zemba", last="Mami"
+		firstName := nameParts[0]
+		lastName := nameParts[len(nameParts)-1]
+
+		// รูปแบบที่อาจผิด: [ไทย] [English] หรือ [English] [ไทย]
+		// เพิ่ม pattern ที่พบบ่อย
+		thaiFirstVariants := []string{
+			"เซ็นมะ", "เซนมะ", "เซ็มบะ", "เซมบะ", "เซ็นบะ", "เซนบา", "เซมบา",
+		}
+		thaiLastVariants := []string{
+			"มามิ", "มะมิ", "มามี", "มะมี",
+		}
+
+		// สร้าง replacements สำหรับทุก combination
+		for _, thaiFirst := range thaiFirstVariants {
+			// Pattern: [ไทย] [English]
+			wrongName := thaiFirst + " " + lastName
+			replacements[wrongName] = englishName
+
+			// Pattern: [ไทย][English] (ไม่มี space)
+			wrongName = thaiFirst + lastName
+			replacements[wrongName] = englishName
+		}
+
+		for _, thaiLast := range thaiLastVariants {
+			// Pattern: [English] [ไทย]
+			wrongName := firstName + " " + thaiLast
+			replacements[wrongName] = englishName
+
+			// Pattern: [English][ไทย] (ไม่มี space)
+			wrongName = firstName + thaiLast
+			replacements[wrongName] = englishName
+		}
+
+		// Pattern: [ไทย] [ไทย] (ทั้งสองส่วนเป็นไทย) - ไม่ต้อง replace เพราะไม่ใช่ mixed
+	}
+
+	return replacements
+}
+
+// sanitizeTextWithCastNames แทนที่ชื่อนักแสดงที่ผิดในข้อความ
+func sanitizeTextWithCastNames(text string, replacements map[string]string) string {
+	result := text
+	for wrongName, correctName := range replacements {
+		// ใช้ case-insensitive replacement
+		re := regexp.MustCompile(`(?i)` + regexp.QuoteMeta(wrongName))
+		result = re.ReplaceAllString(result, correctName)
+	}
+	return result
+}
+
+// sanitizeAIOutput ทำความสะอาด output จาก AI โดยแทนที่ชื่อนักแสดงที่ผิด
+func (h *SEOHandler) sanitizeAIOutput(aiOutput *ports.AIOutput, casts []models.CastMetadata) {
+	replacements := buildCastNameReplacements(casts)
+
+	if len(replacements) == 0 {
+		return
+	}
+
+	// Count replacements for logging
+	replacementCount := 0
+	originalTitle := aiOutput.Title
+
+	// Sanitize text fields
+	aiOutput.Title = sanitizeTextWithCastNames(aiOutput.Title, replacements)
+	aiOutput.MetaTitle = sanitizeTextWithCastNames(aiOutput.MetaTitle, replacements)
+	aiOutput.MetaDescription = sanitizeTextWithCastNames(aiOutput.MetaDescription, replacements)
+	aiOutput.Summary = sanitizeTextWithCastNames(aiOutput.Summary, replacements)
+	aiOutput.SummaryShort = sanitizeTextWithCastNames(aiOutput.SummaryShort, replacements)
+	aiOutput.DetailedReview = sanitizeTextWithCastNames(aiOutput.DetailedReview, replacements)
+	aiOutput.ThumbnailAlt = sanitizeTextWithCastNames(aiOutput.ThumbnailAlt, replacements)
+	aiOutput.ExpertAnalysis = sanitizeTextWithCastNames(aiOutput.ExpertAnalysis, replacements)
+	aiOutput.DialogueAnalysis = sanitizeTextWithCastNames(aiOutput.DialogueAnalysis, replacements)
+	aiOutput.CharacterInsight = sanitizeTextWithCastNames(aiOutput.CharacterInsight, replacements)
+	aiOutput.CharacterDynamic = sanitizeTextWithCastNames(aiOutput.CharacterDynamic, replacements)
+	aiOutput.PlotAnalysis = sanitizeTextWithCastNames(aiOutput.PlotAnalysis, replacements)
+	aiOutput.Recommendation = sanitizeTextWithCastNames(aiOutput.Recommendation, replacements)
+	aiOutput.ActorPerformanceTrend = sanitizeTextWithCastNames(aiOutput.ActorPerformanceTrend, replacements)
+	aiOutput.ComparisonNote = sanitizeTextWithCastNames(aiOutput.ComparisonNote, replacements)
+	aiOutput.CinematographyAnalysis = sanitizeTextWithCastNames(aiOutput.CinematographyAnalysis, replacements)
+	aiOutput.CharacterJourney = sanitizeTextWithCastNames(aiOutput.CharacterJourney, replacements)
+	aiOutput.ThematicExplanation = sanitizeTextWithCastNames(aiOutput.ThematicExplanation, replacements)
+	aiOutput.ActorEvolution = sanitizeTextWithCastNames(aiOutput.ActorEvolution, replacements)
+	aiOutput.ViewingTips = sanitizeTextWithCastNames(aiOutput.ViewingTips, replacements)
+	aiOutput.AudienceMatch = sanitizeTextWithCastNames(aiOutput.AudienceMatch, replacements)
+	aiOutput.ReplayValue = sanitizeTextWithCastNames(aiOutput.ReplayValue, replacements)
+
+	// Sanitize array fields
+	for i := range aiOutput.Highlights {
+		aiOutput.Highlights[i] = sanitizeTextWithCastNames(aiOutput.Highlights[i], replacements)
+	}
+	for i := range aiOutput.GalleryAlts {
+		aiOutput.GalleryAlts[i] = sanitizeTextWithCastNames(aiOutput.GalleryAlts[i], replacements)
+	}
+	for i := range aiOutput.Keywords {
+		aiOutput.Keywords[i] = sanitizeTextWithCastNames(aiOutput.Keywords[i], replacements)
+	}
+	for i := range aiOutput.LongTailKeywords {
+		aiOutput.LongTailKeywords[i] = sanitizeTextWithCastNames(aiOutput.LongTailKeywords[i], replacements)
+	}
+	for i := range aiOutput.BestMoments {
+		aiOutput.BestMoments[i] = sanitizeTextWithCastNames(aiOutput.BestMoments[i], replacements)
+	}
+	for i := range aiOutput.KeyMoments {
+		aiOutput.KeyMoments[i].Name = sanitizeTextWithCastNames(aiOutput.KeyMoments[i].Name, replacements)
+	}
+	for i := range aiOutput.CastBios {
+		aiOutput.CastBios[i].Bio = sanitizeTextWithCastNames(aiOutput.CastBios[i].Bio, replacements)
+	}
+	for i := range aiOutput.TopQuotes {
+		aiOutput.TopQuotes[i].Context = sanitizeTextWithCastNames(aiOutput.TopQuotes[i].Context, replacements)
+	}
+	for i := range aiOutput.FAQItems {
+		aiOutput.FAQItems[i].Question = sanitizeTextWithCastNames(aiOutput.FAQItems[i].Question, replacements)
+		aiOutput.FAQItems[i].Answer = sanitizeTextWithCastNames(aiOutput.FAQItems[i].Answer, replacements)
+	}
+	for i := range aiOutput.EmotionalArc {
+		aiOutput.EmotionalArc[i].Description = sanitizeTextWithCastNames(aiOutput.EmotionalArc[i].Description, replacements)
+	}
+
+	// Log if title was changed
+	if originalTitle != aiOutput.Title {
+		replacementCount++
+		h.logger.Info("Sanitized mixed-language cast name in title",
+			"original", originalTitle,
+			"sanitized", aiOutput.Title,
+		)
+	}
+
+	if replacementCount > 0 {
+		h.logger.Info("AI output sanitized for mixed-language cast names",
+			"replacements_made", replacementCount,
+		)
+	}
 }
