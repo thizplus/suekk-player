@@ -47,19 +47,17 @@ export function GalleryManagerPage() {
     })
   }, [selectedFolder])
 
-  // Handle drop
-  const handleDrop = useCallback(async (targetFolder: GalleryFolder) => {
+  // Handle drop - รับ files จาก DropZone โดยตรง
+  const handleDrop = useCallback(async (targetFolder: GalleryFolder, fromFolder: GalleryFolder, files: string[]) => {
     setDragOverFolder(null)
 
-    if (!id || selectedImages.size === 0 || !selectedFolder) return
-    if (selectedFolder === targetFolder) return
-
-    const files = Array.from(selectedImages)
+    if (!id || files.length === 0) return
+    if (fromFolder === targetFolder) return
 
     try {
       await moveBatch.mutateAsync({
         videoId: id,
-        data: { files, from: selectedFolder, to: targetFolder },
+        data: { files, from: fromFolder, to: targetFolder },
       })
 
       toast.success(`ย้าย ${files.length} ภาพไป ${targetFolder}`)
@@ -69,7 +67,7 @@ export function GalleryManagerPage() {
     } catch {
       toast.error('ย้ายภาพไม่สำเร็จ')
     }
-  }, [id, selectedImages, selectedFolder, moveBatch, refetch])
+  }, [id, moveBatch, refetch])
 
   // Quick move buttons
   const handleQuickMove = async (targetFolder: GalleryFolder) => {
@@ -140,9 +138,9 @@ export function GalleryManagerPage() {
   const canPublish = safeImages.length > 0 || nsfwImages.length > 0
 
   return (
-    <div className="h-screen flex flex-col p-4 max-w-[1800px] mx-auto">
+    <div className="h-screen flex flex-col p-4 max-w-[1800px] mx-auto overflow-hidden">
       {/* Header */}
-      <div className="flex items-center justify-between mb-4 flex-shrink-0">
+      <div className="flex items-center justify-between mb-3 flex-shrink-0">
         <div className="flex items-center gap-3">
           <Button variant="ghost" size="icon" onClick={() => navigate(-1)}>
             <ArrowLeft className="size-5" />
@@ -209,14 +207,14 @@ export function GalleryManagerPage() {
         </div>
       )}
 
-      {/* Main content area */}
-      <div className="flex-1 flex gap-3 min-h-0">
+      {/* Main content area - fixed height */}
+      <div className="flex-1 flex gap-3 min-h-0 overflow-hidden">
         {/* Left: Preview + Source */}
-        <div className="flex-1 flex flex-col gap-3 min-w-0">
-          {/* Top: Hover Preview */}
+        <div className="flex-1 flex flex-col gap-3 min-w-0 min-h-0 overflow-hidden">
+          {/* Top: Hover Preview - fixed height */}
           <GalleryHoverPreview image={hoveredImage} />
 
-          {/* Bottom: Source */}
+          {/* Bottom: Source - scrollable */}
           <GalleryDropZone
             folder="source"
             images={sourceImages}
@@ -234,7 +232,7 @@ export function GalleryManagerPage() {
         </div>
 
         {/* Right: Safe & NSFW */}
-        <div className="flex-1 flex flex-col gap-3 min-w-0">
+        <div className="flex-1 flex flex-col gap-3 min-w-0 min-h-0 overflow-hidden">
           <GalleryDropZone
             folder="safe"
             images={safeImages}

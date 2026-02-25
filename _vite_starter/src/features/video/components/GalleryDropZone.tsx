@@ -9,7 +9,7 @@ interface GalleryDropZoneProps {
   selectedImages: Set<string>
   onSelect: (filename: string) => void
   onHover: (image: GalleryImage | null) => void
-  onDrop: (folder: GalleryFolder) => void
+  onDrop: (targetFolder: GalleryFolder, fromFolder: GalleryFolder, files: string[]) => void
   isDragOver: boolean
   onDragOver: () => void
   onDragLeave: () => void
@@ -39,11 +39,26 @@ export function GalleryDropZone({
   badgeVariant,
   columns = 2,
 }: GalleryDropZoneProps) {
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault()
+
+    const fromFolder = e.dataTransfer.getData('from-folder') as GalleryFolder
+    const singleFile = e.dataTransfer.getData('text/plain')
+    const selectedFiles = e.dataTransfer.getData('selected-images')
+
+    // ถ้ามี selected files ใช้ทั้งหมด ไม่งั้นใช้ไฟล์เดียว
+    const files = selectedFiles ? selectedFiles.split(',') : [singleFile]
+
+    if (fromFolder && files.length > 0 && fromFolder !== folder) {
+      onDrop(folder, fromFolder, files)
+    }
+  }
+
   return (
     <div
       className={cn(
-        'flex-1 min-w-0 rounded-lg border-2 border-dashed transition-all p-3 flex flex-col',
-        isDragOver ? 'border-primary bg-primary/5 scale-[1.01]' : 'border-muted',
+        'flex-1 min-w-0 min-h-0 rounded-lg border-2 border-dashed transition-all p-3 flex flex-col overflow-hidden',
+        isDragOver ? 'border-primary bg-primary/5' : 'border-muted',
       )}
       onDragOver={(e) => {
         e.preventDefault()
@@ -53,10 +68,7 @@ export function GalleryDropZone({
         e.preventDefault()
         onDragLeave()
       }}
-      onDrop={(e) => {
-        e.preventDefault()
-        onDrop(folder)
-      }}
+      onDrop={handleDrop}
     >
       {/* Header */}
       <div className="flex items-center justify-between mb-2 flex-shrink-0">
@@ -84,6 +96,7 @@ export function GalleryDropZone({
                 onDragStart={(e) => {
                   e.dataTransfer.setData('text/plain', img.filename)
                   e.dataTransfer.setData('from-folder', folder)
+                  // ถ้า select ไว้หลายรูป และรูปนี้อยู่ใน selection ส่งทั้งหมด
                   if (isSelected && selectedImages.size > 1) {
                     e.dataTransfer.setData('selected-images', Array.from(selectedImages).join(','))
                   }
@@ -92,19 +105,20 @@ export function GalleryDropZone({
                 onMouseEnter={() => onHover(img)}
                 onMouseLeave={() => onHover(null)}
                 className={cn(
-                  'aspect-video rounded overflow-hidden cursor-pointer relative border-2 transition-all',
+                  'aspect-video rounded overflow-hidden cursor-grab relative border-2 transition-all active:cursor-grabbing',
                   isSelected ? 'border-primary ring-2 ring-primary/30' : 'border-transparent hover:border-muted-foreground/50',
                 )}
               >
                 <img
                   src={img.url}
                   alt={img.filename}
-                  className="w-full h-full object-cover"
+                  className="w-full h-full object-cover pointer-events-none"
                   loading="lazy"
+                  draggable={false}
                 />
                 {/* Selection overlay */}
                 {isSelected && (
-                  <div className="absolute inset-0 bg-primary/20 flex items-center justify-center">
+                  <div className="absolute inset-0 bg-primary/20 flex items-center justify-center pointer-events-none">
                     <CheckCircle className="size-5 text-primary drop-shadow" />
                   </div>
                 )}
