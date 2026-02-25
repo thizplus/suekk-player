@@ -155,8 +155,8 @@ function DropZone({
         )}
       </div>
 
-      {/* Images Grid - larger images for better visibility */}
-      <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-2 min-h-[200px]">
+      {/* Images Grid - 2 columns for clear visibility */}
+      <div className="grid grid-cols-2 gap-2 min-h-[200px]">
         {images.map((img, index) => {
           const isSelected = selectedImages.has(img.filename)
           return (
