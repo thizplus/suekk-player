@@ -1,12 +1,100 @@
 import { useState, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { ArrowLeft, Loader2, CheckCircle, AlertCircle, Send, FolderInput, Trash2 } from 'lucide-react'
+import { ArrowLeft, Loader2, CheckCircle, AlertCircle, Send, FolderInput, Trash2, X, ChevronLeft, ChevronRight } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
+import { Dialog, DialogContent } from '@/components/ui/dialog'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 import { useVideo, useGalleryImages, useMoveBatch, usePublishGallery } from '../hooks'
 import type { GalleryImage, GalleryFolder } from '../types'
+
+// Lightbox component
+function ImageLightbox({
+  images,
+  currentIndex,
+  onClose,
+  onNavigate,
+}: {
+  images: GalleryImage[]
+  currentIndex: number
+  onClose: () => void
+  onNavigate: (index: number) => void
+}) {
+  const currentImage = images[currentIndex]
+
+  const handlePrev = () => {
+    if (currentIndex > 0) onNavigate(currentIndex - 1)
+  }
+
+  const handleNext = () => {
+    if (currentIndex < images.length - 1) onNavigate(currentIndex + 1)
+  }
+
+  // Keyboard navigation
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'ArrowLeft') handlePrev()
+    else if (e.key === 'ArrowRight') handleNext()
+    else if (e.key === 'Escape') onClose()
+  }
+
+  return (
+    <Dialog open onOpenChange={onClose}>
+      <DialogContent
+        className="max-w-5xl w-[95vw] h-[90vh] p-0 bg-black/95 border-none"
+        onKeyDown={handleKeyDown}
+      >
+        {/* Close button */}
+        <Button
+          variant="ghost"
+          size="icon"
+          className="absolute top-2 right-2 z-50 text-white hover:bg-white/20"
+          onClick={onClose}
+        >
+          <X className="size-6" />
+        </Button>
+
+        {/* Navigation */}
+        <div className="absolute inset-y-0 left-0 flex items-center z-40">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="text-white hover:bg-white/20 ml-2"
+            onClick={handlePrev}
+            disabled={currentIndex === 0}
+          >
+            <ChevronLeft className="size-8" />
+          </Button>
+        </div>
+        <div className="absolute inset-y-0 right-0 flex items-center z-40">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="text-white hover:bg-white/20 mr-2"
+            onClick={handleNext}
+            disabled={currentIndex === images.length - 1}
+          >
+            <ChevronRight className="size-8" />
+          </Button>
+        </div>
+
+        {/* Image */}
+        <div className="flex items-center justify-center h-full p-8">
+          <img
+            src={currentImage?.url}
+            alt={currentImage?.filename}
+            className="max-w-full max-h-full object-contain"
+          />
+        </div>
+
+        {/* Footer */}
+        <div className="absolute bottom-0 left-0 right-0 bg-black/60 text-white text-center py-2 text-sm">
+          {currentImage?.filename} ({currentIndex + 1} / {images.length})
+        </div>
+      </DialogContent>
+    </Dialog>
+  )
+}
 
 // Drop zone component
 function DropZone({
@@ -14,6 +102,7 @@ function DropZone({
   images,
   selectedImages,
   onSelect,
+  onPreview,
   onDrop,
   isDragOver,
   onDragOver,
@@ -25,6 +114,7 @@ function DropZone({
   images: GalleryImage[]
   selectedImages: Set<string>
   onSelect: (filename: string) => void
+  onPreview: (index: number) => void
   onDrop: (folder: GalleryFolder) => void
   isDragOver: boolean
   onDragOver: () => void
@@ -65,9 +155,9 @@ function DropZone({
         )}
       </div>
 
-      {/* Images Grid */}
-      <div className="grid grid-cols-4 sm:grid-cols-5 md:grid-cols-6 lg:grid-cols-8 gap-2 min-h-[200px]">
-        {images.map((img) => {
+      {/* Images Grid - larger images for better visibility */}
+      <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-2 min-h-[200px]">
+        {images.map((img, index) => {
           const isSelected = selectedImages.has(img.filename)
           return (
             <div
@@ -82,8 +172,9 @@ function DropZone({
                 }
               }}
               onClick={() => onSelect(img.filename)}
+              onDoubleClick={() => onPreview(index)}
               className={cn(
-                'aspect-square rounded-md overflow-hidden cursor-pointer relative group border-2 transition-all',
+                'aspect-video rounded-md overflow-hidden cursor-pointer relative group border-2 transition-all',
                 isSelected ? 'border-primary ring-2 ring-primary/30' : 'border-transparent hover:border-muted-foreground/30',
               )}
             >
@@ -136,6 +227,11 @@ export function GalleryManagerPage() {
   const [selectedImages, setSelectedImages] = useState<Set<string>>(new Set())
   const [selectedFolder, setSelectedFolder] = useState<GalleryFolder | null>(null)
   const [dragOverFolder, setDragOverFolder] = useState<GalleryFolder | null>(null)
+
+  // Lightbox state
+  const [lightboxOpen, setLightboxOpen] = useState(false)
+  const [lightboxFolder, setLightboxFolder] = useState<GalleryFolder | null>(null)
+  const [lightboxIndex, setLightboxIndex] = useState(0)
 
   // Toggle image selection
   const toggleSelect = useCallback((filename: string, folder: GalleryFolder) => {
@@ -214,6 +310,13 @@ export function GalleryManagerPage() {
       toast.error('Publish ไม่สำเร็จ')
     }
   }
+
+  // Open lightbox preview
+  const openLightbox = useCallback((folder: GalleryFolder, index: number) => {
+    setLightboxFolder(folder)
+    setLightboxIndex(index)
+    setLightboxOpen(true)
+  }, [])
 
   // Clear selection
   const clearSelection = () => {
@@ -344,7 +447,7 @@ export function GalleryManagerPage() {
 
       {/* Instructions */}
       <p className="text-sm text-muted-foreground mb-4">
-        คลิกเพื่อเลือก แล้ว drag ไปวางใน folder ที่ต้องการ หรือใช้ปุ่มย้ายด้านบน
+        คลิกเพื่อเลือก, ดับเบิลคลิกเพื่อดูภาพขยาย, drag ไปวางใน folder ที่ต้องการ
       </p>
 
       {/* Drop Zones */}
@@ -355,6 +458,7 @@ export function GalleryManagerPage() {
           images={sourceImages}
           selectedImages={selectedFolder === 'source' ? selectedImages : new Set()}
           onSelect={(f) => toggleSelect(f, 'source')}
+          onPreview={(i) => openLightbox('source', i)}
           onDrop={handleDrop}
           isDragOver={dragOverFolder === 'source'}
           onDragOver={() => setDragOverFolder('source')}
@@ -369,6 +473,7 @@ export function GalleryManagerPage() {
           images={safeImages}
           selectedImages={selectedFolder === 'safe' ? selectedImages : new Set()}
           onSelect={(f) => toggleSelect(f, 'safe')}
+          onPreview={(i) => openLightbox('safe', i)}
           onDrop={handleDrop}
           isDragOver={dragOverFolder === 'safe'}
           onDragOver={() => setDragOverFolder('safe')}
@@ -383,6 +488,7 @@ export function GalleryManagerPage() {
           images={nsfwImages}
           selectedImages={selectedFolder === 'nsfw' ? selectedImages : new Set()}
           onSelect={(f) => toggleSelect(f, 'nsfw')}
+          onPreview={(i) => openLightbox('nsfw', i)}
           onDrop={handleDrop}
           isDragOver={dragOverFolder === 'nsfw'}
           onDragOver={() => setDragOverFolder('nsfw')}
@@ -391,6 +497,20 @@ export function GalleryManagerPage() {
           badgeVariant="destructive"
         />
       </div>
+
+      {/* Image Lightbox */}
+      {lightboxOpen && lightboxFolder && (
+        <ImageLightbox
+          images={
+            lightboxFolder === 'source' ? sourceImages :
+            lightboxFolder === 'safe' ? safeImages :
+            nsfwImages
+          }
+          currentIndex={lightboxIndex}
+          onClose={() => setLightboxOpen(false)}
+          onNavigate={setLightboxIndex}
+        />
+      )}
     </div>
   )
 }
