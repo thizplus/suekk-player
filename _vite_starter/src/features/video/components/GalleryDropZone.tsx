@@ -15,6 +15,14 @@ interface GalleryDropZoneProps {
   onDragLeave: () => void
   label: string
   badgeVariant: 'default' | 'secondary' | 'destructive' | 'outline'
+  columns?: 2 | 3 | 4 | 5
+}
+
+const GRID_COLS = {
+  2: 'grid-cols-2',
+  3: 'grid-cols-3',
+  4: 'grid-cols-4',
+  5: 'grid-cols-5',
 }
 
 export function GalleryDropZone({
@@ -29,6 +37,7 @@ export function GalleryDropZone({
   onDragLeave,
   label,
   badgeVariant,
+  columns = 2,
 }: GalleryDropZoneProps) {
   return (
     <div
@@ -65,7 +74,7 @@ export function GalleryDropZone({
 
       {/* Images Grid with inner scroll */}
       <div className="flex-1 overflow-y-auto min-h-0">
-        <div className="grid grid-cols-2 gap-1.5">
+        <div className={cn('grid gap-1.5', GRID_COLS[columns])}>
           {images.map((img) => {
             const isSelected = selectedImages.has(img.filename)
             return (

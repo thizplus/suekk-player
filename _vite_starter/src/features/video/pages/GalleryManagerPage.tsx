@@ -229,6 +229,7 @@ export function GalleryManagerPage() {
             onDragLeave={() => setDragOverFolder(null)}
             label="Source"
             badgeVariant="outline"
+            columns={3}
           />
         </div>
 
@@ -246,6 +247,7 @@ export function GalleryManagerPage() {
             onDragLeave={() => setDragOverFolder(null)}
             label="Safe"
             badgeVariant="default"
+            columns={5}
           />
 
           <GalleryDropZone
@@ -260,6 +262,7 @@ export function GalleryManagerPage() {
             onDragLeave={() => setDragOverFolder(null)}
             label="NSFW"
             badgeVariant="destructive"
+            columns={5}
           />
         </div>
       </div>
