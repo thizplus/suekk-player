@@ -6,15 +6,15 @@ interface GalleryHoverPreviewProps {
 
 export function GalleryHoverPreview({ image }: GalleryHoverPreviewProps) {
   return (
-    <div className="w-[400px] flex-shrink-0 rounded-lg border bg-muted/30 flex items-center justify-center overflow-hidden">
+    <div className="h-[280px] flex-shrink-0 rounded-lg border bg-muted/30 flex items-center justify-center overflow-hidden">
       {image ? (
-        <div className="w-full h-full flex flex-col">
+        <div className="h-full flex items-center gap-4 px-4">
           <img
             src={image.url}
             alt={image.filename}
-            className="flex-1 min-h-0 object-contain"
+            className="h-full max-w-[500px] object-contain"
           />
-          <div className="text-center text-sm text-muted-foreground py-2 bg-background/80">
+          <div className="text-sm text-muted-foreground">
             {image.filename}
           </div>
         </div>

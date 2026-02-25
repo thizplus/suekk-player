@@ -6,6 +6,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"path"
 	"strings"
 	"sync"
@@ -62,11 +63,8 @@ func (c *ImageCopier) CopyGalleryImages(ctx context.Context, videoCode string, i
 			sem <- struct{}{}        // acquire
 			defer func() { <-sem }() // release
 
-			// Extract filename from URL
-			filename := path.Base(image.URL)
-			if filename == "" || filename == "." {
-				filename = fmt.Sprintf("gallery_%d.jpg", idx)
-			}
+			// Extract filename from URL (strip query params)
+			filename := extractFilename(image.URL, idx)
 
 			// Copy the image
 			newURL, err := c.CopyImage(ctx, videoCode, image.URL, filename)
@@ -214,6 +212,153 @@ func (c *ImageCopier) readFromStorage(ctx context.Context, path string) ([]byte,
 	defer reader.Close()
 
 	return io.ReadAll(reader)
+}
+
+// extractFilename extracts clean filename from URL (strips query params)
+func extractFilename(rawURL string, fallbackIdx int) string {
+	parsed, err := url.Parse(rawURL)
+	if err != nil {
+		return fmt.Sprintf("gallery_%d.jpg", fallbackIdx)
+	}
+
+	filename := path.Base(parsed.Path)
+	if filename == "" || filename == "." || filename == "/" {
+		return fmt.Sprintf("gallery_%d.jpg", fallbackIdx)
+	}
+
+	return filename
+}
+
+// CopyTieredGallery copy ภาพจากทุก tier ไป r2 แยก path
+// - articles/{code}/gallery/public/  = super_safe
+// - articles/{code}/gallery/member/  = safe + nsfw
+func (c *ImageCopier) CopyTieredGallery(ctx context.Context, videoCode string, tiered *models.TieredGalleryImages) (*ports.CopiedGalleryResult, error) {
+	if tiered == nil {
+		return nil, nil
+	}
+
+	result := &ports.CopiedGalleryResult{
+		PublicImages: []models.GalleryImage{},
+		MemberImages: []models.GalleryImage{},
+	}
+
+	c.logger.InfoContext(ctx, "Starting tiered gallery copy",
+		"video_code", videoCode,
+		"super_safe", len(tiered.SuperSafe),
+		"safe", len(tiered.Safe),
+		"nsfw", len(tiered.NSFW),
+	)
+
+	// Copy super_safe → public/
+	for i, srcURL := range tiered.SuperSafe {
+		filename := fmt.Sprintf("%03d.jpg", i+1)
+		destPath := fmt.Sprintf("articles/%s/gallery/public/%s", videoCode, filename)
+
+		newURL, err := c.copyToPath(ctx, srcURL, destPath)
+		if err != nil {
+			c.logger.WarnContext(ctx, "Failed to copy super_safe image", "error", err)
+			continue
+		}
+
+		result.PublicImages = append(result.PublicImages, models.GalleryImage{
+			URL:    newURL,
+			Width:  1280,
+			Height: 720,
+		})
+
+		// ใช้ภาพแรกเป็น cover
+		if i == 0 {
+			coverPath := fmt.Sprintf("articles/%s/gallery/cover.jpg", videoCode)
+			coverURL, err := c.copyToPath(ctx, srcURL, coverPath)
+			if err == nil {
+				result.CoverURL = coverURL
+			}
+		}
+	}
+
+	// Copy safe → member/
+	memberIdx := 1
+	for _, srcURL := range tiered.Safe {
+		filename := fmt.Sprintf("%03d.jpg", memberIdx)
+		destPath := fmt.Sprintf("articles/%s/gallery/member/%s", videoCode, filename)
+
+		newURL, err := c.copyToPath(ctx, srcURL, destPath)
+		if err != nil {
+			c.logger.WarnContext(ctx, "Failed to copy safe image", "error", err)
+			continue
+		}
+
+		result.MemberImages = append(result.MemberImages, models.GalleryImage{
+			URL:    newURL,
+			Width:  1280,
+			Height: 720,
+		})
+		memberIdx++
+	}
+
+	// Copy nsfw → member/
+	for _, srcURL := range tiered.NSFW {
+		filename := fmt.Sprintf("%03d.jpg", memberIdx)
+		destPath := fmt.Sprintf("articles/%s/gallery/member/%s", videoCode, filename)
+
+		newURL, err := c.copyToPath(ctx, srcURL, destPath)
+		if err != nil {
+			c.logger.WarnContext(ctx, "Failed to copy nsfw image", "error", err)
+			continue
+		}
+
+		result.MemberImages = append(result.MemberImages, models.GalleryImage{
+			URL:    newURL,
+			Width:  1280,
+			Height: 720,
+		})
+		memberIdx++
+	}
+
+	c.logger.InfoContext(ctx, "Tiered gallery copy completed",
+		"video_code", videoCode,
+		"public_count", len(result.PublicImages),
+		"member_count", len(result.MemberImages),
+		"has_cover", result.CoverURL != "",
+	)
+
+	return result, nil
+}
+
+// copyToPath copy ภาพไปยัง path ที่กำหนด
+func (c *ImageCopier) copyToPath(ctx context.Context, srcURL string, destPath string) (string, error) {
+	// Check if already exists
+	exists, _ := c.destStorage.Exists(ctx, destPath)
+	if exists {
+		return c.destStorage.GetPublicURL(destPath), nil
+	}
+
+	// Download
+	var data []byte
+	var err error
+
+	if strings.HasPrefix(srcURL, "http://") || strings.HasPrefix(srcURL, "https://") {
+		data, err = c.downloadFromURL(ctx, srcURL)
+	} else {
+		data, err = c.readFromStorage(ctx, srcURL)
+	}
+
+	if err != nil {
+		return "", fmt.Errorf("failed to download: %w", err)
+	}
+
+	// Detect content type
+	contentType := http.DetectContentType(data)
+	if !strings.HasPrefix(contentType, "image/") {
+		contentType = "image/jpeg"
+	}
+
+	// Upload
+	if err := c.destStorage.Upload(ctx, destPath, data, contentType); err != nil {
+		return "", fmt.Errorf("failed to upload: %w", err)
+	}
+
+	return c.destStorage.GetPublicURL(destPath), nil
 }
 
 // Verify interface implementation

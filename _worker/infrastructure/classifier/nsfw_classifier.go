@@ -45,6 +45,10 @@ func (c *NSFWClassifier) ClassifyBatch(ctx context.Context, inputPath string) (*
 	c.logger.Info("starting batch classification",
 		"input_path", inputPath,
 		"timeout", c.config.Timeout,
+		"verbose", c.config.Verbose,
+		"super_safe_threshold", c.config.SuperSafeThreshold,
+		"nsfw_threshold", c.config.NsfwThreshold,
+		"min_face_score", c.config.MinFaceScore,
 	)
 
 	startTime := time.Now()
@@ -53,16 +57,39 @@ func (c *NSFWClassifier) ClassifyBatch(ctx context.Context, inputPath string) (*
 	ctxWithTimeout, cancel := context.WithTimeout(ctx, time.Duration(c.config.Timeout)*time.Second)
 	defer cancel()
 
-	// Build command
+	// Build command with all thresholds
 	args := []string{
 		c.config.ScriptPath,
 		"--input", inputPath,
 		"--threshold", fmt.Sprintf("%.2f", c.config.NsfwThreshold),
+		"--super-safe-threshold", fmt.Sprintf("%.2f", c.config.SuperSafeThreshold),
+		"--min-face-score", fmt.Sprintf("%.2f", c.config.MinFaceScore),
+	}
+
+	// Add verbose flag for detailed per-image logging
+	if c.config.Verbose {
+		args = append(args, "--verbose")
+	}
+
+	// Add skip flags for performance
+	if c.config.SkipMosaic {
+		args = append(args, "--skip-mosaic")
+	}
+	if c.config.SkipPOV {
+		args = append(args, "--skip-pov")
+	}
+
+	// Add dedup flags
+	if c.config.SkipDedup {
+		args = append(args, "--skip-dedup")
+	}
+	if c.config.DedupThreshold > 0 {
+		args = append(args, "--dedup-threshold", fmt.Sprintf("%d", c.config.DedupThreshold))
 	}
 
 	cmd := exec.CommandContext(ctxWithTimeout, c.config.PythonPath, args...)
 
-	// Run command and capture output
+	// Run command and capture both stdout and stderr
 	output, err := cmd.Output()
 	if err != nil {
 		// Check if it was a timeout
@@ -99,15 +126,38 @@ func (c *NSFWClassifier) ClassifyBatch(ctx context.Context, inputPath string) (*
 
 	processingTime := time.Since(startTime).Seconds()
 
+	// Log with Three-Tier stats
 	c.logger.Info("batch classification complete",
 		"input_path", inputPath,
-		"total", result.Stats.TotalImages,
+		"original", result.Stats.OriginalImages,
+		"duplicates_removed", result.Stats.DuplicatesRemoved,
+		"unique", result.Stats.TotalImages,
+		"super_safe", result.Stats.SuperSafeCount,
 		"safe", result.Stats.SafeCount,
 		"nsfw", result.Stats.NsfwCount,
+		"mosaic", result.Stats.MosaicCount,
 		"errors", result.Stats.ErrorCount,
-		"avg_score", result.Stats.AvgNsfwScore,
+		"avg_nsfw_score", result.Stats.AvgNsfwScore,
+		"avg_face_score", result.Stats.AvgFaceScore,
 		"time_sec", processingTime,
 	)
+
+	// Log detailed per-image results if verbose
+	if c.config.Verbose {
+		for filename, imgResult := range result.Results {
+			c.logger.Info("image_classified",
+				"filename", filename,
+				"classification", imgResult.Classification,
+				"falconsai", imgResult.FalconsaiScore,
+				"nudenet", imgResult.NudenetScore,
+				"combined", imgResult.NsfwScore,
+				"face", imgResult.FaceScore,
+				"mosaic", imgResult.MosaicDetected,
+				"mosaic_score", imgResult.MosaicScore,
+				"reason", imgResult.Reason,
+			)
+		}
+	}
 
 	return &result, nil
 }

@@ -15,4 +15,16 @@ type ImageCopierPort interface {
 	// CopyImage copy ภาพเดี่ยว
 	// srcURL = URL จาก e2, returns URL ใหม่จาก r2
 	CopyImage(ctx context.Context, videoCode string, srcURL string, filename string) (string, error)
+
+	// CopyTieredGallery copy ภาพจากทุก tier ไป r2 แยก path
+	// - public/  = super_safe (Google-safe)
+	// - member/  = safe + nsfw
+	CopyTieredGallery(ctx context.Context, videoCode string, tiered *models.TieredGalleryImages) (*CopiedGalleryResult, error)
+}
+
+// CopiedGalleryResult - ผลลัพธ์จาก CopyTieredGallery
+type CopiedGalleryResult struct {
+	PublicImages []models.GalleryImage // R2 URLs for super_safe
+	MemberImages []models.GalleryImage // R2 URLs for safe + nsfw
+	CoverURL     string                // Best cover image URL
 }

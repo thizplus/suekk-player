@@ -6,19 +6,88 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"regexp"
+	"sort"
 	"strings"
+	"time"
 
 	"github.com/google/generative-ai-go/genai"
 	"google.golang.org/api/option"
 
+	"seo-worker/domain/models"
 	"seo-worker/domain/ports"
 )
 
-// Helper functions for debug
+// ============================================================================
+// Constants & Configuration
+// ============================================================================
+
+const (
+	maxRetries       = 3
+	retryBaseDelay   = time.Second
+	maxOutputTokens  = 4096 // Per chunk (ไม่ใช่ 8192 เพราะแบ่งเป็น 3 chunks แล้ว)
+	defaultTemp      = 0.7  // สไตล์การเขียนคงที่ทุก chunk
+
+	// Safe Moments Strategy for JAV
+	safeKeyMomentsLimit = 600 // Hard limit: 10 นาทีแรกเท่านั้น (วินาที)
+	minKeyMoments       = 3   // จำนวน key moments ขั้นต่ำ (Public Schema)
+	maxKeyMomentsPublic = 5   // จำนวน key moments สูงสุดสำหรับ Public (Google)
+	maxKeyMomentsInternal = 20 // จำนวน key moments สูงสุดสำหรับ Internal (Members)
+)
+
+// keywordBlacklist - คำต้องห้ามใน keyMoments name (explicit content)
+var keywordBlacklist = []string{
+	"เซ็กซ์", "เซ็ก", "sex", "ร่วมเพศ", "มีเพศสัมพันธ์",
+	"ออรัล", "oral", "อมควย", "อมนม",
+	"เย็ด", "เอา", "เสียว", "กระเด้า",
+	"หี", "ควย", "นม", "หัวนม",
+	"น้ำแตก", "แตก", "cum", "orgasm",
+	"ท่าหมา", "doggy", "cowgirl", "missionary",
+	"69", "threesome", "gangbang",
+}
+
+// seoKeywordBlacklist - คำต้องห้ามใน SEO keywords (สำหรับ Google)
+var seoKeywordBlacklist = []string{
+	"หนังโป๊", "โป๊", "porn", "xxx", "av",
+	"เย็ด", "เอากัน", "ร่วมรัก",
+	"หนังx", "หนังเอ็กซ์", "หนังผู้ใหญ่",
+	"creampie", "แตกใน", "หลั่งใน",
+	"blowjob", "อมควย",
+}
+
+// explicitTermReplacements - คำที่ต้องแทนที่ด้วยคำสุภาพ
+var explicitTermReplacements = map[string]string{
+	"หลั่งใน":          "ใกล้ชิดแบบพิเศษ",
+	"แตกใน":           "ใกล้ชิดแบบพิเศษ",
+	"การหลั่งภายใน":      "ความใกล้ชิดแบบพิเศษ",
+	"หลั่งภายใน":        "ใกล้ชิดแบบพิเศษ",
+	"ฉากหลั่งใน":        "ฉากโรแมนติกแบบใกล้ชิด",
+	"ฉากแตกใน":         "ฉากจบแบบพิเศษ",
+	"ฉากเซ็กส์":         "ฉากรักใคร่",
+	"ฉากร่วมเพศ":        "ฉากรักใคร่",
+	"ฉากร่วมรัก":        "ฉากโรแมนติก",
+	"อวัยวะเพศ":         "ส่วนสงวน",
+	"ช่องคลอด":         "ร่างกาย",
+	"Creampie":        "ฉากจบแบบพิเศษ",
+	"creampie":        "ฉากจบแบบพิเศษ",
+}
+
+// ============================================================================
+// Helper Functions
+// ============================================================================
+
 func writeDebugFile(path, content string) error {
 	_ = os.MkdirAll("output", 0755)
 	return os.WriteFile(path, []byte(content), 0644)
 }
+
+func toPtr[T any](v T) *T {
+	return &v
+}
+
+// ============================================================================
+// GeminiClient
+// ============================================================================
 
 type GeminiClient struct {
 	client *genai.Client
@@ -44,379 +113,929 @@ func (c *GeminiClient) Close() error {
 	return c.client.Close()
 }
 
+// ============================================================================
+// Main Entry Point: 3-Chunk Pipeline
+// ============================================================================
+
 func (c *GeminiClient) GenerateArticleContent(ctx context.Context, input *ports.AIInput) (*ports.AIOutput, error) {
-	model := c.client.GenerativeModel(c.model)
+	videoCode := input.VideoMetadata.RealCode
+	if videoCode == "" {
+		videoCode = input.VideoMetadata.Code
+	}
 
-	// ตั้งค่า JSON Mode เพื่อป้องกัน parsing error
-	model.ResponseMIMEType = "application/json"
-	model.ResponseSchema = c.buildResponseSchema()
-
-	// สร้าง prompt
-	prompt := c.buildPrompt(input)
-
-	c.logger.InfoContext(ctx, "Generating article content",
-		"video_id", input.VideoMetadata.ID,
-		"real_code", input.VideoMetadata.RealCode,
+	c.logger.InfoContext(ctx, "Starting 4-chunk generation",
+		"video_code", videoCode,
 		"model", c.model,
 	)
+
+	// ===== Chunk 1: Core SEO =====
+	c.logger.InfoContext(ctx, "[Chunk 1/4] Generating Core SEO...")
+	chunk1, err := c.generateChunk1WithRetry(ctx, input)
+	if err != nil {
+		return nil, fmt.Errorf("chunk1 failed: %w", err)
+	}
+	c.logger.InfoContext(ctx, "[Chunk 1/4] Completed",
+		"title_len", len(chunk1.Title),
+		"summary_len", len(chunk1.Summary),
+		"highlights", len(chunk1.Highlights),
+		"key_moments", len(chunk1.KeyMoments),
+	)
+
+	// Save state after Chunk 1
+	state := &ChunkState{
+		VideoCode: videoCode,
+		Chunk1:    chunk1,
+		LastChunk: 1,
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+	}
+	c.saveState(state)
+
+	// ===== Chunk 2: E-E-A-T Analysis (ใช้ context จาก Chunk 1) =====
+	c.logger.InfoContext(ctx, "[Chunk 2/4] Generating E-E-A-T Analysis...")
+	chunk2, err := c.generateChunk2WithRetry(ctx, input, chunk1)
+	if err != nil {
+		// Partial success: save state and return partial error
+		return nil, &PartialGenerationError{
+			Message:       "chunk2 failed after retries",
+			PartialPath:   fmt.Sprintf("output/state_%s.json", videoCode),
+			FailedChunk:   2,
+			CompletedUpTo: 1,
+			Cause:         err,
+		}
+	}
+	c.logger.InfoContext(ctx, "[Chunk 2/4] Completed",
+		"detailed_review_len", len(chunk2.DetailedReview),
+		"cast_bios", len(chunk2.CastBios),
+		"tag_descriptions", len(chunk2.TagDescriptions),
+	)
+
+	// Save state after Chunk 2
+	state.Chunk2 = chunk2
+	state.LastChunk = 2
+	state.UpdatedAt = time.Now()
+	c.saveState(state)
+
+	// ===== Chunk 3: Technical + FAQ (ใช้ context จาก Chunk 1) =====
+	c.logger.InfoContext(ctx, "[Chunk 3/4] Generating Technical + FAQ...")
+	chunk3, err := c.generateChunk3WithRetry(ctx, input, chunk1)
+	if err != nil {
+		// Partial success: save state and return partial error
+		return nil, &PartialGenerationError{
+			Message:       "chunk3 failed after retries",
+			PartialPath:   fmt.Sprintf("output/state_%s.json", videoCode),
+			FailedChunk:   3,
+			CompletedUpTo: 2,
+			Cause:         err,
+		}
+	}
+	c.logger.InfoContext(ctx, "[Chunk 3/4] Completed",
+		"faq_items", len(chunk3.FAQItems),
+		"keywords", len(chunk3.Keywords),
+	)
+
+	// Save state after Chunk 3
+	state.Chunk3 = chunk3
+	state.LastChunk = 3
+	state.UpdatedAt = time.Now()
+	c.saveState(state)
+
+	// ===== Chunk 4: Deep Analysis (ใช้ context จาก Chunk 1 + Chunk 2) =====
+	c.logger.InfoContext(ctx, "[Chunk 4/4] Generating Deep Analysis...")
+	chunk4, err := c.generateChunk4WithRetry(ctx, input, chunk1, chunk2)
+	if err != nil {
+		// Partial success: save state and return partial error
+		return nil, &PartialGenerationError{
+			Message:       "chunk4 failed after retries",
+			PartialPath:   fmt.Sprintf("output/state_%s.json", videoCode),
+			FailedChunk:   4,
+			CompletedUpTo: 3,
+			Cause:         err,
+		}
+	}
+	c.logger.InfoContext(ctx, "[Chunk 4/4] Completed",
+		"cinematography_len", len(chunk4.CinematographyAnalysis),
+		"character_journey_len", len(chunk4.CharacterJourney),
+		"thematic_explanation_len", len(chunk4.ThematicExplanation),
+	)
+
+	// ===== Aggregate =====
+	output := AggregateChunks(chunk1, chunk2, chunk3, chunk4)
+
+	// Clean up state file on full success
+	os.Remove(fmt.Sprintf("output/state_%s.json", videoCode))
+
+	c.logger.InfoContext(ctx, "4-chunk generation completed successfully",
+		"video_code", videoCode,
+	)
+
+	return output, nil
+}
+
+// ============================================================================
+// Chunk Generators with Retry
+// ============================================================================
+
+func (c *GeminiClient) generateChunk1WithRetry(ctx context.Context, input *ports.AIInput) (*Chunk1Output, error) {
+	var lastErr error
+	for i := 0; i < maxRetries; i++ {
+		chunk, err := c.generateChunk1(ctx, input)
+		if err == nil {
+			// Validate
+			if valErr := c.validateChunk1(chunk); valErr != nil {
+				lastErr = valErr
+				c.logger.WarnContext(ctx, "[Chunk 1] Validation failed, retrying",
+					"attempt", i+1,
+					"error", valErr,
+				)
+				time.Sleep(retryBaseDelay * time.Duration(i+1))
+				continue
+			}
+			return chunk, nil
+		}
+		lastErr = err
+		c.logger.WarnContext(ctx, "[Chunk 1] Failed, retrying",
+			"attempt", i+1,
+			"error", err,
+		)
+		time.Sleep(retryBaseDelay * time.Duration(i+1))
+	}
+	return nil, fmt.Errorf("chunk1 failed after %d retries: %w", maxRetries, lastErr)
+}
+
+func (c *GeminiClient) generateChunk2WithRetry(ctx context.Context, input *ports.AIInput, chunk1 *Chunk1Output) (*Chunk2Output, error) {
+	var lastErr error
+	for i := 0; i < maxRetries; i++ {
+		chunk, err := c.generateChunk2(ctx, input, chunk1)
+		if err == nil {
+			// Validate
+			if valErr := c.validateChunk2(chunk); valErr != nil {
+				lastErr = valErr
+				c.logger.WarnContext(ctx, "[Chunk 2] Validation failed, retrying",
+					"attempt", i+1,
+					"error", valErr,
+				)
+				time.Sleep(retryBaseDelay * time.Duration(i+1))
+				continue
+			}
+			return chunk, nil
+		}
+		lastErr = err
+		c.logger.WarnContext(ctx, "[Chunk 2] Failed, retrying",
+			"attempt", i+1,
+			"error", err,
+		)
+		time.Sleep(retryBaseDelay * time.Duration(i+1))
+	}
+	return nil, fmt.Errorf("chunk2 failed after %d retries: %w", maxRetries, lastErr)
+}
+
+func (c *GeminiClient) generateChunk3WithRetry(ctx context.Context, input *ports.AIInput, chunk1 *Chunk1Output) (*Chunk3Output, error) {
+	var lastErr error
+	for i := 0; i < maxRetries; i++ {
+		chunk, err := c.generateChunk3(ctx, input, chunk1)
+		if err == nil {
+			return chunk, nil
+		}
+		lastErr = err
+		c.logger.WarnContext(ctx, "[Chunk 3] Failed, retrying",
+			"attempt", i+1,
+			"error", err,
+		)
+		time.Sleep(retryBaseDelay * time.Duration(i+1))
+	}
+	return nil, fmt.Errorf("chunk3 failed after %d retries: %w", maxRetries, lastErr)
+}
+
+func (c *GeminiClient) generateChunk4WithRetry(ctx context.Context, input *ports.AIInput, chunk1 *Chunk1Output, chunk2 *Chunk2Output) (*Chunk4Output, error) {
+	var lastErr error
+	for i := 0; i < maxRetries; i++ {
+		chunk, err := c.generateChunk4(ctx, input, chunk1, chunk2)
+		if err == nil {
+			// Validate
+			if valErr := c.validateChunk4(chunk); valErr != nil {
+				lastErr = valErr
+				c.logger.WarnContext(ctx, "[Chunk 4] Validation failed, retrying",
+					"attempt", i+1,
+					"error", valErr,
+				)
+				time.Sleep(retryBaseDelay * time.Duration(i+1))
+				continue
+			}
+			return chunk, nil
+		}
+		lastErr = err
+		c.logger.WarnContext(ctx, "[Chunk 4] Failed, retrying",
+			"attempt", i+1,
+			"error", err,
+		)
+		time.Sleep(retryBaseDelay * time.Duration(i+1))
+	}
+	return nil, fmt.Errorf("chunk4 failed after %d retries: %w", maxRetries, lastErr)
+}
+
+// ============================================================================
+// Individual Chunk Generators
+// ============================================================================
+
+func (c *GeminiClient) generateChunk1(ctx context.Context, input *ports.AIInput) (*Chunk1Output, error) {
+	model := c.client.GenerativeModel(c.model)
+	c.configureModel(model)
+	model.ResponseSchema = c.buildChunk1Schema()
+
+	prompt := c.buildChunk1Prompt(input)
+	prompt = sanitizeUTF8(prompt) // Fix invalid UTF-8
 
 	resp, err := model.GenerateContent(ctx, genai.Text(prompt))
 	if err != nil {
 		return nil, fmt.Errorf("gemini generate failed: %w", err)
 	}
 
-	if len(resp.Candidates) == 0 || len(resp.Candidates[0].Content.Parts) == 0 {
-		return nil, fmt.Errorf("empty response from gemini")
+	jsonString, err := c.extractJSON(resp)
+	if err != nil {
+		return nil, err
 	}
 
-	// Debug: Log finish reason and response info
+	var chunk Chunk1Output
+	if err := json.Unmarshal([]byte(jsonString), &chunk); err != nil {
+		// Save debug file
+		debugPath := fmt.Sprintf("output/chunk1_debug_%s.json", input.VideoMetadata.RealCode)
+		_ = writeDebugFile(debugPath, jsonString)
+		return nil, fmt.Errorf("failed to parse chunk1: %w", err)
+	}
+
+	// Post-process: Safe Moments filtering for JAV content
+	chunk.KeyMoments = c.processKeyMomentsSafe(chunk.KeyMoments, input.VideoMetadata.Duration)
+
+	return &chunk, nil
+}
+
+func (c *GeminiClient) generateChunk2(ctx context.Context, input *ports.AIInput, chunk1 *Chunk1Output) (*Chunk2Output, error) {
+	model := c.client.GenerativeModel(c.model)
+	c.configureModel(model)
+	model.ResponseSchema = c.buildChunk2Schema()
+
+	prompt := c.buildChunk2Prompt(input, chunk1)
+	prompt = sanitizeUTF8(prompt) // Fix invalid UTF-8
+
+	resp, err := model.GenerateContent(ctx, genai.Text(prompt))
+	if err != nil {
+		return nil, fmt.Errorf("gemini generate failed: %w", err)
+	}
+
+	jsonString, err := c.extractJSON(resp)
+	if err != nil {
+		return nil, err
+	}
+
+	var chunk Chunk2Output
+	if err := json.Unmarshal([]byte(jsonString), &chunk); err != nil {
+		debugPath := fmt.Sprintf("output/chunk2_debug_%s.json", input.VideoMetadata.RealCode)
+		_ = writeDebugFile(debugPath, jsonString)
+		return nil, fmt.Errorf("failed to parse chunk2: %w", err)
+	}
+
+	// Post-process: Filter topQuotes ที่ timestamp > 600 วินาที
+	chunk.TopQuotes = c.filterTopQuotesSafe(chunk.TopQuotes)
+
+	// Post-process: Sanitize tagDescriptions ให้สุภาพ
+	chunk.TagDescriptions = c.sanitizeTagDescriptions(chunk.TagDescriptions)
+
+	return &chunk, nil
+}
+
+func (c *GeminiClient) generateChunk3(ctx context.Context, input *ports.AIInput, chunk1 *Chunk1Output) (*Chunk3Output, error) {
+	model := c.client.GenerativeModel(c.model)
+	c.configureModel(model)
+	model.ResponseSchema = c.buildChunk3Schema()
+
+	prompt := c.buildChunk3Prompt(input, chunk1)
+	prompt = sanitizeUTF8(prompt) // Fix invalid UTF-8
+
+	resp, err := model.GenerateContent(ctx, genai.Text(prompt))
+	if err != nil {
+		return nil, fmt.Errorf("gemini generate failed: %w", err)
+	}
+
+	jsonString, err := c.extractJSON(resp)
+	if err != nil {
+		return nil, err
+	}
+
+	var chunk Chunk3Output
+	if err := json.Unmarshal([]byte(jsonString), &chunk); err != nil {
+		debugPath := fmt.Sprintf("output/chunk3_debug_%s.json", input.VideoMetadata.RealCode)
+		_ = writeDebugFile(debugPath, jsonString)
+		return nil, fmt.Errorf("failed to parse chunk3: %w", err)
+	}
+
+	// Post-process: Filter keywords ที่ไม่เหมาะสมสำหรับ Google
+	chunk.Keywords = c.filterSEOKeywords(chunk.Keywords)
+	chunk.LongTailKeywords = c.filterSEOKeywords(chunk.LongTailKeywords)
+
+	// Post-process: Sanitize faqItems ให้สุภาพ
+	chunk.FAQItems = c.sanitizeFAQItems(chunk.FAQItems)
+
+	return &chunk, nil
+}
+
+func (c *GeminiClient) generateChunk4(ctx context.Context, input *ports.AIInput, chunk1 *Chunk1Output, chunk2 *Chunk2Output) (*Chunk4Output, error) {
+	model := c.client.GenerativeModel(c.model)
+	c.configureModel(model)
+	model.ResponseSchema = c.buildChunk4Schema()
+
+	prompt := c.buildChunk4Prompt(input, chunk1, chunk2)
+	prompt = sanitizeUTF8(prompt) // Fix invalid UTF-8
+
+	resp, err := model.GenerateContent(ctx, genai.Text(prompt))
+	if err != nil {
+		return nil, fmt.Errorf("gemini generate failed: %w", err)
+	}
+
+	jsonString, err := c.extractJSON(resp)
+	if err != nil {
+		return nil, err
+	}
+
+	var chunk Chunk4Output
+	if err := json.Unmarshal([]byte(jsonString), &chunk); err != nil {
+		debugPath := fmt.Sprintf("output/chunk4_debug_%s.json", input.VideoMetadata.RealCode)
+		_ = writeDebugFile(debugPath, jsonString)
+		return nil, fmt.Errorf("failed to parse chunk4: %w", err)
+	}
+
+	// Post-process: Sanitize all text fields
+	chunk.CinematographyAnalysis = c.sanitizeText(chunk.CinematographyAnalysis)
+	chunk.CharacterJourney = c.sanitizeText(chunk.CharacterJourney)
+	chunk.ThematicExplanation = c.sanitizeText(chunk.ThematicExplanation)
+	chunk.ViewingTips = c.sanitizeText(chunk.ViewingTips)
+	chunk.AudienceMatch = c.sanitizeText(chunk.AudienceMatch)
+
+	return &chunk, nil
+}
+
+// ============================================================================
+// Model Configuration
+// ============================================================================
+
+func (c *GeminiClient) configureModel(model *genai.GenerativeModel) {
+	model.ResponseMIMEType = "application/json"
+	model.Temperature = toPtr(float32(defaultTemp))
+	model.TopP = toPtr(float32(0.95))
+	model.TopK = toPtr(int32(40))
+	model.MaxOutputTokens = toPtr(int32(maxOutputTokens))
+}
+
+// ============================================================================
+// Response Extraction
+// ============================================================================
+
+func (c *GeminiClient) extractJSON(resp *genai.GenerateContentResponse) (string, error) {
+	if len(resp.Candidates) == 0 || len(resp.Candidates[0].Content.Parts) == 0 {
+		return "", fmt.Errorf("empty response from gemini")
+	}
+
 	candidate := resp.Candidates[0]
-	c.logger.InfoContext(ctx, "[DEBUG] Gemini response info",
+	c.logger.Info("[DEBUG] Gemini response",
 		"finish_reason", candidate.FinishReason,
 		"parts_count", len(candidate.Content.Parts),
 	)
 
-	// Parse JSON response
-	jsonStr := fmt.Sprintf("%v", resp.Candidates[0].Content.Parts[0])
+	part := candidate.Content.Parts[0]
+	jsonStr, ok := part.(genai.Text)
+	if !ok {
+		return "", fmt.Errorf("unexpected response type: %T", part)
+	}
 
-	// Debug: Log response length and preview
-	c.logger.InfoContext(ctx, "[DEBUG] Gemini response",
-		"json_length", len(jsonStr),
-		"preview", jsonStr[:min(500, len(jsonStr))],
-		"suffix", jsonStr[max(0, len(jsonStr)-100):],
-	)
+	// Sanitize JSON: fix huge numbers that would overflow int64
+	sanitized := c.sanitizeJSONNumbers(string(jsonStr))
 
-	var output ports.AIOutput
-	if err := json.Unmarshal([]byte(jsonStr), &output); err != nil {
-		// Save to debug file
-		debugPath := fmt.Sprintf("output/gemini_debug_%s.json", input.VideoMetadata.RealCode)
-		_ = writeDebugFile(debugPath, jsonStr)
-		c.logger.ErrorContext(ctx, "[DEBUG] Parse failed, saved to file",
-			"path", debugPath,
-			"error", err,
+	return sanitized, nil
+}
+
+// sanitizeUTF8 ลบ invalid UTF-8 characters ออกจาก string
+// ป้องกัน error: "proto: field contains invalid UTF-8"
+func sanitizeUTF8(s string) string {
+	// strings.ToValidUTF8 แทนที่ invalid UTF-8 sequences ด้วย replacement character
+	// แต่เราลบทิ้งเลยดีกว่า (ใส่ "" แทน)
+	return strings.ToValidUTF8(s, "")
+}
+
+// sanitizeJSONNumbers แก้ตัวเลขที่ใหญ่เกินใน JSON
+// Gemini บางครั้งส่งตัวเลขที่ overflow int64 ทำให้ JSON parse fail
+func (c *GeminiClient) sanitizeJSONNumbers(jsonStr string) string {
+	// Regex: หาตัวเลขที่ยาวเกิน 15 หลัก (int64 max = 9223372036854775807 = 19 หลัก)
+	// และแทนที่ด้วย 0 เพราะน่าจะเป็น bug จาก Gemini
+	re := regexp.MustCompile(`:\s*(\d{16,})`)
+	sanitized := re.ReplaceAllStringFunc(jsonStr, func(match string) string {
+		// Extract the number part
+		numStr := strings.TrimLeft(match, ": ")
+		c.logger.Warn("[Sanitize] Found huge number, replacing with 0",
+			"original_length", len(numStr),
+			"preview", numStr[:min(20, len(numStr))],
 		)
-		return nil, fmt.Errorf("failed to parse gemini response: %w", err)
+		return ": 0"
+	})
+	return sanitized
+}
+
+// ============================================================================
+// Safe Moments Post-Processing (JAV-specific)
+// ============================================================================
+
+// processKeyMomentsSafe ประมวลผล keyMoments ให้ปลอดภัย
+// 1. กรอง explicit keywords
+// 2. จำกัดเวลาไม่เกิน 600 วินาที (10 นาทีแรก)
+// 3. เรียงลำดับตาม startOffset
+// 4. ลบ timestamps ที่ซ้อนทับกัน
+func (c *GeminiClient) processKeyMomentsSafe(moments []models.KeyMoment, videoDuration int) []models.KeyMoment {
+	if len(moments) == 0 {
+		return moments
 	}
 
-	c.logger.InfoContext(ctx, "Article content generated",
-		"video_id", input.VideoMetadata.ID,
-		"highlights_count", len(output.Highlights),
-		"key_moments_count", len(output.KeyMoments),
+	c.logger.Info("[Safe Moments] Processing",
+		"input_count", len(moments),
+		"video_duration", videoDuration,
 	)
 
-	return &output, nil
-}
-
-func (c *GeminiClient) buildResponseSchema() *genai.Schema {
-	return &genai.Schema{
-		Type: genai.TypeObject,
-		Properties: map[string]*genai.Schema{
-			// === Core SEO ===
-			"title":           {Type: genai.TypeString, Description: "H1 title ภาษาไทย 50-60 ตัวอักษร ดึงดูดความสนใจ"},
-			"metaTitle":       {Type: genai.TypeString, Description: "Meta title สำหรับ Google ต้องมี [รหัสเรื่อง] และ [ซับไทย] ใน 60 ตัวอักษรแรก"},
-			"metaDescription": {Type: genai.TypeString, Description: "Meta description 150-160 ตัวอักษร กระตุ้นให้คลิก"},
-			"summary":         {Type: genai.TypeString, Description: "สรุปเนื้อหา 400 คำขึ้นไป เน้นอารมณ์และความรู้สึก"},
-			"highlights": {
-				Type:  genai.TypeArray,
-				Items: &genai.Schema{Type: genai.TypeString},
-			},
-			"detailedReview": {Type: genai.TypeString, Description: "บทวิเคราะห์ 600 คำขึ้นไป เน้นอารมณ์และความเสียว"},
-			"qualityScore":   {Type: genai.TypeInteger, Description: "คะแนนคุณภาพ 1-10"},
-			"thumbnailAlt":   {Type: genai.TypeString, Description: "Alt text สำหรับ thumbnail"},
-
-			// === Key Moments ===
-			"keyMoments": {
-				Type: genai.TypeArray,
-				Items: &genai.Schema{
-					Type: genai.TypeObject,
-					Properties: map[string]*genai.Schema{
-						"name":        {Type: genai.TypeString},
-						"startOffset": {Type: genai.TypeInteger},
-						"endOffset":   {Type: genai.TypeInteger},
-					},
-				},
-			},
-
-			// === Cast & Tags ===
-			"castBios": {
-				Type: genai.TypeArray,
-				Items: &genai.Schema{
-					Type: genai.TypeObject,
-					Properties: map[string]*genai.Schema{
-						"castId": {Type: genai.TypeString},
-						"bio":    {Type: genai.TypeString},
-					},
-				},
-			},
-			"tagDescriptions": {
-				Type:        genai.TypeArray,
-				Description: "⚠️ ห้ามปล่อย description ว่าง! ต้องใส่คำอธิบายภาษาไทย",
-				Items: &genai.Schema{
-					Type: genai.TypeObject,
-					Properties: map[string]*genai.Schema{
-						"id":          {Type: genai.TypeString},
-						"name":        {Type: genai.TypeString},
-						"description": {Type: genai.TypeString, Description: "คำอธิบาย tag ภาษาไทย เช่น 'แนวการแสดงเดี่ยว'"},
-					},
-				},
-			},
-
-			// === FAQ ===
-			"faqItems": {
-				Type: genai.TypeArray,
-				Items: &genai.Schema{
-					Type: genai.TypeObject,
-					Properties: map[string]*genai.Schema{
-						"question": {Type: genai.TypeString},
-						"answer":   {Type: genai.TypeString},
-					},
-				},
-			},
-
-			// === Gallery (Hybrid Alt Text Format) ===
-			"galleryAlts": {
-				Type:        genai.TypeArray,
-				Items:       &genai.Schema{Type: genai.TypeString},
-				Description: "Alt text แบบ Hybrid: [รหัส] - [ชื่อนักแสดง] - [บริบทกว้างๆ จากฉาก]",
-			},
-
-			// === [E] Experience Section ===
-			"sceneLocations": {
-				Type:        genai.TypeArray,
-				Items:       &genai.Schema{Type: genai.TypeString},
-				Description: "สถานที่ในเรื่อง เช่น ห้องตรวจ, คลินิก",
-			},
-
-			// === [E] Expertise Section ===
-			"dialogueAnalysis":      {Type: genai.TypeString, Description: "วิเคราะห์บทสนทนา 100-150 คำ"},
-			"characterInsight":      {Type: genai.TypeString, Description: "วิเคราะห์บุคลิกตัวละคร 100-150 คำ"},
-			"languageNotes":         {Type: genai.TypeString, Description: "หมายเหตุภาษา 50 คำ"},
-			"actorPerformanceTrend": {Type: genai.TypeString, Description: "เปรียบเทียบการแสดง 100 คำ"},
-			"comparisonNote":        {Type: genai.TypeString, Description: "เปรียบเทียบกับเรื่องอื่น 50 คำ"},
-			"topQuotes": {
-				Type: genai.TypeArray,
-				Items: &genai.Schema{
-					Type: genai.TypeObject,
-					Properties: map[string]*genai.Schema{
-						"text":      {Type: genai.TypeString, Description: "ประโยคภาษาไทย"},
-						"timestamp": {Type: genai.TypeInteger, Description: "เวลา (วินาที)"},
-						"emotion":   {Type: genai.TypeString, Description: "อารมณ์"},
-						"context":   {Type: genai.TypeString, Description: "บริบท"},
-					},
-				},
-			},
-
-			// === [A] Authoritativeness Section ===
-			"summaryShort":       {Type: genai.TypeString, Description: "สรุปสั้น 2-3 บรรทัด สำหรับ TTS"},
-			"characterDynamic":   {Type: genai.TypeString, Description: "ความสัมพันธ์ตัวละคร 50 คำ"},
-			"plotAnalysis":       {Type: genai.TypeString, Description: "วิเคราะห์โครงเรื่อง 100 คำ"},
-			"recommendation":     {Type: genai.TypeString, Description: "เหมาะสำหรับ... 50 คำ"},
-			"settingDescription": {Type: genai.TypeString, Description: "บริบทฉาก 50 คำ"},
-			"recommendedFor": {
-				Type:        genai.TypeArray,
-				Items:       &genai.Schema{Type: genai.TypeString},
-				Description: "กลุ่มเป้าหมาย เช่น แฟนหนังแนว X, คนชอบ Y",
-			},
-			"thematicKeywords": {
-				Type:        genai.TypeArray,
-				Items:       &genai.Schema{Type: genai.TypeString},
-				Description: "Keywords สำหรับ semantic search",
-			},
-			"moodTone": {
-				Type:        genai.TypeArray,
-				Items:       &genai.Schema{Type: genai.TypeString},
-				Description: "อารมณ์เรื่อง เช่น ดราม่า, โรแมนติก",
-			},
-
-			// === [T] Trustworthiness Section ===
-			"translationMethod": {Type: genai.TypeString, Description: "วิธีการแปล เช่น แปลจากเสียงญี่ปุ่นโดยตรง"},
-			"translationNote":   {Type: genai.TypeString, Description: "หมายเหตุการแปล เช่น เน้นอารมณ์ดิบตามต้นฉบับ ไม่เซนเซอร์"},
-			"subtitleQuality":   {Type: genai.TypeString, Description: "คุณภาพซับ เช่น หางเสียงถูกต้องตามเพศตัวละคร"},
-			"technicalFaq": {
-				Type: genai.TypeArray,
-				Items: &genai.Schema{
-					Type: genai.TypeObject,
-					Properties: map[string]*genai.Schema{
-						"question": {Type: genai.TypeString},
-						"answer":   {Type: genai.TypeString},
-					},
-				},
-			},
-
-			// === Technical Specs (Trustworthiness เชิงเทคนิค) ===
-			"videoQuality": {Type: genai.TypeString, Description: "คุณภาพวิดีโอ เช่น 1080p Full HD, 4K Ultra HD"},
-			"audioQuality": {Type: genai.TypeString, Description: "คุณภาพเสียง เช่น ระบบเสียงสเตอริโอคมชัด, Dolby 5.1"},
-
-			// === SEO Enhancement ===
-			"expertAnalysis": {Type: genai.TypeString, Description: "บทวิเคราะห์ผู้เชี่ยวชาญ 100 คำ"},
-			"keywords": {
-				Type:        genai.TypeArray,
-				Items:       &genai.Schema{Type: genai.TypeString},
-				Description: "SEO keywords 5-10 คำ",
-			},
-			"longTailKeywords": {
-				Type:        genai.TypeArray,
-				Items:       &genai.Schema{Type: genai.TypeString},
-				Description: "Long-tail keywords 3-5 วลี",
-			},
-		},
-		Required: []string{
-			// Core SEO (ห้ามว่าง)
-			"title", "metaTitle", "metaDescription", "summary", "summaryShort",
-			"highlights", "detailedReview", "keyMoments", "faqItems", "qualityScore",
-			// Experience
-			"sceneLocations", "galleryAlts",
-			// Expertise (ห้ามว่าง - หัวใจ E-E-A-T)
-			"dialogueAnalysis", "characterInsight", "topQuotes", "expertAnalysis",
-			"comparisonNote", "tagDescriptions",
-			// Authoritativeness
-			"thematicKeywords", "moodTone", "recommendedFor", "recommendation",
-			// Trustworthiness + Technical Specs
-			"translationMethod", "translationNote", "subtitleQuality",
-			"videoQuality", "audioQuality",
-		},
-	}
-}
-
-func (c *GeminiClient) buildPrompt(input *ports.AIInput) string {
-	// สร้าง cast names string
-	castNames := make([]string, len(input.Casts))
-	for i, cast := range input.Casts {
-		castNames[i] = cast.Name
+	// Step 1: Filter by keyword blacklist
+	filtered := make([]models.KeyMoment, 0, len(moments))
+	for _, m := range moments {
+		if !c.containsBlacklistedKeyword(m.Name) {
+			filtered = append(filtered, m)
+		} else {
+			c.logger.Debug("[Safe Moments] Filtered out",
+				"name", m.Name,
+				"reason", "blacklisted keyword",
+			)
+		}
 	}
 
-	// สร้าง tags string (สำหรับ generate tag descriptions)
-	var tagsInfo strings.Builder
-	for _, tag := range input.Tags {
-		tagsInfo.WriteString(fmt.Sprintf("- ID: %s, Name: %s\n", tag.ID, tag.Name))
+	// Step 2: Filter by time limit (600 seconds)
+	safeFiltered := make([]models.KeyMoment, 0, len(filtered))
+	for _, m := range filtered {
+		if m.StartOffset <= safeKeyMomentsLimit {
+			safeFiltered = append(safeFiltered, m)
+		} else {
+			c.logger.Debug("[Safe Moments] Filtered out",
+				"name", m.Name,
+				"start_offset", m.StartOffset,
+				"reason", "exceeds 600s limit",
+			)
+		}
 	}
 
-	// สร้าง previous works string
-	var prevWorks strings.Builder
-	for _, work := range input.PreviousWorks {
-		prevWorks.WriteString(fmt.Sprintf("- %s (%s)\n", work.Title, work.VideoCode))
+	// Step 3: Sort by startOffset
+	sort.Slice(safeFiltered, func(i, j int) bool {
+		return safeFiltered[i].StartOffset < safeFiltered[j].StartOffset
+	})
+
+	// Step 4: Remove overlapping timestamps (keep only distinct 30-second buckets)
+	deduped := make([]models.KeyMoment, 0, len(safeFiltered))
+	seenBuckets := make(map[int]bool)
+	for _, m := range safeFiltered {
+		bucket := m.StartOffset / 30 // 30 วินาที bucket
+		if !seenBuckets[bucket] {
+			seenBuckets[bucket] = true
+			deduped = append(deduped, m)
+		} else {
+			c.logger.Debug("[Safe Moments] Filtered out duplicate bucket",
+				"name", m.Name,
+				"bucket", bucket*30,
+			)
+		}
 	}
 
-	return fmt.Sprintf(`# บทบาท (Persona)
-คุณคือ "นักเขียนรีวิวหนังผู้ใหญ่ระดับ Premium ที่เก่งที่สุดในประเทศไทย"
-- เชี่ยวชาญการวิเคราะห์อารมณ์และความรู้สึกของตัวละคร
-- สามารถบรรยายฉากอย่างละเอียดและน่าสนใจ
-- เขียนภาษาไทยที่เป็นธรรมชาติ ไม่แข็งทื่อ ไม่เหมือนหุ่นยนต์
-- นี่คือบทความสำหรับผู้ใหญ่ที่มีไว้เพื่อความบันเทิงและการวิจารณ์ภาพยนตร์
+	// Step 5: Ensure minimum coverage - add static seed moments if needed
+	if len(deduped) < minKeyMoments {
+		deduped = c.addSeedMoments(deduped, videoDuration)
+	}
 
----
+	// Step 6: Limit to maxKeyMomentsPublic (สำหรับ Google Schema)
+	// Note: Internal moments (สำหรับ Members) จะใช้ maxKeyMomentsInternal
+	if len(deduped) > maxKeyMomentsPublic {
+		deduped = deduped[:maxKeyMomentsPublic]
+	}
 
-## Input Data
-
-### SRT Transcript (ใช้สกัด Timestamp และวิเคราะห์อารมณ์):
-%s
-
-### Video Metadata:
-- Code: %s
-- Duration: %d seconds
-- Casts: %s
-- Cast IDs: %s
-
-### Cast Previous Works (ใช้เปรียบเทียบการแสดง):
-%s
-
-### Tags (⚠️ ต้อง generate description ภาษาไทยสำหรับแต่ละ tag!):
-%s
-
-### Gallery Images Count: %d
-
----
-
-## Output Requirements (E-E-A-T Framework)
-
-### ⚠️ กฎสำคัญ (CRITICAL RULES)
-1. **ห้ามเขียนเนื้อหาซ้ำ** ระหว่าง summary และ detailedReview
-2. **summary ต้องมีอย่างน้อย 400 คำ** เน้นสรุปเรื่องราวและอารมณ์
-3. **detailedReview ต้องมีอย่างน้อย 600 คำ** เน้นวิเคราะห์การแสดงและความเสียว
-4. **keyMoments timestamps**:
-   - ⚠️ startOffset และ endOffset ต้องเป็น **วินาที** (ไม่ใช่ milliseconds)
-   - ⚠️ แต่ละ moment ต้องมี duration อย่างน้อย **30 วินาที** (endOffset - startOffset >= 30)
-   - ⚠️ endOffset ต้อง > startOffset เสมอ
-   - บรรยายฉากอย่างน้อย 2 ประโยค
-5. **expertAnalysis ห้ามว่าง** ต้องวิเคราะห์เทคนิคการแสดงหรือจุดเด่นของเรื่อง
-6. **topQuotes ต้องมีอย่างน้อย 3 ประโยค** เลือกประโยคที่มีอารมณ์ชัดเจน
-
-### Core SEO
-1. **title**: H1 ภาษาไทย 50-60 ตัวอักษร ดึงดูดและ SEO-friendly
-2. **metaTitle**: Meta title สำหรับ Google ต้องมี "[%s]" และ "[ซับไทย]" ใน 60 ตัวอักษรแรก
-3. **metaDescription**: 150-160 ตัวอักษร กระตุ้นให้คลิก
-4. **keyMoments**: ดึง timestamp จาก SRT โดยตรง 5-8 moments
-   - ⚠️ timestamps ต้องเป็น **วินาที** (seconds) ไม่ใช่ milliseconds
-   - ⚠️ แต่ละ moment ต้องยาวอย่างน้อย **30 วินาที** (endOffset - startOffset >= 30)
-   - ⚠️ endOffset ต้อง > startOffset เสมอ
-   - name: บรรยายฉากอย่างน้อย 2 ประโยค เช่น "ฉากตรวจร่างกายสุดเสียวที่เน้นเสียงคราง หมอค่อยๆ..."
-5. **qualityScore**: 1-10 ตามคุณภาพการผลิตและความเข้มข้นของเนื้อหา
-
-### [E] Experience Section
-6. **sceneLocations**: สถานที่ในเรื่อง เช่น ["ห้องตรวจ", "คลินิก"]
-7. **highlights**: 5-10 ฉากสำคัญ บรรยายอารมณ์และความรู้สึก
-8. **galleryAlts**: ⚠️ ใช้ Hybrid Alt Text format สำหรับ %d รูป: "[รหัส] - [ชื่อนักแสดง] - [บริบทกว้างๆ]" เช่น "DLDSS-471 - Zemba Mami ในฉากวินิจฉัยอาการที่คลินิก"
-
-### [E] Expertise Section (หัวใจ E-E-A-T - ห้ามว่าง!)
-9. **dialogueAnalysis**: วิเคราะห์บทสนทนา สรรพนาม หางเสียง อารมณ์ที่เปลี่ยนไป (100-150 คำ)
-10. **characterInsight**: วิเคราะห์บุคลิกตัวละครผ่านคำพูดและการแสดง (100-150 คำ)
-11. **topQuotes**: 3-5 ประโยคเด็ดจากซับ พร้อม timestamp (วินาที), emotion, context
-12. **languageNotes**: หมายเหตุภาษา เช่น "ใช้หางเสียงสุภาพ ค่ะ/ครับ แต่เปลี่ยนเป็น...เมื่ออารมณ์พลุ่งพล่าน"
-13. **actorPerformanceTrend**: เปรียบเทียบการแสดงกับผลงานก่อนหน้า (100 คำ)
-14. **comparisonNote**: ⚠️ ต้องระบุ VIDEO CODE จริง เช่น "เมื่อเทียบกับ DLDSS-420 ของค่ายเดียวกัน เรื่องนี้เน้นอารมณ์ดราม่ามากกว่าฉากแอ็คชั่น" (50 คำ)
-15. **castBios**: bio สำหรับแต่ละ cast (50-100 คำต่อคน)
-16. **tagDescriptions**: ⚠️ ห้ามปล่อย description ว่าง! ต้อง generate คำอธิบายภาษาไทยสำหรับแต่ละ tag เช่น { "name": "Solowork", "description": "แนวการแสดงเดี่ยว เน้นไฮไลท์ความสามารถของนักแสดงคนเดียว" }
-
-### [A] Authoritativeness Section
-16. **summary**: สรุปเนื้อหา **400 คำขึ้นไป** เน้นอารมณ์และความรู้สึกของตัวละคร
-17. **summaryShort**: สรุปสั้น 50-100 คำ สำหรับ TTS อ่านให้ฟัง
-18. **characterDynamic**: ความสัมพันธ์ตัวละคร (50 คำ)
-19. **plotAnalysis**: วิเคราะห์โครงเรื่อง (100 คำ)
-20. **detailedReview**: บทวิเคราะห์ **600 คำขึ้นไป** เน้นวิเคราะห์การแสดงและความเสียว
-21. **recommendation**: "เหมาะสำหรับคนที่ชอบ..." (50 คำ)
-22. **recommendedFor**: Array เช่น ["แฟนหนังแนว Medical", "คนชอบ Drama"]
-23. **thematicKeywords**: ⚠️ ต้องมี LOCATION-SPECIFIC keywords เช่น ["คลินิกสูตินรีเวชญี่ปุ่น", "ห้องตรวจโรคเฉพาะทาง", "หมอสาว", "PGAD"] รวม keywords สถานที่จำเพาะเพื่อจับ Long-tail search
-24. **settingDescription**: บริบทฉาก (50 คำ)
-25. **moodTone**: Array อารมณ์ ["ดราม่า", "ซีเรียส", "อีโรติก"]
-
-### [T] Trustworthiness Section
-26. **translationMethod**: วิธีแปล เช่น "แปลจากเสียงญี่ปุ่นโดยตรง"
-27. **translationNote**: หมายเหตุการแปล เช่น "ซับไทยเน้นอารมณ์ดิบตามต้นฉบับ ไม่มีการเซนเซอร์คำสบถ เพื่ออรรถรสสูงสุด"
-28. **subtitleQuality**: คุณภาพซับ เช่น "หางเสียงถูกต้องตามเพศตัวละคร"
-29. **technicalFaq**: FAQ เทคนิค 2-3 ข้อ
-
-### Technical Specs (เสริมความน่าเชื่อถือ)
-30. **videoQuality**: คุณภาพวิดีโอ เช่น "ความละเอียด 1080p Full HD" หรือ "4K Ultra HD"
-31. **audioQuality**: คุณภาพเสียง เช่น "ระบบเสียงสเตอริโอคมชัด 320kbps"
-
-### SEO & Rating
-32. **expertAnalysis**: บทวิเคราะห์ผู้เชี่ยวชาญ **ห้ามว่าง** (100 คำ) วิเคราะห์เทคนิคการแสดงและจุดเด่น
-33. **keywords**: SEO keywords 5-10 คำ
-34. **longTailKeywords**: Long-tail 3-5 วลี
-35. **faqItems**: FAQ 3-5 ข้อที่คนดูหนังแนวนี้อยากรู้จริงๆ (ไม่ใช่คำถามทั่วไป)
-36. **thumbnailAlt**: Alt text สำหรับ thumbnail
-
----
-
-## ⚠️ ข้อห้าม (DON'T)
-- ❌ เขียนแบบหุ่นยนต์ หรือ Wikipedia
-- ❌ ใช้คำสุภาพจนเกินไปจนขาดอารมณ์
-- ❌ เขียน FAQ แบบทั่วไป ที่ไม่ใช่คำถามที่คนดูหนังแนวนี้สนใจ
-- ❌ ปล่อย expertAnalysis ว่าง
-- ❌ keyMoments.endOffset < startOffset
-`,
-		input.SRTContent,
-		input.VideoMetadata.RealCode, // Video code จริง (e.g., DLDSS-471)
-		input.VideoMetadata.Duration,
-		strings.Join(castNames, ", "),
-		strings.Join(input.VideoMetadata.CastIDs, ", "),
-		prevWorks.String(),
-		tagsInfo.String(),            // Tags สำหรับ generate descriptions
-		input.GalleryCount,
-		input.VideoMetadata.RealCode, // สำหรับ metaTitle
-		input.GalleryCount,
+	c.logger.Info("[Safe Moments] Completed",
+		"output_count", len(deduped),
+		"mode", "public", // สำหรับ Google Schema
 	)
+
+	return deduped
 }
 
-// Verify interface implementation
+// containsBlacklistedKeyword ตรวจสอบว่ามีคำต้องห้ามหรือไม่
+func (c *GeminiClient) containsBlacklistedKeyword(text string) bool {
+	textLower := strings.ToLower(text)
+	for _, keyword := range keywordBlacklist {
+		if strings.Contains(textLower, strings.ToLower(keyword)) {
+			return true
+		}
+	}
+	return false
+}
+
+// addSeedMoments เพิ่ม static seed moments เมื่อมี moments ไม่พอ
+// Static seeds: ใช้ชื่อสุภาพแบบวิชาการ/รีวิว ตาม E-E-A-T guidelines
+func (c *GeminiClient) addSeedMoments(existing []models.KeyMoment, videoDuration int) []models.KeyMoment {
+	seedMoments := []models.KeyMoment{
+		{Name: "บทนำและการแนะนำตัวละครหลัก", StartOffset: 0, EndOffset: 90},
+		{Name: "บทสนทนาเปิดเรื่องและการสร้างสถานการณ์", StartOffset: 120, EndOffset: 210},
+		{Name: "การพัฒนาความสัมพันธ์ระหว่างตัวละคร", StartOffset: 240, EndOffset: 330},
+		{Name: "จุดเปลี่ยนสำคัญของเนื้อเรื่อง", StartOffset: 360, EndOffset: 450},
+		{Name: "ไคลแมกซ์ของบทบาทและอารมณ์", StartOffset: 480, EndOffset: 570},
+	}
+
+	// Collect existing start offsets to avoid overlap
+	existingStarts := make(map[int]bool)
+	for _, m := range existing {
+		bucket := m.StartOffset / 60 // 60 วินาที bucket for seeds
+		existingStarts[bucket] = true
+	}
+
+	// Add seeds that don't overlap
+	result := append([]models.KeyMoment{}, existing...)
+	for _, seed := range seedMoments {
+		if len(result) >= minKeyMoments {
+			break
+		}
+		bucket := seed.StartOffset / 60
+		if !existingStarts[bucket] && seed.EndOffset <= videoDuration {
+			result = append(result, seed)
+			existingStarts[bucket] = true
+			c.logger.Debug("[Safe Moments] Added seed moment",
+				"name", seed.Name,
+				"start", seed.StartOffset,
+			)
+		}
+	}
+
+	// Re-sort
+	sort.Slice(result, func(i, j int) bool {
+		return result[i].StartOffset < result[j].StartOffset
+	})
+
+	return result
+}
+
+// ============================================================================
+// Additional Post-Processing Filters
+// ============================================================================
+
+// filterTopQuotesSafe กรอง topQuotes ที่ timestamp > 600 วินาที
+func (c *GeminiClient) filterTopQuotesSafe(quotes []ports.TopQuote) []ports.TopQuote {
+	if len(quotes) == 0 {
+		return quotes
+	}
+
+	filtered := make([]ports.TopQuote, 0, len(quotes))
+	for _, q := range quotes {
+		if q.Timestamp <= safeKeyMomentsLimit {
+			filtered = append(filtered, q)
+		} else {
+			c.logger.Debug("[Safe Filter] Filtered out topQuote",
+				"text", q.Text[:min(50, len(q.Text))],
+				"timestamp", q.Timestamp,
+				"reason", "exceeds 600s limit",
+			)
+		}
+	}
+
+	c.logger.Info("[Safe Filter] TopQuotes filtered",
+		"input", len(quotes),
+		"output", len(filtered),
+	)
+
+	return filtered
+}
+
+// filterSEOKeywords กรองคำที่ไม่เหมาะสมสำหรับ Google
+func (c *GeminiClient) filterSEOKeywords(keywords []string) []string {
+	if len(keywords) == 0 {
+		return keywords
+	}
+
+	filtered := make([]string, 0, len(keywords))
+	for _, kw := range keywords {
+		if !c.containsSEOBlacklistedKeyword(kw) {
+			filtered = append(filtered, kw)
+		} else {
+			c.logger.Debug("[SEO Filter] Filtered out keyword",
+				"keyword", kw,
+				"reason", "contains blacklisted word",
+			)
+		}
+	}
+
+	c.logger.Info("[SEO Filter] Keywords filtered",
+		"input", len(keywords),
+		"output", len(filtered),
+	)
+
+	return filtered
+}
+
+// containsSEOBlacklistedKeyword ตรวจสอบว่ามีคำต้องห้ามสำหรับ SEO หรือไม่
+func (c *GeminiClient) containsSEOBlacklistedKeyword(text string) bool {
+	textLower := strings.ToLower(text)
+	for _, keyword := range seoKeywordBlacklist {
+		if strings.Contains(textLower, strings.ToLower(keyword)) {
+			return true
+		}
+	}
+	return false
+}
+
+// sanitizeText แทนที่คำไม่สุภาพด้วยคำสุภาพ
+func (c *GeminiClient) sanitizeText(text string) string {
+	result := text
+	for explicit, polite := range explicitTermReplacements {
+		if strings.Contains(result, explicit) {
+			result = strings.ReplaceAll(result, explicit, polite)
+			c.logger.Debug("[Sanitize] Replaced explicit term",
+				"from", explicit,
+				"to", polite,
+			)
+		}
+	}
+	return result
+}
+
+// sanitizeTagDescriptions แทนที่คำไม่สุภาพใน tagDescriptions
+func (c *GeminiClient) sanitizeTagDescriptions(tags []models.TagDesc) []models.TagDesc {
+	for i := range tags {
+		tags[i].Description = c.sanitizeText(tags[i].Description)
+	}
+	return tags
+}
+
+// sanitizeFAQItems แทนที่คำไม่สุภาพใน faqItems
+func (c *GeminiClient) sanitizeFAQItems(items []models.FAQItem) []models.FAQItem {
+	for i := range items {
+		items[i].Answer = c.sanitizeText(items[i].Answer)
+	}
+	return items
+}
+
+// ============================================================================
+// Validation
+// ============================================================================
+
+func (c *GeminiClient) validateChunk1(chunk *Chunk1Output) error {
+	var errors []string
+
+	// ตรวจสอบความยาว summary (400 คำ ≈ 1,500 chars, tolerance 800)
+	summaryChars := len([]rune(chunk.Summary))
+	if summaryChars < 800 {
+		errors = append(errors, fmt.Sprintf("summary: %d chars (min 800)", summaryChars))
+	}
+
+	// ตรวจสอบ highlights
+	if len(chunk.Highlights) < 3 {
+		errors = append(errors, fmt.Sprintf("highlights: %d items (min 3)", len(chunk.Highlights)))
+	}
+
+	// ตรวจสอบ key moments (หลังจาก Safe Moments processing แล้ว)
+	// Note: อนุญาตให้ keyMoments ว่างได้ (Context Discovery rule - ถ้าวิดีโอไม่มี safe scenes)
+	// แต่ถ้ามีแล้วต้องมีอย่างน้อย 3 ตัว
+	if len(chunk.KeyMoments) > 0 && len(chunk.KeyMoments) < minKeyMoments {
+		errors = append(errors, fmt.Sprintf("keyMoments: %d items (min %d or 0)", len(chunk.KeyMoments), minKeyMoments))
+	}
+
+	// ตรวจสอบ timestamps - เบาลงเพราะ Safe Moments processing ทำแล้ว
+	for i, km := range chunk.KeyMoments {
+		if km.EndOffset <= km.StartOffset {
+			errors = append(errors, fmt.Sprintf("keyMoments[%d]: endOffset(%d) <= startOffset(%d)", i, km.EndOffset, km.StartOffset))
+			break
+		}
+		// ตรวจสอบ duration อย่างน้อย 30 วินาที (ลดลงจาก 45)
+		if km.EndOffset-km.StartOffset < 30 {
+			errors = append(errors, fmt.Sprintf("keyMoments[%d]: duration %ds < 30s", i, km.EndOffset-km.StartOffset))
+			break
+		}
+		// ตรวจสอบว่า startOffset ไม่เกิน 600 วินาที (Safe Moments limit)
+		if km.StartOffset > safeKeyMomentsLimit {
+			errors = append(errors, fmt.Sprintf("keyMoments[%d]: startOffset %d exceeds safe limit %d", i, km.StartOffset, safeKeyMomentsLimit))
+			break
+		}
+	}
+
+	// ตรวจสอบ title
+	if len(chunk.Title) < 20 {
+		errors = append(errors, fmt.Sprintf("title: %d chars (min 20)", len(chunk.Title)))
+	}
+
+	// ตรวจสอบ galleryAlts
+	if len(chunk.GalleryAlts) == 0 {
+		errors = append(errors, "galleryAlts: empty")
+	}
+
+	if len(errors) > 0 {
+		return &ChunkValidationError{
+			Chunk:   1,
+			Field:   "multiple",
+			Message: strings.Join(errors, "; "),
+		}
+	}
+
+	return nil
+}
+
+func (c *GeminiClient) validateChunk2(chunk *Chunk2Output) error {
+	var errors []string
+
+	// ตรวจสอบความยาว detailedReview (600 คำ ≈ 2,000 chars, tolerance 1,000)
+	detailedChars := len([]rune(chunk.DetailedReview))
+	if detailedChars < 1000 {
+		errors = append(errors, fmt.Sprintf("detailedReview: %d chars (min 1000)", detailedChars))
+	}
+
+	// ตรวจสอบ expertAnalysis (100 คำ ≈ 300 chars, tolerance 100)
+	expertChars := len([]rune(chunk.ExpertAnalysis))
+	if expertChars < 100 {
+		errors = append(errors, fmt.Sprintf("expertAnalysis: %d chars (min 100)", expertChars))
+	}
+
+	// ตรวจสอบ dialogueAnalysis
+	dialogueChars := len([]rune(chunk.DialogueAnalysis))
+	if dialogueChars < 100 {
+		errors = append(errors, fmt.Sprintf("dialogueAnalysis: %d chars (min 100)", dialogueChars))
+	}
+
+	// ตรวจสอบ topQuotes
+	if len(chunk.TopQuotes) < 3 {
+		errors = append(errors, fmt.Sprintf("topQuotes: %d items (min 3)", len(chunk.TopQuotes)))
+	}
+
+	// ตรวจสอบ tagDescriptions ไม่มี description ว่าง
+	for i, td := range chunk.TagDescriptions {
+		if len(strings.TrimSpace(td.Description)) < 10 {
+			errors = append(errors, fmt.Sprintf("tagDescriptions[%d]: description empty or too short", i))
+			break // แค่ตัวแรกที่ผิดก็พอ
+		}
+	}
+
+	if len(errors) > 0 {
+		return &ChunkValidationError{
+			Chunk:   2,
+			Field:   "multiple",
+			Message: strings.Join(errors, "; "),
+		}
+	}
+
+	return nil
+}
+
+func (c *GeminiClient) validateChunk4(chunk *Chunk4Output) error {
+	var errors []string
+
+	// ตรวจสอบ cinematographyAnalysis (300 คำ ≈ 900 chars, tolerance 500)
+	cinematographyChars := len([]rune(chunk.CinematographyAnalysis))
+	if cinematographyChars < 500 {
+		errors = append(errors, fmt.Sprintf("cinematographyAnalysis: %d chars (min 500)", cinematographyChars))
+	}
+
+	// ตรวจสอบ characterJourney (400 คำ ≈ 1,200 chars, tolerance 600)
+	characterChars := len([]rune(chunk.CharacterJourney))
+	if characterChars < 600 {
+		errors = append(errors, fmt.Sprintf("characterJourney: %d chars (min 600)", characterChars))
+	}
+
+	// ตรวจสอบ thematicExplanation (300 คำ ≈ 900 chars, tolerance 400)
+	thematicChars := len([]rune(chunk.ThematicExplanation))
+	if thematicChars < 400 {
+		errors = append(errors, fmt.Sprintf("thematicExplanation: %d chars (min 400)", thematicChars))
+	}
+
+	// ตรวจสอบ viewingTips (200 คำ ≈ 600 chars, tolerance 300)
+	viewingChars := len([]rune(chunk.ViewingTips))
+	if viewingChars < 300 {
+		errors = append(errors, fmt.Sprintf("viewingTips: %d chars (min 300)", viewingChars))
+	}
+
+	// ตรวจสอบ emotionalArc
+	if len(chunk.EmotionalArc) < 3 {
+		errors = append(errors, fmt.Sprintf("emotionalArc: %d items (min 3)", len(chunk.EmotionalArc)))
+	}
+
+	// ตรวจสอบ atmosphereNotes
+	if len(chunk.AtmosphereNotes) < 3 {
+		errors = append(errors, fmt.Sprintf("atmosphereNotes: %d items (min 3)", len(chunk.AtmosphereNotes)))
+	}
+
+	// ตรวจสอบ bestMoments
+	if len(chunk.BestMoments) < 3 {
+		errors = append(errors, fmt.Sprintf("bestMoments: %d items (min 3)", len(chunk.BestMoments)))
+	}
+
+	if len(errors) > 0 {
+		return &ChunkValidationError{
+			Chunk:   4,
+			Field:   "multiple",
+			Message: strings.Join(errors, "; "),
+		}
+	}
+
+	return nil
+}
+
+// ============================================================================
+// State Management
+// ============================================================================
+
+func (c *GeminiClient) saveState(state *ChunkState) error {
+	data, err := json.MarshalIndent(state, "", "  ")
+	if err != nil {
+		return err
+	}
+	path := fmt.Sprintf("output/state_%s.json", state.VideoCode)
+	return writeDebugFile(path, string(data))
+}
+
+func (c *GeminiClient) loadState(videoCode string) (*ChunkState, error) {
+	path := fmt.Sprintf("output/state_%s.json", videoCode)
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	var state ChunkState
+	if err := json.Unmarshal(data, &state); err != nil {
+		return nil, err
+	}
+	return &state, nil
+}
+
+// ResumeFromState ทำต่อจาก state ที่บันทึกไว้
+func (c *GeminiClient) ResumeFromState(ctx context.Context, input *ports.AIInput, videoCode string) (*ports.AIOutput, error) {
+	state, err := c.loadState(videoCode)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load state: %w", err)
+	}
+
+	c.logger.InfoContext(ctx, "Resuming from saved state",
+		"video_code", videoCode,
+		"last_chunk", state.LastChunk,
+	)
+
+	var chunk2 *Chunk2Output
+	var chunk3 *Chunk3Output
+	var chunk4 *Chunk4Output
+
+	// Resume based on last completed chunk
+	switch state.LastChunk {
+	case 1:
+		// Need to generate chunk 2, 3, and 4
+		chunk2, err = c.generateChunk2WithRetry(ctx, input, state.Chunk1)
+		if err != nil {
+			return nil, err
+		}
+		state.Chunk2 = chunk2
+		state.LastChunk = 2
+		c.saveState(state)
+		fallthrough
+
+	case 2:
+		// Need to generate chunk 3 and 4
+		if state.Chunk2 != nil {
+			chunk2 = state.Chunk2
+		}
+		chunk3, err = c.generateChunk3WithRetry(ctx, input, state.Chunk1)
+		if err != nil {
+			return nil, err
+		}
+		state.Chunk3 = chunk3
+		state.LastChunk = 3
+		c.saveState(state)
+		fallthrough
+
+	case 3:
+		// Need to generate chunk 4
+		if state.Chunk3 != nil {
+			chunk3 = state.Chunk3
+		}
+		chunk4, err = c.generateChunk4WithRetry(ctx, input, state.Chunk1, state.Chunk2)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	// Use saved chunks if available
+	if state.Chunk3 != nil && chunk3 == nil {
+		chunk3 = state.Chunk3
+	}
+
+	// Aggregate
+	output := AggregateChunks(state.Chunk1, state.Chunk2, chunk3, chunk4)
+
+	// Clean up state file
+	os.Remove(fmt.Sprintf("output/state_%s.json", videoCode))
+
+	return output, nil
+}
+
+// ============================================================================
+// Interface Verification
+// ============================================================================
+
 var _ ports.AIPort = (*GeminiClient)(nil)

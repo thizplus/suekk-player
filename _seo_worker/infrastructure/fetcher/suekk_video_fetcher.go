@@ -212,5 +212,69 @@ func isImageFile(filename string) bool {
 	return false
 }
 
+// ListAllGalleryImages ดึงรายการ gallery images จากทุก tier (super_safe, safe, nsfw)
+// Return presigned URLs แยกตาม tier
+func (f *SuekkVideoFetcher) ListAllGalleryImages(ctx context.Context, galleryPath string) (*models.TieredGalleryImages, error) {
+	if galleryPath == "" {
+		return nil, nil
+	}
+
+	// Trim trailing slash
+	galleryPath = strings.TrimSuffix(galleryPath, "/")
+
+	result := &models.TieredGalleryImages{
+		SuperSafe: []string{},
+		Safe:      []string{},
+		NSFW:      []string{},
+	}
+
+	// Fetch from each tier
+	tiers := []struct {
+		path   string
+		target *[]string
+		name   string
+	}{
+		{galleryPath + "/super_safe", &result.SuperSafe, "super_safe"},
+		{galleryPath + "/safe", &result.Safe, "safe"},
+		{galleryPath + "/nsfw", &result.NSFW, "nsfw"},
+	}
+
+	for _, tier := range tiers {
+		files, err := f.storage.ListFiles(tier.path)
+		if err != nil {
+			f.logger.WarnContext(ctx, "Failed to list tier",
+				"tier", tier.name,
+				"path", tier.path,
+				"error", err,
+			)
+			continue
+		}
+
+		for _, file := range files {
+			if isImageFile(file) {
+				url, err := f.storage.GetPresignedDownloadURL(file, galleryURLExpiry)
+				if err != nil {
+					continue
+				}
+				*tier.target = append(*tier.target, url)
+			}
+		}
+
+		f.logger.InfoContext(ctx, "Gallery tier listed",
+			"tier", tier.name,
+			"count", len(*tier.target),
+		)
+	}
+
+	f.logger.InfoContext(ctx, "All gallery images listed",
+		"super_safe", len(result.SuperSafe),
+		"safe", len(result.Safe),
+		"nsfw", len(result.NSFW),
+		"total", len(result.SuperSafe)+len(result.Safe)+len(result.NSFW),
+	)
+
+	return result, nil
+}
+
 // Verify interface implementation
 var _ ports.SuekkVideoFetcherPort = (*SuekkVideoFetcher)(nil)

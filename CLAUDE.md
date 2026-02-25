@@ -124,7 +124,8 @@ curl http://localhost:8222/connz
 # ดู NATS streams
 curl http://localhost:8222/jsz?streams=true
 
-# รัน worker
+# ⚠️ สำคัญ: KILL worker เก่าก่อนรันใหม่ทุกครั้ง!
+taskkill /F /IM worker.exe 2>nul
 cd _worker && go run ./cmd/worker
 
 # Rebuild Docker
@@ -140,6 +141,7 @@ docker-compose down -v && docker-compose up --build -d
 3. **worker_id** ใช้ระบุว่า progress มาจาก worker ตัวไหน - ถ้าว่างแสดงว่ามีปัญหา
 4. **NATS Monitor** อยู่ที่ `http://localhost:8222` - ใช้ดู connections และ streams
 5. **Storage** ใช้ IDrive E2 (S3-compatible) สำหรับเก็บ original videos และ HLS segments
+6. **⚠️ ก่อนรัน worker ใหม่**: ต้อง kill worker.exe เก่าทุกครั้งด้วย `taskkill /F /IM worker.exe` - ถ้าไม่ทำจะมี ghost worker แย่งงานและใช้ code เก่า
 
 ---
 

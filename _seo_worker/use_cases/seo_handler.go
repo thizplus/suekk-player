@@ -217,7 +217,8 @@ func (h *SEOHandler) ProcessJob(ctx context.Context, job *models.SEOArticleJob) 
 		RelatedArticles: relatedArticles,
 	}
 
-	aiOutput, err := h.aiService.GenerateArticleContent(ctx, aiInput)
+	// ใช้ V2: 7-chunk pipeline (Atomic Chunking + Context Feeding)
+	aiOutput, err := h.aiService.GenerateArticleContentV2(ctx, aiInput)
 	if err != nil {
 		h.messenger.SendFailed(ctx, job.VideoID, err)
 		return fmt.Errorf("AI generation failed: %w", err)
@@ -758,8 +759,363 @@ func (h *SEOHandler) buildRelatedArticlesForAI(
 }
 
 // ============================================================================
-// Cast Name Sanitization - ป้องกัน AI ผสมภาษาในชื่อนักแสดง
+// Cast Name Sanitization - ป้องกัน AI ผสมภาษาและชื่อซ้ำๆ
 // ============================================================================
+
+// removeRepeatedNames ลบชื่อที่ซ้ำติดกัน เช่น "Megami Megami Jun" → "Megami Jun"
+// Go regex ไม่รองรับ backreference จึงใช้วิธี split และ compare
+func removeRepeatedNames(text string) string {
+	// Step 1: ลบคำซ้ำติดกัน (single word)
+	result := removeConsecutiveDuplicateWords(text)
+
+	// Step 2: ลบ phrase ซ้ำติดกัน (2-3 words)
+	result = removeRepeatedPhrases(result)
+
+	return result
+}
+
+// removeConsecutiveDuplicateWords ลบคำที่ซ้ำติดกัน เช่น "Megami Megami" → "Megami"
+func removeConsecutiveDuplicateWords(text string) string {
+	// Split text into tokens (preserve punctuation)
+	words := strings.Fields(text)
+	if len(words) < 2 {
+		return text
+	}
+
+	var result []string
+	result = append(result, words[0])
+
+	for i := 1; i < len(words); i++ {
+		// Compare lowercase to handle case variations
+		current := strings.ToLower(words[i])
+		previous := strings.ToLower(words[i-1])
+
+		// Skip if same as previous word (but not short words like "the", "a")
+		if current == previous && len(current) > 2 {
+			continue
+		}
+		result = append(result, words[i])
+	}
+
+	return strings.Join(result, " ")
+}
+
+// removeRepeatedPhrases ลบวลีที่ซ้ำติดกัน เช่น "Megami Jun Megami Jun" → "Megami Jun"
+func removeRepeatedPhrases(text string) string {
+	words := strings.Fields(text)
+	if len(words) < 4 {
+		return text
+	}
+
+	// ลอง 2-word phrase ก่อน
+	result := removeDuplicatePhrase(words, 2)
+
+	// แล้วลอง 3-word phrase
+	result = removeDuplicatePhrase(result, 3)
+
+	return strings.Join(result, " ")
+}
+
+// removeDuplicatePhrase ลบ phrase ที่ซ้ำติดกันตาม phraseLen
+func removeDuplicatePhrase(words []string, phraseLen int) []string {
+	if len(words) < phraseLen*2 {
+		return words
+	}
+
+	var result []string
+	i := 0
+
+	for i < len(words) {
+		// Check if next phrase is a duplicate
+		if i+phraseLen*2 <= len(words) {
+			phrase1 := strings.ToLower(strings.Join(words[i:i+phraseLen], " "))
+			phrase2 := strings.ToLower(strings.Join(words[i+phraseLen:i+phraseLen*2], " "))
+
+			if phrase1 == phrase2 {
+				// Add phrase once and skip duplicates
+				result = append(result, words[i:i+phraseLen]...)
+
+				// Skip all consecutive duplicates
+				j := i + phraseLen*2
+				for j+phraseLen <= len(words) {
+					nextPhrase := strings.ToLower(strings.Join(words[j:j+phraseLen], " "))
+					if nextPhrase != phrase1 {
+						break
+					}
+					j += phraseLen
+				}
+				i = j
+				continue
+			}
+		}
+
+		result = append(result, words[i])
+		i++
+	}
+
+	return result
+}
+
+// replaceExcessiveNamesWithPronouns แทนชื่อที่ใช้บ่อยเกินไปด้วยสรรพนาม
+// Pattern: FullName → FirstName → เธอ → FirstName → FirstName → เธอ (วนซ้ำ)
+func replaceExcessiveNamesWithPronouns(text string, casts []models.CastMetadata) string {
+	if len(casts) == 0 {
+		return text
+	}
+
+	result := text
+
+	// สำหรับแต่ละ cast
+	for _, cast := range casts {
+		fullName := cast.Name
+		nameParts := strings.Fields(fullName)
+		if len(nameParts) == 0 {
+			continue
+		}
+
+		firstName := nameParts[0]
+
+		// นับจำนวนครั้งที่ชื่อเต็มปรากฏ
+		fullNameCount := strings.Count(result, fullName)
+
+		// ถ้าชื่อเต็มปรากฏมากกว่า 3 ครั้ง ให้แทนบางส่วน
+		if fullNameCount > 3 {
+			// แยก text ตามชื่อเต็ม แล้วประกอบกลับพร้อมแทนค่า
+			parts := strings.Split(result, fullName)
+			var newParts []string
+
+			for i, part := range parts {
+				newParts = append(newParts, part)
+
+				// ถ้าไม่ใช่ part สุดท้าย ต้องใส่ชื่อกลับ
+				if i < len(parts)-1 {
+					// Pattern: 1=FullName, 2=FirstName, 3=เธอ, 4=FirstName, 5=FirstName, 6=เธอ...
+					occurrence := i + 1
+					switch {
+					case occurrence == 1:
+						// ครั้งแรก: ใช้ชื่อเต็ม
+						newParts = append(newParts, fullName)
+					case occurrence%3 == 0:
+						// ทุกครั้งที่ 3: ใช้ "เธอ"
+						newParts = append(newParts, "เธอ")
+					default:
+						// ครั้งอื่นๆ: ใช้ first name
+						newParts = append(newParts, firstName)
+					}
+				}
+			}
+
+			result = strings.Join(newParts, "")
+		}
+	}
+
+	// Cleanup: ลบ "เธอ เธอ" ซ้ำ และ whitespace เกิน
+	result = cleanupDoublePronouns(result)
+
+	return result
+}
+
+// cleanupDoublePronouns ลบสรรพนามที่ซ้ำติดกัน และ whitespace เกิน
+func cleanupDoublePronouns(text string) string {
+	// แก้ "เธอ เธอ" → "เธอ"
+	result := strings.ReplaceAll(text, "เธอ เธอ", "เธอ")
+
+	// แก้ช่องว่างเกิน (multiple spaces → single space)
+	spaceRegex := regexp.MustCompile(`\s{2,}`)
+	result = spaceRegex.ReplaceAllString(result, " ")
+
+	return result
+}
+
+// removeLeadingActorName ลบชื่อนักแสดงที่นำหน้าประโยค
+// เช่น "Megami Jun, มุ่งมั่น..." → "มุ่งมั่น..."
+// เช่น "Megami Jun แสดง..." → "แสดง..."
+func removeLeadingActorName(text string, casts []models.CastMetadata) string {
+	if len(casts) == 0 || text == "" {
+		return text
+	}
+
+	result := strings.TrimSpace(text)
+
+	for _, cast := range casts {
+		name := cast.Name
+
+		// ลอง match แบบ case-insensitive และ normalize spaces
+		lowerResult := strings.ToLower(result)
+		lowerName := strings.ToLower(name)
+
+		// Pattern ต่างๆ ที่อาจเกิด (check lowercase)
+		patterns := []struct {
+			check  string // lowercase pattern to check
+			remove string // actual pattern to remove
+		}{
+			{lowerName + ", ", name + ", "},
+			{lowerName + " ", name + " "},
+			{lowerName + "、", name + "、"},
+			{lowerName + " " + lowerName + ", ", name + " " + name + ", "},
+			{lowerName + " " + lowerName + " ", name + " " + name + " "},
+		}
+
+		for _, p := range patterns {
+			if strings.HasPrefix(lowerResult, p.check) {
+				// ลบโดยใช้ length ของ pattern
+				result = strings.TrimSpace(result[len(p.remove):])
+				break
+			}
+		}
+
+		// ถ้ายังขึ้นต้นด้วยชื่อ ลองใช้ regex-like approach
+		if strings.HasPrefix(strings.ToLower(result), lowerName) {
+			// หา position หลังชื่อ
+			afterName := result[len(name):]
+			// ถ้าตัวถัดไปเป็น space, comma, หรือ Thai character → ลบชื่อออก
+			if len(afterName) > 0 {
+				firstChar := []rune(afterName)[0]
+				if firstChar == ' ' || firstChar == ',' || firstChar == '、' ||
+					(firstChar >= 0x0E00 && firstChar <= 0x0E7F) { // Thai Unicode range
+					result = strings.TrimSpace(afterName)
+				}
+			}
+		}
+	}
+
+	return result
+}
+
+// filterEmptyHighlights กรอง highlights ที่เป็นแค่ชื่อนักแสดงหรือสั้นเกินไป
+func filterEmptyHighlights(highlights []string, casts []models.CastMetadata) []string {
+	if len(highlights) == 0 {
+		return highlights
+	}
+
+	castNames := buildCastNameSet(casts)
+
+	var filtered []string
+	for _, h := range highlights {
+		trimmed := strings.TrimSpace(h)
+
+		// ข้ามถ้าว่างเปล่า
+		if trimmed == "" {
+			continue
+		}
+
+		// ข้ามถ้าเป็นแค่ชื่อนักแสดง
+		if castNames[strings.ToLower(trimmed)] {
+			continue
+		}
+
+		// ข้ามถ้าสั้นเกินไป (น้อยกว่า 15 ตัวอักษร)
+		if len([]rune(trimmed)) < 15 {
+			continue
+		}
+
+		filtered = append(filtered, h)
+	}
+
+	return filtered
+}
+
+// filterEmptyKeyMoments กรอง KeyMoments ที่ชื่อเป็นแค่ชื่อนักแสดง (เฉพาะชื่อเต็ม)
+func filterEmptyKeyMoments(moments []models.KeyMoment, casts []models.CastMetadata) []models.KeyMoment {
+	if len(moments) == 0 {
+		return moments
+	}
+
+	// สร้าง set เฉพาะชื่อเต็ม (ไม่รวม parts)
+	fullNames := make(map[string]bool)
+	for _, cast := range casts {
+		fullNames[strings.ToLower(cast.Name)] = true
+		if cast.NameTH != "" {
+			fullNames[strings.ToLower(cast.NameTH)] = true
+		}
+	}
+
+	var filtered []models.KeyMoment
+	for _, m := range moments {
+		trimmed := strings.TrimSpace(m.Name)
+
+		// ข้ามถ้าว่างเปล่า
+		if trimmed == "" {
+			continue
+		}
+
+		// ข้ามถ้าเป็นแค่ชื่อเต็มนักแสดง (exact match)
+		if fullNames[strings.ToLower(trimmed)] {
+			continue
+		}
+
+		filtered = append(filtered, m)
+	}
+
+	return filtered
+}
+
+// buildCastNameSet สร้าง set ของชื่อ cast (full name และ parts)
+func buildCastNameSet(casts []models.CastMetadata) map[string]bool {
+	castNames := make(map[string]bool)
+	for _, cast := range casts {
+		castNames[strings.ToLower(cast.Name)] = true
+		if cast.NameTH != "" {
+			castNames[strings.ToLower(cast.NameTH)] = true
+		}
+		for _, part := range strings.Fields(cast.Name) {
+			castNames[strings.ToLower(part)] = true
+		}
+	}
+	return castNames
+}
+
+// filterInvalidFAQs กรอง FAQ ที่คำถามไม่สมบูรณ์ (แค่ชื่อ หรือสั้นเกินไป)
+func filterInvalidFAQs(faqs []models.FAQItem, casts []models.CastMetadata) []models.FAQItem {
+	if len(faqs) == 0 {
+		return faqs
+	}
+
+	castNames := buildCastNameSet(casts)
+
+	var filtered []models.FAQItem
+	for _, faq := range faqs {
+		question := strings.TrimSpace(faq.Question)
+
+		// ข้ามถ้าคำถามว่างเปล่า
+		if question == "" {
+			continue
+		}
+
+		// ข้ามถ้าคำถามเป็นแค่ชื่อนักแสดง (+ ?)
+		questionWithoutMark := strings.TrimSuffix(question, "?")
+		questionWithoutMark = strings.TrimSpace(questionWithoutMark)
+		if castNames[strings.ToLower(questionWithoutMark)] {
+			continue
+		}
+
+		// ข้ามถ้าคำถามสั้นเกินไป (น้อยกว่า 15 ตัวอักษร ไม่นับ ?)
+		if len([]rune(questionWithoutMark)) < 15 {
+			continue
+		}
+
+		// ข้ามถ้าคำถามไม่มี keyword ที่สำคัญ (อะไร, ไหม, ยังไง, เท่าไหร่, ที่ไหน, ใคร, ทำไม)
+		hasQuestionWord := strings.Contains(question, "อะไร") ||
+			strings.Contains(question, "ไหม") ||
+			strings.Contains(question, "ยังไง") ||
+			strings.Contains(question, "เท่าไหร่") ||
+			strings.Contains(question, "ที่ไหน") ||
+			strings.Contains(question, "ใคร") ||
+			strings.Contains(question, "ทำไม") ||
+			strings.Contains(question, "เกี่ยวกับ") ||
+			strings.Contains(question, "คือ") ||
+			strings.Contains(question, "มี") ||
+			strings.Contains(question, "ดี")
+
+		if !hasQuestionWord {
+			continue
+		}
+
+		filtered = append(filtered, faq)
+	}
+
+	return filtered
+}
 
 // containsThai ตรวจสอบว่า string มีตัวอักษรภาษาไทยหรือไม่
 func containsThai(s string) bool {
@@ -781,6 +1137,20 @@ func containsEnglish(s string) bool {
 	return false
 }
 
+// convertParagraphMarkers แปลง [PARA] marker เป็น \n\n
+// AI ถูกสั่งให้ใช้ [PARA] คั่นย่อหน้าแทน \n\n เพื่อหลีกเลี่ยงปัญหา JSON encoding
+func convertParagraphMarkers(text string) string {
+	// แปลง [PARA] เป็น \n\n
+	result := strings.ReplaceAll(text, "[PARA]", "\n\n")
+	// ลบ \n\n ที่ซ้ำกัน
+	for strings.Contains(result, "\n\n\n") {
+		result = strings.ReplaceAll(result, "\n\n\n", "\n\n")
+	}
+	// Trim leading/trailing whitespace
+	result = strings.TrimSpace(result)
+	return result
+}
+
 // extractEnglishPart ดึงเฉพาะส่วนที่เป็นภาษาอังกฤษออกมา
 func extractEnglishPart(s string) string {
 	var result strings.Builder
@@ -792,9 +1162,23 @@ func extractEnglishPart(s string) string {
 	return strings.TrimSpace(result.String())
 }
 
+// extractThaiPart ดึงเฉพาะส่วนที่เป็นภาษาไทยออกมา
+func extractThaiPart(s string) string {
+	var result strings.Builder
+	for _, r := range s {
+		// Thai Unicode range: 0x0E00 - 0x0E7F
+		if r >= 0x0E00 && r <= 0x0E7F {
+			result.WriteRune(r)
+		}
+	}
+	return result.String()
+}
+
 // mixedNameRegex - จับ pattern ที่มี Thai + English หรือ English + Thai ติดกัน
-// Pattern: (Thai chars)(space?)(English chars) หรือ (English chars)(space?)(Thai chars)
-var mixedNameRegex = regexp.MustCompile(`[\p{Thai}]+\s*[A-Za-z]+|[A-Za-z]+\s*[\p{Thai}]+`)
+// Pattern: (Thai chars 1-10)(space?)(English chars 2-15) หรือ (English chars 2-15)(space?)(Thai chars 1-10)
+// จำกัดความยาวเพื่อจับเฉพาะชื่อนักแสดง ไม่ใช่ประโยคทั้งหมด
+// เช่น จับ "เมกามิ Jun" แต่ไม่จับ "Mami กับการทดลองสุดพิเศษ"
+var mixedNameRegex = regexp.MustCompile(`[\p{Thai}]{1,10}\s*[A-Za-z]{2,15}|[A-Za-z]{2,15}\s*[\p{Thai}]{1,10}`)
 
 // buildCastNameMap สร้าง map ของชื่อ cast สำหรับ lookup
 // key = ส่วนของชื่อ (first name, last name, full name) lowercase
@@ -849,6 +1233,7 @@ func findMatchingCastName(mixedName string, castNameMap map[string]string) (stri
 
 // sanitizeTextWithCastNames แทนที่ชื่อนักแสดงที่ผิดในข้อความ
 // ใช้ regex หา mixed-language names แล้ว match กับ cast จาก metadata
+// FIX: เก็บ Thai part ที่ไม่ใช่ชื่อไว้ (เช่น "Mami กับ" → "Zemba Mami กับ")
 func sanitizeTextWithCastNames(text string, castNameMap map[string]string) (string, int) {
 	if len(castNameMap) == 0 {
 		return text, 0
@@ -862,8 +1247,25 @@ func sanitizeTextWithCastNames(text string, castNameMap map[string]string) (stri
 			return match
 		}
 
+		// ดึง English part
+		englishPart := extractEnglishPart(match)
+		if englishPart == "" {
+			return match
+		}
+
 		// หาชื่อ cast ที่ตรงกับ English part
 		if correctName, found := findMatchingCastName(match, castNameMap); found {
+			// ตรวจสอบว่า Thai part เป็นส่วนหนึ่งของชื่อจริงๆ หรือเป็นคำอื่น
+			thaiPart := extractThaiPart(match)
+
+			// ถ้า Thai part ยาวกว่า 4 ตัวอักษร น่าจะเป็นคำปกติ ไม่ใช่ชื่อ
+			// เช่น "กับการทดลอง" vs "เมกามิ"
+			if len([]rune(thaiPart)) > 4 {
+				// เก็บ Thai part ไว้ ไม่แทนที่
+				return match
+			}
+
+			// Thai part สั้น น่าจะเป็นชื่อที่เขียนผิด เช่น "จุน" "มามิ"
 			replacementCount++
 			return correctName
 		}
@@ -875,53 +1277,89 @@ func sanitizeTextWithCastNames(text string, castNameMap map[string]string) (stri
 	return result, replacementCount
 }
 
-// sanitizeAIOutput ทำความสะอาด output จาก AI โดยแทนที่ชื่อนักแสดงที่ผิด
-// ใช้ regex ตรวจจับ mixed-language names แล้ว match กับ cast จาก metadata
+// sanitizeAIOutput ทำความสะอาด output จาก AI โดย:
+// 1. แทนที่ชื่อนักแสดงที่ผสมภาษา (mixed-language)
+// 2. ลบชื่อที่ซ้ำติดกัน (repeated names)
+// 3. แทนชื่อที่ใช้บ่อยเกินไปด้วยสรรพนาม (pronoun substitution)
 func (h *SEOHandler) sanitizeAIOutput(aiOutput *ports.AIOutput, casts []models.CastMetadata) {
 	castNameMap := buildCastNameMap(casts)
 
-	if len(castNameMap) == 0 {
-		return
-	}
-
-	// Helper function to sanitize and count
+	// Helper function to sanitize with all steps
 	totalReplacements := 0
 	sanitize := func(text string) string {
-		result, count := sanitizeTextWithCastNames(text, castNameMap)
-		totalReplacements += count
+		// Step 1: แก้ mixed-language names (e.g., "เมกามิ Jun" → "Megami Jun")
+		result := text
+		if len(castNameMap) > 0 {
+			var count int
+			result, count = sanitizeTextWithCastNames(result, castNameMap)
+			totalReplacements += count
+		}
+
+		// Step 2: ลบชื่อซ้ำติดกัน (e.g., "Megami Megami Jun" → "Megami Jun")
+		result = removeRepeatedNames(result)
+
+		return result
+	}
+
+	// Helper for long text fields - includes pronoun substitution + paragraph markers conversion
+	sanitizeLongText := func(text string) string {
+		result := sanitize(text)
+		// Step 3: แทนชื่อที่ใช้บ่อยด้วยสรรพนาม (เธอ, first name)
+		result = replaceExcessiveNamesWithPronouns(result, casts)
+		// Step 4: แปลง [PARA] markers เป็น \n\n (AI ใช้ [PARA] เพื่อหลีกเลี่ยง JSON encoding issues)
+		result = convertParagraphMarkers(result)
 		return result
 	}
 
 	originalTitle := aiOutput.Title
 
-	// Sanitize text fields
+	// Sanitize short text fields (no pronoun substitution)
 	aiOutput.Title = sanitize(aiOutput.Title)
 	aiOutput.MetaTitle = sanitize(aiOutput.MetaTitle)
-	aiOutput.MetaDescription = sanitize(aiOutput.MetaDescription)
-	aiOutput.Summary = sanitize(aiOutput.Summary)
-	aiOutput.SummaryShort = sanitize(aiOutput.SummaryShort)
-	aiOutput.DetailedReview = sanitize(aiOutput.DetailedReview)
-	aiOutput.ThumbnailAlt = sanitize(aiOutput.ThumbnailAlt)
-	aiOutput.ExpertAnalysis = sanitize(aiOutput.ExpertAnalysis)
-	aiOutput.DialogueAnalysis = sanitize(aiOutput.DialogueAnalysis)
-	aiOutput.CharacterInsight = sanitize(aiOutput.CharacterInsight)
-	aiOutput.CharacterDynamic = sanitize(aiOutput.CharacterDynamic)
-	aiOutput.PlotAnalysis = sanitize(aiOutput.PlotAnalysis)
-	aiOutput.Recommendation = sanitize(aiOutput.Recommendation)
-	aiOutput.ActorPerformanceTrend = sanitize(aiOutput.ActorPerformanceTrend)
-	aiOutput.ComparisonNote = sanitize(aiOutput.ComparisonNote)
-	aiOutput.CinematographyAnalysis = sanitize(aiOutput.CinematographyAnalysis)
-	aiOutput.CharacterJourney = sanitize(aiOutput.CharacterJourney)
-	aiOutput.ThematicExplanation = sanitize(aiOutput.ThematicExplanation)
-	aiOutput.ActorEvolution = sanitize(aiOutput.ActorEvolution)
-	aiOutput.ViewingTips = sanitize(aiOutput.ViewingTips)
-	aiOutput.AudienceMatch = sanitize(aiOutput.AudienceMatch)
-	aiOutput.ReplayValue = sanitize(aiOutput.ReplayValue)
 
-	// Sanitize array fields
+	// Ensure metaTitle มี "ซับไทย" (SEO keyword สำคัญ)
+	if !strings.Contains(aiOutput.MetaTitle, "ซับไทย") {
+		// เพิ่ม "ซับไทย" หลัง ] แรก หรือต่อท้าย
+		if idx := strings.Index(aiOutput.MetaTitle, "]"); idx != -1 {
+			aiOutput.MetaTitle = aiOutput.MetaTitle[:idx+1] + " ซับไทย" + aiOutput.MetaTitle[idx+1:]
+		} else {
+			aiOutput.MetaTitle = aiOutput.MetaTitle + " [ซับไทย]"
+		}
+	}
+
+	aiOutput.MetaDescription = sanitize(aiOutput.MetaDescription)
+	aiOutput.ThumbnailAlt = sanitize(aiOutput.ThumbnailAlt)
+
+	// Sanitize long text fields (with pronoun substitution for natural reading)
+	aiOutput.Summary = sanitizeLongText(aiOutput.Summary)
+	aiOutput.SummaryShort = sanitize(aiOutput.SummaryShort) // TTS ใช้ชื่อเต็ม
+	aiOutput.DetailedReview = sanitizeLongText(aiOutput.DetailedReview)
+	aiOutput.ExpertAnalysis = sanitizeLongText(aiOutput.ExpertAnalysis)
+	aiOutput.DialogueAnalysis = sanitizeLongText(aiOutput.DialogueAnalysis)
+	aiOutput.CharacterInsight = sanitizeLongText(aiOutput.CharacterInsight)
+	aiOutput.CharacterDynamic = sanitizeLongText(aiOutput.CharacterDynamic)
+	aiOutput.PlotAnalysis = sanitizeLongText(aiOutput.PlotAnalysis)
+	aiOutput.Recommendation = sanitizeLongText(aiOutput.Recommendation)
+	aiOutput.ActorPerformanceTrend = sanitizeLongText(aiOutput.ActorPerformanceTrend)
+	aiOutput.ComparisonNote = sanitizeLongText(aiOutput.ComparisonNote)
+	aiOutput.CinematographyAnalysis = sanitizeLongText(aiOutput.CinematographyAnalysis)
+	aiOutput.CharacterJourney = sanitizeLongText(aiOutput.CharacterJourney)
+	aiOutput.ThematicExplanation = sanitizeLongText(aiOutput.ThematicExplanation)
+	aiOutput.ActorEvolution = sanitizeLongText(aiOutput.ActorEvolution)
+	aiOutput.ViewingTips = sanitizeLongText(aiOutput.ViewingTips)
+	aiOutput.AudienceMatch = sanitizeLongText(aiOutput.AudienceMatch)
+	aiOutput.ReplayValue = sanitizeLongText(aiOutput.ReplayValue)
+
+	// Sanitize array fields - Highlights
 	for i := range aiOutput.Highlights {
+		// Step 1: ลบชื่อนักแสดงที่นำหน้าออกก่อน
+		aiOutput.Highlights[i] = removeLeadingActorName(aiOutput.Highlights[i], casts)
+		// Step 2: sanitize mixed-language และชื่อซ้ำ
 		aiOutput.Highlights[i] = sanitize(aiOutput.Highlights[i])
 	}
+
+	// Filter out highlights that are just actor names or too short
+	aiOutput.Highlights = filterEmptyHighlights(aiOutput.Highlights, casts)
 	for i := range aiOutput.GalleryAlts {
 		aiOutput.GalleryAlts[i] = sanitize(aiOutput.GalleryAlts[i])
 	}
@@ -931,12 +1369,24 @@ func (h *SEOHandler) sanitizeAIOutput(aiOutput *ports.AIOutput, casts []models.C
 	for i := range aiOutput.LongTailKeywords {
 		aiOutput.LongTailKeywords[i] = sanitize(aiOutput.LongTailKeywords[i])
 	}
+	// BestMoments - ลบชื่อนักแสดงที่นำหน้าออก
 	for i := range aiOutput.BestMoments {
+		// Step 1: ลบชื่อนักแสดงที่นำหน้าออกก่อน
+		aiOutput.BestMoments[i] = removeLeadingActorName(aiOutput.BestMoments[i], casts)
+		// Step 2: sanitize mixed-language และชื่อซ้ำ
 		aiOutput.BestMoments[i] = sanitize(aiOutput.BestMoments[i])
 	}
+
+	// Filter out BestMoments that are just actor names
+	aiOutput.BestMoments = filterEmptyHighlights(aiOutput.BestMoments, casts)
+
 	for i := range aiOutput.KeyMoments {
 		aiOutput.KeyMoments[i].Name = sanitize(aiOutput.KeyMoments[i].Name)
 	}
+
+	// Filter out KeyMoments that are just actor names
+	aiOutput.KeyMoments = filterEmptyKeyMoments(aiOutput.KeyMoments, casts)
+
 	for i := range aiOutput.CastBios {
 		aiOutput.CastBios[i].Bio = sanitize(aiOutput.CastBios[i].Bio)
 	}
@@ -947,6 +1397,10 @@ func (h *SEOHandler) sanitizeAIOutput(aiOutput *ports.AIOutput, casts []models.C
 		aiOutput.FAQItems[i].Question = sanitize(aiOutput.FAQItems[i].Question)
 		aiOutput.FAQItems[i].Answer = sanitize(aiOutput.FAQItems[i].Answer)
 	}
+
+	// Filter out FAQ items with invalid questions (just names or too short)
+	aiOutput.FAQItems = filterInvalidFAQs(aiOutput.FAQItems, casts)
+
 	for i := range aiOutput.EmotionalArc {
 		aiOutput.EmotionalArc[i].Description = sanitize(aiOutput.EmotionalArc[i].Description)
 	}

@@ -211,8 +211,12 @@ export function GalleryManagerPage() {
 
       {/* Main content area */}
       <div className="flex-1 flex gap-3 min-h-0">
-        {/* Left: Folders */}
-        <div className="flex-1 flex gap-3 min-w-0">
+        {/* Left: Preview + Source */}
+        <div className="flex-1 flex flex-col gap-3 min-w-0">
+          {/* Top: Hover Preview */}
+          <GalleryHoverPreview image={hoveredImage} />
+
+          {/* Bottom: Source */}
           <GalleryDropZone
             folder="source"
             images={sourceImages}
@@ -226,7 +230,10 @@ export function GalleryManagerPage() {
             label="Source"
             badgeVariant="outline"
           />
+        </div>
 
+        {/* Right: Safe & NSFW */}
+        <div className="flex-1 flex flex-col gap-3 min-w-0">
           <GalleryDropZone
             folder="safe"
             images={safeImages}
@@ -255,9 +262,6 @@ export function GalleryManagerPage() {
             badgeVariant="destructive"
           />
         </div>
-
-        {/* Right: Hover Preview */}
-        <GalleryHoverPreview image={hoveredImage} />
       </div>
     </div>
   )

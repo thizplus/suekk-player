@@ -2,7 +2,6 @@ package use_cases
 
 import (
 	"bufio"
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -17,6 +16,7 @@ import (
 
 	"suekk-worker/domain/models"
 	"suekk-worker/infrastructure/classifier"
+	"suekk-worker/infrastructure/gallery"
 	"suekk-worker/ports"
 )
 
@@ -29,28 +29,43 @@ import (
 type GalleryHandlerConfig struct {
 	TempDir  string // Directory สำหรับเก็บ temp files
 	APIURL   string // API URL สำหรับ update video
-	APIToken string // API token
+	TestMode bool   // TEST_MODE: skip upload & DB update, keep files locally
+}
+
+// GalleryAuthClientPort interface สำหรับ auth client
+type GalleryAuthClientPort interface {
+	DoRequestWithAuth(ctx context.Context, method, url string, body []byte) (*http.Response, error)
+	IsConfigured() bool
 }
 
 // GalleryHandler handles gallery generation jobs from NATS
 type GalleryHandler struct {
-	storage   ports.StoragePort
-	messenger ports.MessengerPort
-	config    GalleryHandlerConfig
-	logger    *slog.Logger
+	storage         ports.StoragePort
+	messenger       ports.MessengerPort
+	authClient      GalleryAuthClientPort
+	galleryService  *gallery.Service
+	galleryUploader *gallery.Uploader
+	config          GalleryHandlerConfig
+	logger          *slog.Logger
 }
 
 // NewGalleryHandler สร้าง GalleryHandler instance
 func NewGalleryHandler(
 	storage ports.StoragePort,
 	messenger ports.MessengerPort,
+	authClient GalleryAuthClientPort,
+	galleryService *gallery.Service,
+	galleryUploader *gallery.Uploader,
 	config GalleryHandlerConfig,
 ) *GalleryHandler {
 	return &GalleryHandler{
-		storage:   storage,
-		messenger: messenger,
-		config:    config,
-		logger:    slog.Default().With("component", "gallery-handler"),
+		storage:         storage,
+		messenger:       messenger,
+		authClient:      authClient,
+		galleryService:  galleryService,
+		galleryUploader: galleryUploader,
+		config:          config,
+		logger:          slog.Default().With("component", "gallery-handler"),
 	}
 }
 
@@ -73,7 +88,7 @@ func (h *GalleryHandler) ProcessJob(ctx context.Context, job *models.GalleryJob)
 		h.publishFailed(ctx, job, err.Error())
 		return fmt.Errorf("create temp dir: %w", err)
 	}
-	defer os.RemoveAll(outputDir) // Cleanup after done
+	// defer os.RemoveAll(outputDir) // Cleanup after done - DISABLED for debugging
 
 	h.publishProgress(ctx, job, 5, "กำลังวิเคราะห์ HLS playlist...")
 
@@ -131,12 +146,186 @@ func (h *GalleryHandler) ProcessJob(ctx context.Context, job *models.GalleryJob)
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // ProcessJobWithClassification - Gallery Generation with NSFW Classification
+// Uses shared GalleryService for consistent logic with TranscodeHandler
 // ═══════════════════════════════════════════════════════════════════════════════
 
-// ProcessJobWithClassification handles gallery job with NSFW classification
-// Uses Multi-Round extraction to ensure minimum safe images
+// ProcessJobWithClassification handles gallery job with classification or manual selection
+// Uses shared GalleryService เพื่อให้ logic เหมือนกับ TranscodeHandler
 func (h *GalleryHandler) ProcessJobWithClassification(ctx context.Context, job *models.GalleryJob) error {
-	h.logger.Info("processing gallery job with classification",
+	h.logger.Info("processing gallery job (shared service)",
+		"video_id", job.VideoID,
+		"video_code", job.VideoCode,
+		"quality", job.VideoQuality,
+		"duration", job.Duration,
+	)
+
+	// Publish initial progress
+	h.publishProgress(ctx, job, 0, "เริ่มสร้าง Gallery...")
+
+	// Use shared gallery service (createDirectories will add videoCode)
+	outputDir := filepath.Join(h.config.TempDir, "gallery")
+
+	h.logger.Info("ProcessJobWithClassification",
+		"TempDir", h.config.TempDir,
+		"outputDir", outputDir,
+		"video_code", job.VideoCode,
+	)
+
+	h.publishProgress(ctx, job, 10, "กำลังดึงภาพจาก HLS...")
+
+	// Generate gallery using shared service
+	result, err := h.galleryService.GenerateFromHLS(ctx,
+		job.HLSPath,
+		job.VideoCode,
+		job.Duration,
+		outputDir,
+		h.storage, // StoragePort for presigned URLs
+	)
+	if err != nil {
+		h.publishFailed(ctx, job, err.Error())
+		return fmt.Errorf("generate gallery: %w", err)
+	}
+
+	if result == nil {
+		h.logger.Info("gallery skipped (video too short)",
+			"video_id", job.VideoID,
+			"video_code", job.VideoCode,
+			"duration", job.Duration,
+		)
+		h.publishCompleted(ctx, job)
+		return nil
+	}
+
+	// TEST_MODE: Skip upload and DB update, keep files locally
+	if h.config.TestMode {
+		h.logger.Info("========================================")
+		h.logger.Info("TEST MODE - Skipping upload & DB update")
+		h.logger.Info("========================================")
+		h.logger.Info("test mode results",
+			"video_code", job.VideoCode,
+			"source_dir", result.SourceDir,
+			"source_count", result.SourceCount,
+			"is_manual_selection", result.IsManualSelection,
+			"total_frames", result.TotalFrames,
+		)
+		h.logger.Info("Files kept at", "base_dir", result.BaseDir)
+		h.logger.Info("TEST MODE COMPLETE - Check files manually")
+		h.publishCompleted(ctx, job)
+		return nil
+	}
+
+	h.publishProgress(ctx, job, 85, "กำลังอัพโหลดภาพ...")
+
+	// Manual Selection Flow: Upload to source/ only
+	if result.IsManualSelection {
+		return h.handleManualSelectionUpload(ctx, job, result)
+	}
+
+	// Legacy: Three-tier classification flow
+	return h.handleThreeTierUpload(ctx, job, result)
+}
+
+// handleManualSelectionUpload uploads source/ และ update DB สำหรับ Manual Selection Flow
+func (h *GalleryHandler) handleManualSelectionUpload(ctx context.Context, job *models.GalleryJob, result *gallery.Result) error {
+	// Upload source/ only
+	uploadResult, err := h.galleryUploader.UploadManualSelection(ctx, result, job.OutputPath)
+	if err != nil {
+		h.logger.Warn("failed to upload gallery", "error", err)
+	}
+
+	h.logger.Info("manual selection gallery uploaded",
+		"video_code", job.VideoCode,
+		"source_uploaded", uploadResult.SuperSafeUploaded, // source count stored in SuperSafeUploaded
+	)
+
+	h.publishProgress(ctx, job, 95, "กำลังบันทึกข้อมูล...")
+
+	// Update database with manual selection flow fields
+	if err := h.updateVideoGalleryManualSelection(ctx, job.VideoID, job.OutputPath, result.SourceCount); err != nil {
+		h.logger.Warn("failed to update gallery in DB",
+			"video_id", job.VideoID,
+			"error", err,
+		)
+	}
+
+	// Cleanup
+	h.galleryService.Cleanup(result)
+
+	// Publish completed
+	h.publishCompleted(ctx, job)
+
+	h.logger.Info("manual selection gallery job completed",
+		"video_id", job.VideoID,
+		"video_code", job.VideoCode,
+		"source_count", result.SourceCount,
+		"total_frames", result.TotalFrames,
+	)
+
+	return nil
+}
+
+// handleThreeTierUpload handles legacy three-tier classification upload
+func (h *GalleryHandler) handleThreeTierUpload(ctx context.Context, job *models.GalleryJob, result *gallery.Result) error {
+	// Upload using shared uploader
+	uploadResult, err := h.galleryUploader.UploadClassified(ctx, result, job.OutputPath)
+	if err != nil {
+		h.logger.Warn("failed to upload gallery", "error", err)
+	}
+
+	h.logger.Info("three-tier gallery uploaded",
+		"video_code", job.VideoCode,
+		"super_safe_uploaded", uploadResult.SuperSafeUploaded,
+		"safe_uploaded", uploadResult.SafeUploaded,
+		"nsfw_uploaded", uploadResult.NsfwUploaded,
+	)
+
+	h.publishProgress(ctx, job, 95, "กำลังบันทึกข้อมูล...")
+
+	// Update database
+	if err := h.updateVideoGalleryClassifiedThreeTier(ctx, job.VideoID, job.OutputPath,
+		uploadResult.SuperSafeUploaded, uploadResult.SafeUploaded, uploadResult.NsfwUploaded); err != nil {
+		h.logger.Warn("failed to update classified gallery in DB",
+			"video_id", job.VideoID,
+			"error", err,
+		)
+	}
+
+	// Log classification stats
+	h.logger.Info("classification_stats",
+		"video_code", job.VideoCode,
+		"total_frames", result.TotalFrames,
+		"super_safe_count", result.SuperSafeCount,
+		"safe_count", result.SafeCount,
+		"nsfw_count", result.NsfwCount,
+		"rounds_used", result.RoundsUsed,
+	)
+
+	// Cleanup using shared service
+	h.galleryService.Cleanup(result)
+
+	// Publish completed
+	h.publishCompleted(ctx, job)
+
+	h.logger.Info("classified gallery job completed (three-tier)",
+		"video_id", job.VideoID,
+		"video_code", job.VideoCode,
+		"super_safe_images", uploadResult.SuperSafeUploaded,
+		"safe_images", uploadResult.SafeUploaded,
+		"nsfw_images", uploadResult.NsfwUploaded,
+	)
+
+	return nil
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Legacy ProcessJobWithClassification (inline logic) - DEPRECATED
+// Kept for reference, will be removed in future version
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// ProcessJobWithClassificationLegacy handles gallery job with inline classification logic
+// DEPRECATED: Use ProcessJobWithClassification instead
+func (h *GalleryHandler) ProcessJobWithClassificationLegacy(ctx context.Context, job *models.GalleryJob) error {
+	h.logger.Info("processing gallery job with classification (legacy)",
 		"video_id", job.VideoID,
 		"video_code", job.VideoCode,
 		"quality", job.VideoQuality,
@@ -159,7 +348,7 @@ func (h *GalleryHandler) ProcessJobWithClassification(ctx context.Context, job *
 			return fmt.Errorf("create dir %s: %w", dir, err)
 		}
 	}
-	defer os.RemoveAll(baseDir) // Cleanup after done
+	// defer os.RemoveAll(baseDir) // Cleanup after done - DISABLED for debugging
 
 	h.publishProgress(ctx, job, 5, "กำลังวิเคราะห์ HLS playlist...")
 
@@ -176,113 +365,178 @@ func (h *GalleryHandler) ProcessJobWithClassification(ctx context.Context, job *
 	}
 
 	// 3. Initialize classifier (Three-Tier config)
+	// Verbose mode เปิดตลอดเพื่อ debug ปัญหา super_safe images
 	classifierConfig := classifier.ClassifierConfig{
 		PythonPath:         "python",
 		ScriptPath:         "infrastructure/classifier/classify_batch.py",
 		NsfwThreshold:      0.3,
 		SuperSafeThreshold: 0.15,
 		MinFaceScore:       0.1,
-		Timeout:            90,
-		MaxNsfwImages:      30,
+		Timeout:            300, // 5 minutes for POV + Mosaic detection
+		MaxNsfwImages:      20,  // จำกัด NSFW 20 ภาพ
+		MaxSafeImages:      10,  // จำกัด Safe 10 ภาพ
 		MinSafeImages:      12,
 		MinSuperSafeImages: 10,
+		Verbose:            true, // Enable detailed per-image logging
+		SkipMosaic:         true, // Skip slow mosaic detection (temporarily)
+		SkipPOV:            true, // Skip slow POV detection (temporarily)
 	}
 	nsfwClassifier := classifier.NewNSFWClassifier(classifierConfig, h.logger)
 
-	// 4. Multi-Round extraction with classification (Three-Tier)
+	// 4. Two-Phase Extraction:
+	// Phase 1 (นาทีที่ 1-10): หา super_safe + safe
+	// Phase 2 (นาทีที่ 11-20): หา nsfw
 	var allSuperSafeResults []classifier.ClassificationResult
 	var allSafeResults []classifier.ClassificationResult
 	var allNsfwResults []classifier.ClassificationResult
 	totalFrames := 0
-	roundsUsed := 0
 
-	extractionRounds := []struct {
-		name       string
-		startPct   float64
-		endPct     float64
-		frameCount int
-		offset     float64
-	}{
-		{"standard", 0.05, 0.95, 100, 0},
-		{"intro", 0.00, 0.15, 20, 0},
-		{"outro", 0.90, 1.00, 15, 0},
-		{"gap_fill", 0.05, 0.95, 30, 0.5},
-		{"dense_intro", 0.00, 0.10, 30, 0.25},
-	}
+	videoDurationMin := job.Duration / 60 // Duration in minutes
+	framesPerMinute := 10
+
+	h.logger.Info("starting two-phase extraction",
+		"video_duration_min", videoDurationMin,
+		"frames_per_minute", framesPerMinute,
+	)
 
 	timestampTracker := make(map[int]bool)
-	minGap := 3 // minimum 3 seconds between frames
 
-	for _, round := range extractionRounds {
-		// Stop if we have enough super_safe AND safe images (Three-Tier)
-		hasEnoughSuperSafe := len(allSuperSafeResults) >= classifierConfig.MinSuperSafeImages
-		totalSafeCount := len(allSuperSafeResults) + len(allSafeResults)
-		hasEnoughSafe := totalSafeCount >= classifierConfig.MinSafeImages
-
-		if hasEnoughSuperSafe && hasEnoughSafe {
-			break
-		}
-
-		roundsUsed++
-		h.publishProgress(ctx, job, 10+float64(roundsUsed)*15, fmt.Sprintf("Round %d: %s...", roundsUsed, round.name))
-
-		h.logger.Info("extraction round",
-			"round", round.name,
-			"current_super_safe", len(allSuperSafeResults),
-			"current_safe", len(allSafeResults),
-			"target_super_safe", classifierConfig.MinSuperSafeImages,
-			"target_safe", classifierConfig.MinSafeImages,
-		)
-
-		// Extract frames for this round
-		frameCount := h.extractRoundFramesFromHLS(
-			ctx, job, segments, allFramesDir,
-			round.startPct, round.endPct, round.frameCount, round.offset,
-			timestampTracker, minGap, totalFrames,
-		)
-
-		if frameCount == 0 {
-			continue
-		}
-
-		totalFrames += frameCount
-
-		// Classify all frames
-		result, err := nsfwClassifier.ClassifyBatch(ctx, allFramesDir)
-		if err != nil {
-			h.logger.Warn("classification failed", "round", round.name, "error", err)
-			continue
-		}
-
-		// Separate and move files (Three-Tier)
-		separated := nsfwClassifier.SeparateResults(result.Results)
-		h.moveClassifiedFilesThreeTier(allFramesDir, superSafeDir, safeDir, nsfwDir, separated)
-
-		allSuperSafeResults = append(allSuperSafeResults, separated.SuperSafe...)
-		allSafeResults = append(allSafeResults, separated.Safe...)
-		allNsfwResults = append(allNsfwResults, separated.Nsfw...)
-
-		h.logger.Info("round complete",
-			"round", round.name,
-			"super_safe_found", len(separated.SuperSafe),
-			"safe_found", len(separated.Safe),
-			"total_super_safe", len(allSuperSafeResults),
-			"total_safe", len(allSafeResults),
-		)
+	// ═══════════════════════════════════════════════════════════════
+	// Phase 1: นาทีที่ 1-10 → หา super_safe + safe
+	// ═══════════════════════════════════════════════════════════════
+	phase1Start := 0
+	phase1End := 10
+	if phase1End > videoDurationMin {
+		phase1End = videoDurationMin
 	}
 
-	// 5. Limit NSFW images to top 30 by quality
+	h.publishProgress(ctx, job, 20, fmt.Sprintf("Phase 1: นาทีที่ %d-%d (หา super_safe)...", phase1Start+1, phase1End))
+	h.logger.Info("phase 1: extracting super_safe candidates",
+		"start_minute", phase1Start+1,
+		"end_minute", phase1End,
+	)
+
+	frameCount1 := h.extractTimeBasedFrames(
+		ctx, job, segments, allFramesDir,
+		phase1Start, phase1End, framesPerMinute,
+		timestampTracker, totalFrames,
+	)
+
+	if frameCount1 > 0 {
+		totalFrames += frameCount1
+
+		result1, err := nsfwClassifier.ClassifyBatch(ctx, allFramesDir)
+		if err != nil {
+			h.logger.Warn("phase 1 classification failed", "error", err)
+		} else {
+			h.logger.Info("phase 1 classification complete",
+				"total_images", result1.Stats.TotalImages,
+				"super_safe", result1.Stats.SuperSafeCount,
+				"safe", result1.Stats.SafeCount,
+				"nsfw", result1.Stats.NsfwCount,
+			)
+
+			separated1 := nsfwClassifier.SeparateResults(result1.Results)
+			h.moveClassifiedFilesThreeTier(allFramesDir, superSafeDir, safeDir, nsfwDir, separated1)
+
+			// Phase 1: เก็บ super_safe และ safe เท่านั้น (ไม่เก็บ nsfw จาก phase นี้)
+			allSuperSafeResults = append(allSuperSafeResults, separated1.SuperSafe...)
+			allSafeResults = append(allSafeResults, separated1.Safe...)
+			// ลบ nsfw จาก phase 1 ออก (เพราะอาจไม่ใช่ nsfw จริง)
+			for _, r := range separated1.Nsfw {
+				os.Remove(filepath.Join(nsfwDir, r.Filename))
+			}
+
+			h.logger.Info("phase 1 complete",
+				"super_safe_found", len(separated1.SuperSafe),
+				"safe_found", len(separated1.Safe),
+				"nsfw_discarded", len(separated1.Nsfw),
+			)
+		}
+	}
+
+	// ═══════════════════════════════════════════════════════════════
+	// Phase 2: นาทีที่ 11-30 → หา nsfw (20 นาที = 200 frames, เลือก 20 ภาพ)
+	// ═══════════════════════════════════════════════════════════════
+	phase2Start := 10
+	phase2End := 30
+	if phase2Start >= videoDurationMin {
+		h.logger.Warn("video too short for phase 2, skipping nsfw extraction",
+			"video_duration_min", videoDurationMin,
+			"phase2_start_min", phase2Start,
+		)
+	} else {
+		if phase2End > videoDurationMin {
+			phase2End = videoDurationMin
+		}
+
+		h.publishProgress(ctx, job, 50, fmt.Sprintf("Phase 2: นาทีที่ %d-%d (หา nsfw)...", phase2Start+1, phase2End))
+		h.logger.Info("phase 2: extracting nsfw candidates",
+			"start_minute", phase2Start+1,
+			"end_minute", phase2End,
+		)
+
+		frameCount2 := h.extractTimeBasedFrames(
+			ctx, job, segments, allFramesDir,
+			phase2Start, phase2End, framesPerMinute,
+			timestampTracker, totalFrames,
+		)
+
+		if frameCount2 > 0 {
+			totalFrames += frameCount2
+
+			result2, err := nsfwClassifier.ClassifyBatch(ctx, allFramesDir)
+			if err != nil {
+				h.logger.Warn("phase 2 classification failed", "error", err)
+			} else {
+				h.logger.Info("phase 2 classification complete",
+					"total_images", result2.Stats.TotalImages,
+					"super_safe", result2.Stats.SuperSafeCount,
+					"safe", result2.Stats.SafeCount,
+					"nsfw", result2.Stats.NsfwCount,
+				)
+
+				separated2 := nsfwClassifier.SeparateResults(result2.Results)
+				h.moveClassifiedFilesThreeTier(allFramesDir, superSafeDir, safeDir, nsfwDir, separated2)
+
+				// Phase 2: เก็บ nsfw เท่านั้น (super_safe และ safe จาก phase นี้ไม่ค่อยน่าสนใจ)
+				allNsfwResults = append(allNsfwResults, separated2.Nsfw...)
+				// ลบ super_safe และ safe จาก phase 2 ออก
+				for _, r := range separated2.SuperSafe {
+					os.Remove(filepath.Join(superSafeDir, r.Filename))
+				}
+				for _, r := range separated2.Safe {
+					os.Remove(filepath.Join(safeDir, r.Filename))
+				}
+
+				h.logger.Info("phase 2 complete",
+					"nsfw_found", len(separated2.Nsfw),
+					"super_safe_discarded", len(separated2.SuperSafe),
+					"safe_discarded", len(separated2.Safe),
+				)
+			}
+		}
+	}
+
+	// 5. Limit NSFW and Safe images to top 10 by quality
 	nsfwClassifier.SortByQuality(allNsfwResults)
 	if len(allNsfwResults) > classifierConfig.MaxNsfwImages {
-		// Delete excess files
+		// Delete excess NSFW files
 		for i := classifierConfig.MaxNsfwImages; i < len(allNsfwResults); i++ {
 			os.Remove(filepath.Join(nsfwDir, allNsfwResults[i].Filename))
 		}
 		allNsfwResults = allNsfwResults[:classifierConfig.MaxNsfwImages]
 	}
 
-	// Sort safe images by quality
+	// Limit Safe images to top 10 by quality
 	nsfwClassifier.SortByQuality(allSafeResults)
+	if len(allSafeResults) > classifierConfig.MaxSafeImages {
+		// Delete excess Safe files
+		for i := classifierConfig.MaxSafeImages; i < len(allSafeResults); i++ {
+			os.Remove(filepath.Join(safeDir, allSafeResults[i].Filename))
+		}
+		allSafeResults = allSafeResults[:classifierConfig.MaxSafeImages]
+	}
 
 	h.publishProgress(ctx, job, 85, "กำลังอัพโหลดภาพ...")
 
@@ -319,16 +573,29 @@ func (h *GalleryHandler) ProcessJobWithClassification(ctx context.Context, job *
 		)
 	}
 
-	// 8. Log classification stats (Three-Tier)
+	// 8. Log classification stats (Two-Phase)
 	h.logger.Info("classification_stats",
 		"video_code", job.VideoCode,
 		"total_frames", totalFrames,
 		"super_safe_count", len(allSuperSafeResults),
 		"safe_count", len(allSafeResults),
 		"nsfw_count", len(allNsfwResults),
-		"rounds_used", roundsUsed,
+		"phases_used", 2,
 		"super_safe_target_met", len(allSuperSafeResults) >= classifierConfig.MinSuperSafeImages,
 	)
+
+	// Log all super_safe images with their scores (for debugging NSFW leakage)
+	for _, img := range allSuperSafeResults {
+		h.logger.Info("super_safe_image",
+			"video_code", job.VideoCode,
+			"filename", img.Filename,
+			"nsfw_score", img.NsfwScore,
+			"falconsai_score", img.FalconsaiScore,
+			"nudenet_score", img.NudenetScore,
+			"face_score", img.FaceScore,
+			"reason", img.Reason,
+		)
+	}
 
 	// Publish completed
 	h.publishCompleted(ctx, job)
@@ -462,9 +729,149 @@ func (h *GalleryHandler) moveClassifiedFilesThreeTier(srcDir, superSafeDir, safe
 	}
 }
 
+// extractTimeBasedFrames extracts frames based on time: 10 frames per minute
+// startMinute and endMinute are 0-indexed (0 = first minute)
+func (h *GalleryHandler) extractTimeBasedFrames(
+	ctx context.Context,
+	job *models.GalleryJob,
+	segments []hlsSegment,
+	outputDir string,
+	startMinute, endMinute int,
+	framesPerMinute int,
+	timestampTracker map[int]bool,
+	filenameOffset int,
+) int {
+	extracted := 0
+	secondsPerFrame := 60 / framesPerMinute // 6 seconds per frame for 10 frames/minute
+
+	for minute := startMinute; minute < endMinute; minute++ {
+		for frameInMinute := 0; frameInMinute < framesPerMinute; frameInMinute++ {
+			select {
+			case <-ctx.Done():
+				return extracted
+			default:
+			}
+
+			// Calculate timestamp: minute * 60 + frame offset
+			timestamp := float64(minute*60 + frameInMinute*secondsPerFrame)
+			sec := int(timestamp)
+
+			// Skip if this second was already used
+			if timestampTracker[sec] {
+				continue
+			}
+
+			// Check if timestamp is within video duration
+			if sec >= job.Duration {
+				continue
+			}
+
+			// Find segment for this timestamp
+			segment := h.findSegmentForTimestamp(segments, timestamp)
+			if segment == nil {
+				continue
+			}
+
+			// Get presigned URL
+			segmentPath := filepath.Dir(job.HLSPath) + "/" + segment.filename
+			segmentPath = strings.ReplaceAll(segmentPath, "\\", "/")
+
+			presignedURL, err := h.storage.GetPresignedURL(ctx, segmentPath, 5*time.Minute)
+			if err != nil {
+				continue
+			}
+
+			// Capture frame
+			frameNum := filenameOffset + extracted + 1
+			outputPath := filepath.Join(outputDir, fmt.Sprintf("%03d.jpg", frameNum))
+
+			if err := h.captureFrameFromSegment(ctx, presignedURL, outputPath, timestamp-segment.startTime); err != nil {
+				continue
+			}
+
+			if _, err := os.Stat(outputPath); err == nil {
+				timestampTracker[sec] = true
+				extracted++
+			}
+		}
+	}
+
+	h.logger.Info("time-based extraction complete",
+		"start_minute", startMinute+1,
+		"end_minute", endMinute,
+		"frames_extracted", extracted,
+	)
+
+	return extracted
+}
+
+// updateVideoGalleryManualSelection updates video for Manual Selection Flow via API
+// Sets gallery_status = "pending_review" และ gallery_source_count
+func (h *GalleryHandler) updateVideoGalleryManualSelection(ctx context.Context, videoID, galleryPath string, sourceCount int) error {
+	h.logger.Info("updateVideoGalleryManualSelection called",
+		"video_id", videoID,
+		"gallery_path", galleryPath,
+		"source_count", sourceCount,
+		"api_url", h.config.APIURL,
+	)
+
+	if h.config.APIURL == "" {
+		h.logger.Warn("skipping gallery DB update: APIURL is empty")
+		return nil
+	}
+	if h.authClient == nil {
+		h.logger.Warn("skipping gallery DB update: authClient is nil")
+		return nil
+	}
+	if !h.authClient.IsConfigured() {
+		h.logger.Warn("skipping gallery DB update: authClient not configured")
+		return nil
+	}
+
+	url := fmt.Sprintf("%s/api/v1/internal/videos/%s/gallery", h.config.APIURL, videoID)
+
+	payload := map[string]interface{}{
+		"gallery_path":         galleryPath,
+		"gallery_status":       "pending_review", // รอ Admin เลือกภาพ
+		"gallery_source_count": sourceCount,      // จำนวนภาพใน source/
+		"gallery_safe_count":   0,                // ยังไม่มี Admin เลือก
+		"gallery_nsfw_count":   0,                // ยังไม่มี Admin เลือก
+		"gallery_count":        0,                // Total = safe + nsfw (ยังไม่มี)
+	}
+
+	data, err := json.Marshal(payload)
+	if err != nil {
+		return err
+	}
+
+	h.logger.Info("calling API to update gallery (manual selection)",
+		"url", url,
+		"payload", string(data),
+	)
+
+	resp, err := h.authClient.DoRequestWithAuth(ctx, "PATCH", url, data)
+	if err != nil {
+		h.logger.Error("API call failed", "error", err)
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= 400 {
+		h.logger.Error("API returned error status", "status_code", resp.StatusCode)
+		return fmt.Errorf("API returned %d", resp.StatusCode)
+	}
+
+	h.logger.Info("gallery DB updated successfully (manual selection)",
+		"video_id", videoID,
+		"status", "pending_review",
+		"source_count", sourceCount,
+	)
+	return nil
+}
+
 // updateVideoGalleryClassified updates video with safe/nsfw counts via API (deprecated, use Three-Tier)
 func (h *GalleryHandler) updateVideoGalleryClassified(ctx context.Context, videoID, galleryPath string, safeCount, nsfwCount int) error {
-	if h.config.APIURL == "" {
+	if h.config.APIURL == "" || h.authClient == nil || !h.authClient.IsConfigured() {
 		return nil
 	}
 
@@ -482,18 +889,7 @@ func (h *GalleryHandler) updateVideoGalleryClassified(ctx context.Context, video
 		return err
 	}
 
-	req, err := http.NewRequestWithContext(ctx, "PATCH", url, bytes.NewReader(data))
-	if err != nil {
-		return err
-	}
-
-	req.Header.Set("Content-Type", "application/json")
-	if h.config.APIToken != "" {
-		req.Header.Set("Authorization", "Bearer "+h.config.APIToken)
-	}
-
-	client := &http.Client{Timeout: 30 * time.Second}
-	resp, err := client.Do(req)
+	resp, err := h.authClient.DoRequestWithAuth(ctx, "PATCH", url, data)
 	if err != nil {
 		return err
 	}
@@ -508,7 +904,27 @@ func (h *GalleryHandler) updateVideoGalleryClassified(ctx context.Context, video
 
 // updateVideoGalleryClassifiedThreeTier updates video with super_safe/safe/nsfw counts via API (Three-Tier)
 func (h *GalleryHandler) updateVideoGalleryClassifiedThreeTier(ctx context.Context, videoID, galleryPath string, superSafeCount, safeCount, nsfwCount int) error {
+	h.logger.Info("updateVideoGalleryClassifiedThreeTier called",
+		"video_id", videoID,
+		"gallery_path", galleryPath,
+		"super_safe_count", superSafeCount,
+		"safe_count", safeCount,
+		"nsfw_count", nsfwCount,
+		"api_url", h.config.APIURL,
+		"auth_client_nil", h.authClient == nil,
+		"auth_configured", h.authClient != nil && h.authClient.IsConfigured(),
+	)
+
 	if h.config.APIURL == "" {
+		h.logger.Warn("skipping gallery DB update: APIURL is empty")
+		return nil
+	}
+	if h.authClient == nil {
+		h.logger.Warn("skipping gallery DB update: authClient is nil")
+		return nil
+	}
+	if !h.authClient.IsConfigured() {
+		h.logger.Warn("skipping gallery DB update: authClient not configured")
 		return nil
 	}
 
@@ -519,10 +935,10 @@ func (h *GalleryHandler) updateVideoGalleryClassifiedThreeTier(ctx context.Conte
 
 	payload := map[string]interface{}{
 		"gallery_path":             galleryPath,
-		"gallery_count":            totalPublicCount,  // Total safe images (backward compatible)
-		"gallery_super_safe_count": superSafeCount,    // super_safe (< 0.15 + face) for Public SEO
-		"gallery_safe_count":       safeCount,         // borderline (0.15-0.3)
-		"gallery_nsfw_count":       nsfwCount,         // nsfw (>= 0.3)
+		"gallery_count":            totalPublicCount, // Total safe images (backward compatible)
+		"gallery_super_safe_count": superSafeCount,   // super_safe (< 0.15 + face) for Public SEO
+		"gallery_safe_count":       safeCount,        // borderline (0.15-0.3)
+		"gallery_nsfw_count":       nsfwCount,        // nsfw (>= 0.3)
 	}
 
 	data, err := json.Marshal(payload)
@@ -530,27 +946,27 @@ func (h *GalleryHandler) updateVideoGalleryClassifiedThreeTier(ctx context.Conte
 		return err
 	}
 
-	req, err := http.NewRequestWithContext(ctx, "PATCH", url, bytes.NewReader(data))
-	if err != nil {
-		return err
-	}
+	h.logger.Info("calling API to update gallery",
+		"url", url,
+		"payload", string(data),
+	)
 
-	req.Header.Set("Content-Type", "application/json")
-	if h.config.APIToken != "" {
-		req.Header.Set("Authorization", "Bearer "+h.config.APIToken)
-	}
-
-	client := &http.Client{Timeout: 30 * time.Second}
-	resp, err := client.Do(req)
+	resp, err := h.authClient.DoRequestWithAuth(ctx, "PATCH", url, data)
 	if err != nil {
+		h.logger.Error("API call failed", "error", err)
 		return err
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode >= 400 {
+		h.logger.Error("API returned error status", "status_code", resp.StatusCode)
 		return fmt.Errorf("API returned %d", resp.StatusCode)
 	}
 
+	h.logger.Info("gallery DB updated successfully via API",
+		"video_id", videoID,
+		"status_code", resp.StatusCode,
+	)
 	return nil
 }
 
@@ -838,8 +1254,8 @@ func (h *GalleryHandler) uploadGalleryImages(ctx context.Context, localDir, remo
 
 // updateVideoGallery updates video gallery info in database via API
 func (h *GalleryHandler) updateVideoGallery(ctx context.Context, videoID, galleryPath string, galleryCount int) error {
-	if h.config.APIURL == "" {
-		return nil // Skip if API URL not configured
+	if h.config.APIURL == "" || h.authClient == nil || !h.authClient.IsConfigured() {
+		return nil // Skip if API URL or auth not configured
 	}
 
 	// PATCH /api/v1/videos/{id}
@@ -855,18 +1271,7 @@ func (h *GalleryHandler) updateVideoGallery(ctx context.Context, videoID, galler
 		return err
 	}
 
-	req, err := http.NewRequestWithContext(ctx, "PATCH", url, bytes.NewReader(data))
-	if err != nil {
-		return err
-	}
-
-	req.Header.Set("Content-Type", "application/json")
-	if h.config.APIToken != "" {
-		req.Header.Set("Authorization", "Bearer "+h.config.APIToken)
-	}
-
-	client := &http.Client{Timeout: 30 * time.Second}
-	resp, err := client.Do(req)
+	resp, err := h.authClient.DoRequestWithAuth(ctx, "PATCH", url, data)
 	if err != nil {
 		return err
 	}
