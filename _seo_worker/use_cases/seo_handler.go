@@ -781,158 +781,188 @@ func containsEnglish(s string) bool {
 	return false
 }
 
-// isMixedLanguageName ตรวจสอบว่าชื่อมีทั้งภาษาไทยและอังกฤษผสมกัน
-func isMixedLanguageName(name string) bool {
-	return containsThai(name) && containsEnglish(name)
+// extractEnglishPart ดึงเฉพาะส่วนที่เป็นภาษาอังกฤษออกมา
+func extractEnglishPart(s string) string {
+	var result strings.Builder
+	for _, r := range s {
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || r == ' ' {
+			result.WriteRune(r)
+		}
+	}
+	return strings.TrimSpace(result.String())
 }
 
-// buildCastNameReplacements สร้าง map สำหรับแทนที่ชื่อที่ผิด
-// สร้างรูปแบบที่เป็นไปได้หลายแบบที่ AI อาจสร้างผิด
-func buildCastNameReplacements(casts []models.CastMetadata) map[string]string {
-	replacements := make(map[string]string)
+// mixedNameRegex - จับ pattern ที่มี Thai + English หรือ English + Thai ติดกัน
+// Pattern: (Thai chars)(space?)(English chars) หรือ (English chars)(space?)(Thai chars)
+var mixedNameRegex = regexp.MustCompile(`[\p{Thai}]+\s*[A-Za-z]+|[A-Za-z]+\s*[\p{Thai}]+`)
+
+// buildCastNameMap สร้าง map ของชื่อ cast สำหรับ lookup
+// key = ส่วนของชื่อ (first name, last name, full name) lowercase
+// value = ชื่อเต็ม EN
+func buildCastNameMap(casts []models.CastMetadata) map[string]string {
+	nameMap := make(map[string]string)
 
 	for _, cast := range casts {
-		englishName := cast.Name
+		fullName := cast.Name
+		fullNameLower := strings.ToLower(fullName)
 
-		// แยกชื่อเป็นส่วนๆ (first name, last name)
-		nameParts := strings.Fields(englishName)
-		if len(nameParts) < 2 {
-			continue
+		// เพิ่ม full name
+		nameMap[fullNameLower] = fullName
+
+		// แยกชื่อเป็นส่วนๆ
+		nameParts := strings.Fields(fullName)
+		for _, part := range nameParts {
+			partLower := strings.ToLower(part)
+			// เก็บ mapping: part -> full name
+			// ถ้ามีซ้ำ (เช่น หลาย cast มี first name เดียวกัน) จะ overwrite
+			// แต่ส่วนใหญ่จะไม่มีปัญหาเพราะชื่อนักแสดงมักไม่ซ้ำกัน
+			nameMap[partLower] = fullName
 		}
-
-		// สร้าง pattern ต่างๆ ที่ AI อาจผสมผิด
-		// เช่น "Zemba Mami" -> first="Zemba", last="Mami"
-		firstName := nameParts[0]
-		lastName := nameParts[len(nameParts)-1]
-
-		// รูปแบบที่อาจผิด: [ไทย] [English] หรือ [English] [ไทย]
-		// เพิ่ม pattern ที่พบบ่อย
-		thaiFirstVariants := []string{
-			"เซ็นมะ", "เซนมะ", "เซ็มบะ", "เซมบะ", "เซ็นบะ", "เซนบา", "เซมบา",
-		}
-		thaiLastVariants := []string{
-			"มามิ", "มะมิ", "มามี", "มะมี",
-		}
-
-		// สร้าง replacements สำหรับทุก combination
-		for _, thaiFirst := range thaiFirstVariants {
-			// Pattern: [ไทย] [English]
-			wrongName := thaiFirst + " " + lastName
-			replacements[wrongName] = englishName
-
-			// Pattern: [ไทย][English] (ไม่มี space)
-			wrongName = thaiFirst + lastName
-			replacements[wrongName] = englishName
-		}
-
-		for _, thaiLast := range thaiLastVariants {
-			// Pattern: [English] [ไทย]
-			wrongName := firstName + " " + thaiLast
-			replacements[wrongName] = englishName
-
-			// Pattern: [English][ไทย] (ไม่มี space)
-			wrongName = firstName + thaiLast
-			replacements[wrongName] = englishName
-		}
-
-		// Pattern: [ไทย] [ไทย] (ทั้งสองส่วนเป็นไทย) - ไม่ต้อง replace เพราะไม่ใช่ mixed
 	}
 
-	return replacements
+	return nameMap
+}
+
+// findMatchingCastName หาชื่อ cast ที่ตรงกับ English part ของ mixed name
+func findMatchingCastName(mixedName string, castNameMap map[string]string) (string, bool) {
+	englishPart := extractEnglishPart(mixedName)
+	if englishPart == "" {
+		return "", false
+	}
+
+	englishPartLower := strings.ToLower(englishPart)
+
+	// ลองหา exact match ก่อน
+	if fullName, ok := castNameMap[englishPartLower]; ok {
+		return fullName, true
+	}
+
+	// ลองหา partial match (ถ้า englishPart เป็นส่วนหนึ่งของชื่อ)
+	for key, fullName := range castNameMap {
+		if strings.Contains(key, englishPartLower) || strings.Contains(englishPartLower, key) {
+			return fullName, true
+		}
+	}
+
+	return "", false
 }
 
 // sanitizeTextWithCastNames แทนที่ชื่อนักแสดงที่ผิดในข้อความ
-func sanitizeTextWithCastNames(text string, replacements map[string]string) string {
-	result := text
-	for wrongName, correctName := range replacements {
-		// ใช้ case-insensitive replacement
-		re := regexp.MustCompile(`(?i)` + regexp.QuoteMeta(wrongName))
-		result = re.ReplaceAllString(result, correctName)
+// ใช้ regex หา mixed-language names แล้ว match กับ cast จาก metadata
+func sanitizeTextWithCastNames(text string, castNameMap map[string]string) (string, int) {
+	if len(castNameMap) == 0 {
+		return text, 0
 	}
-	return result
+
+	replacementCount := 0
+
+	result := mixedNameRegex.ReplaceAllStringFunc(text, func(match string) string {
+		// ตรวจสอบว่าเป็น mixed language จริงๆ
+		if !containsThai(match) || !containsEnglish(match) {
+			return match
+		}
+
+		// หาชื่อ cast ที่ตรงกับ English part
+		if correctName, found := findMatchingCastName(match, castNameMap); found {
+			replacementCount++
+			return correctName
+		}
+
+		// ถ้าหาไม่เจอ ให้คงเดิม
+		return match
+	})
+
+	return result, replacementCount
 }
 
 // sanitizeAIOutput ทำความสะอาด output จาก AI โดยแทนที่ชื่อนักแสดงที่ผิด
+// ใช้ regex ตรวจจับ mixed-language names แล้ว match กับ cast จาก metadata
 func (h *SEOHandler) sanitizeAIOutput(aiOutput *ports.AIOutput, casts []models.CastMetadata) {
-	replacements := buildCastNameReplacements(casts)
+	castNameMap := buildCastNameMap(casts)
 
-	if len(replacements) == 0 {
+	if len(castNameMap) == 0 {
 		return
 	}
 
-	// Count replacements for logging
-	replacementCount := 0
+	// Helper function to sanitize and count
+	totalReplacements := 0
+	sanitize := func(text string) string {
+		result, count := sanitizeTextWithCastNames(text, castNameMap)
+		totalReplacements += count
+		return result
+	}
+
 	originalTitle := aiOutput.Title
 
 	// Sanitize text fields
-	aiOutput.Title = sanitizeTextWithCastNames(aiOutput.Title, replacements)
-	aiOutput.MetaTitle = sanitizeTextWithCastNames(aiOutput.MetaTitle, replacements)
-	aiOutput.MetaDescription = sanitizeTextWithCastNames(aiOutput.MetaDescription, replacements)
-	aiOutput.Summary = sanitizeTextWithCastNames(aiOutput.Summary, replacements)
-	aiOutput.SummaryShort = sanitizeTextWithCastNames(aiOutput.SummaryShort, replacements)
-	aiOutput.DetailedReview = sanitizeTextWithCastNames(aiOutput.DetailedReview, replacements)
-	aiOutput.ThumbnailAlt = sanitizeTextWithCastNames(aiOutput.ThumbnailAlt, replacements)
-	aiOutput.ExpertAnalysis = sanitizeTextWithCastNames(aiOutput.ExpertAnalysis, replacements)
-	aiOutput.DialogueAnalysis = sanitizeTextWithCastNames(aiOutput.DialogueAnalysis, replacements)
-	aiOutput.CharacterInsight = sanitizeTextWithCastNames(aiOutput.CharacterInsight, replacements)
-	aiOutput.CharacterDynamic = sanitizeTextWithCastNames(aiOutput.CharacterDynamic, replacements)
-	aiOutput.PlotAnalysis = sanitizeTextWithCastNames(aiOutput.PlotAnalysis, replacements)
-	aiOutput.Recommendation = sanitizeTextWithCastNames(aiOutput.Recommendation, replacements)
-	aiOutput.ActorPerformanceTrend = sanitizeTextWithCastNames(aiOutput.ActorPerformanceTrend, replacements)
-	aiOutput.ComparisonNote = sanitizeTextWithCastNames(aiOutput.ComparisonNote, replacements)
-	aiOutput.CinematographyAnalysis = sanitizeTextWithCastNames(aiOutput.CinematographyAnalysis, replacements)
-	aiOutput.CharacterJourney = sanitizeTextWithCastNames(aiOutput.CharacterJourney, replacements)
-	aiOutput.ThematicExplanation = sanitizeTextWithCastNames(aiOutput.ThematicExplanation, replacements)
-	aiOutput.ActorEvolution = sanitizeTextWithCastNames(aiOutput.ActorEvolution, replacements)
-	aiOutput.ViewingTips = sanitizeTextWithCastNames(aiOutput.ViewingTips, replacements)
-	aiOutput.AudienceMatch = sanitizeTextWithCastNames(aiOutput.AudienceMatch, replacements)
-	aiOutput.ReplayValue = sanitizeTextWithCastNames(aiOutput.ReplayValue, replacements)
+	aiOutput.Title = sanitize(aiOutput.Title)
+	aiOutput.MetaTitle = sanitize(aiOutput.MetaTitle)
+	aiOutput.MetaDescription = sanitize(aiOutput.MetaDescription)
+	aiOutput.Summary = sanitize(aiOutput.Summary)
+	aiOutput.SummaryShort = sanitize(aiOutput.SummaryShort)
+	aiOutput.DetailedReview = sanitize(aiOutput.DetailedReview)
+	aiOutput.ThumbnailAlt = sanitize(aiOutput.ThumbnailAlt)
+	aiOutput.ExpertAnalysis = sanitize(aiOutput.ExpertAnalysis)
+	aiOutput.DialogueAnalysis = sanitize(aiOutput.DialogueAnalysis)
+	aiOutput.CharacterInsight = sanitize(aiOutput.CharacterInsight)
+	aiOutput.CharacterDynamic = sanitize(aiOutput.CharacterDynamic)
+	aiOutput.PlotAnalysis = sanitize(aiOutput.PlotAnalysis)
+	aiOutput.Recommendation = sanitize(aiOutput.Recommendation)
+	aiOutput.ActorPerformanceTrend = sanitize(aiOutput.ActorPerformanceTrend)
+	aiOutput.ComparisonNote = sanitize(aiOutput.ComparisonNote)
+	aiOutput.CinematographyAnalysis = sanitize(aiOutput.CinematographyAnalysis)
+	aiOutput.CharacterJourney = sanitize(aiOutput.CharacterJourney)
+	aiOutput.ThematicExplanation = sanitize(aiOutput.ThematicExplanation)
+	aiOutput.ActorEvolution = sanitize(aiOutput.ActorEvolution)
+	aiOutput.ViewingTips = sanitize(aiOutput.ViewingTips)
+	aiOutput.AudienceMatch = sanitize(aiOutput.AudienceMatch)
+	aiOutput.ReplayValue = sanitize(aiOutput.ReplayValue)
 
 	// Sanitize array fields
 	for i := range aiOutput.Highlights {
-		aiOutput.Highlights[i] = sanitizeTextWithCastNames(aiOutput.Highlights[i], replacements)
+		aiOutput.Highlights[i] = sanitize(aiOutput.Highlights[i])
 	}
 	for i := range aiOutput.GalleryAlts {
-		aiOutput.GalleryAlts[i] = sanitizeTextWithCastNames(aiOutput.GalleryAlts[i], replacements)
+		aiOutput.GalleryAlts[i] = sanitize(aiOutput.GalleryAlts[i])
 	}
 	for i := range aiOutput.Keywords {
-		aiOutput.Keywords[i] = sanitizeTextWithCastNames(aiOutput.Keywords[i], replacements)
+		aiOutput.Keywords[i] = sanitize(aiOutput.Keywords[i])
 	}
 	for i := range aiOutput.LongTailKeywords {
-		aiOutput.LongTailKeywords[i] = sanitizeTextWithCastNames(aiOutput.LongTailKeywords[i], replacements)
+		aiOutput.LongTailKeywords[i] = sanitize(aiOutput.LongTailKeywords[i])
 	}
 	for i := range aiOutput.BestMoments {
-		aiOutput.BestMoments[i] = sanitizeTextWithCastNames(aiOutput.BestMoments[i], replacements)
+		aiOutput.BestMoments[i] = sanitize(aiOutput.BestMoments[i])
 	}
 	for i := range aiOutput.KeyMoments {
-		aiOutput.KeyMoments[i].Name = sanitizeTextWithCastNames(aiOutput.KeyMoments[i].Name, replacements)
+		aiOutput.KeyMoments[i].Name = sanitize(aiOutput.KeyMoments[i].Name)
 	}
 	for i := range aiOutput.CastBios {
-		aiOutput.CastBios[i].Bio = sanitizeTextWithCastNames(aiOutput.CastBios[i].Bio, replacements)
+		aiOutput.CastBios[i].Bio = sanitize(aiOutput.CastBios[i].Bio)
 	}
 	for i := range aiOutput.TopQuotes {
-		aiOutput.TopQuotes[i].Context = sanitizeTextWithCastNames(aiOutput.TopQuotes[i].Context, replacements)
+		aiOutput.TopQuotes[i].Context = sanitize(aiOutput.TopQuotes[i].Context)
 	}
 	for i := range aiOutput.FAQItems {
-		aiOutput.FAQItems[i].Question = sanitizeTextWithCastNames(aiOutput.FAQItems[i].Question, replacements)
-		aiOutput.FAQItems[i].Answer = sanitizeTextWithCastNames(aiOutput.FAQItems[i].Answer, replacements)
+		aiOutput.FAQItems[i].Question = sanitize(aiOutput.FAQItems[i].Question)
+		aiOutput.FAQItems[i].Answer = sanitize(aiOutput.FAQItems[i].Answer)
 	}
 	for i := range aiOutput.EmotionalArc {
-		aiOutput.EmotionalArc[i].Description = sanitizeTextWithCastNames(aiOutput.EmotionalArc[i].Description, replacements)
+		aiOutput.EmotionalArc[i].Description = sanitize(aiOutput.EmotionalArc[i].Description)
 	}
 
 	// Log if title was changed
 	if originalTitle != aiOutput.Title {
-		replacementCount++
 		h.logger.Info("Sanitized mixed-language cast name in title",
 			"original", originalTitle,
 			"sanitized", aiOutput.Title,
 		)
 	}
 
-	if replacementCount > 0 {
+	if totalReplacements > 0 {
 		h.logger.Info("AI output sanitized for mixed-language cast names",
-			"replacements_made", replacementCount,
+			"total_replacements", totalReplacements,
+			"casts", len(casts),
 		)
 	}
 }
