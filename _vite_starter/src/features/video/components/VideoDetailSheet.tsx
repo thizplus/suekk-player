@@ -508,18 +508,42 @@ export function VideoDetailSheet({ videoId, open, onOpenChange }: VideoDetailShe
                   </div>
                 )}
 
-                {/* Gallery Status: pending_review - Show Admin Link */}
+                {/* Gallery Status: pending_review - Show Admin Link + Regenerate */}
                 {video.galleryStatus === 'pending_review' && (
-                  <Button variant="default" className="w-full" asChild>
-                    <Link to={`/admin/videos/${video.id}/gallery`}>
-                      <Images className="size-4 mr-1.5" />
-                      จัดการ Gallery ({video.gallerySourceCount ?? 0} ภาพรอตรวจ)
-                    </Link>
-                  </Button>
+                  <div className="space-y-2">
+                    <Button variant="default" className="w-full" asChild>
+                      <Link to={`/admin/videos/${video.id}/gallery`}>
+                        <Images className="size-4 mr-1.5" />
+                        จัดการ Gallery ({video.gallerySourceCount ?? 0} ภาพรอตรวจ)
+                      </Link>
+                    </Button>
+                    <Button
+                      variant="outline"
+                      className="w-full"
+                      onClick={() => {
+                        regenerateGallery.mutate(video.id, {
+                          onSuccess: () => {
+                            toast.success('เริ่มสร้าง Gallery ใหม่แล้ว')
+                          },
+                          onError: () => {
+                            toast.error('ไม่สามารถสร้าง Gallery ใหม่ได้')
+                          },
+                        })
+                      }}
+                      disabled={regenerateGallery.isPending || !!galleryProgress}
+                    >
+                      {regenerateGallery.isPending || galleryProgress ? (
+                        <Loader2 className="size-4 mr-1.5 animate-spin" />
+                      ) : (
+                        <RefreshCw className="size-4 mr-1.5" />
+                      )}
+                      สร้าง Gallery ใหม่
+                    </Button>
+                  </div>
                 )}
 
-                {/* Gallery Status: ready - Show View & Regenerate */}
-                {video.galleryStatus === 'ready' && video.galleryCount && video.galleryCount > 0 ? (
+                {/* Gallery Status: ready - Show View & Manage */}
+                {video.galleryStatus === 'ready' && video.galleryCount && video.galleryCount > 0 && (
                   <div className="flex gap-2">
                     <Button variant="outline" className="flex-1" asChild>
                       <Link to={`/gallery/${video.code}`}>
@@ -533,37 +557,10 @@ export function VideoDetailSheet({ videoId, open, onOpenChange }: VideoDetailShe
                       </Link>
                     </Button>
                   </div>
-                ) : video.galleryCount && video.galleryCount > 0 ? (
-                  <div className="flex gap-2">
-                    <Button variant="outline" className="flex-1" asChild>
-                      <Link to={`/gallery/${video.code}`}>
-                        <Images className="size-4 mr-1.5" />
-                        ดู Gallery ({video.galleryCount} ภาพ)
-                      </Link>
-                    </Button>
-                    <Button
-                      variant="outline"
-                      onClick={() => {
-                        regenerateGallery.mutate(video.id, {
-                          onSuccess: () => {
-                            toast.success('เริ่มสร้าง Gallery ใหม่แล้ว')
-                          },
-                          onError: () => {
-                            toast.error('ไม่สามารถสร้าง Gallery ใหม่ได้')
-                          },
-                        })
-                      }}
-                      disabled={regenerateGallery.isPending || !!galleryProgress}
-                      title="สร้าง Gallery ใหม่"
-                    >
-                      {regenerateGallery.isPending || galleryProgress ? (
-                        <Loader2 className="size-4 animate-spin" />
-                      ) : (
-                        <RefreshCw className="size-4" />
-                      )}
-                    </Button>
-                  </div>
-                ) : (
+                )}
+
+                {/* Gallery Status: none or no gallery - Show Generate Button */}
+                {video.galleryStatus !== 'pending_review' && video.galleryStatus !== 'ready' && (
                   <Button
                     variant="outline"
                     className="w-full"

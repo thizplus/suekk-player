@@ -281,8 +281,9 @@ func (h *GalleryAdminHandler) PublishGallery(c *fiber.Ctx) error {
 	}
 
 	// ตรวจสอบว่ามีภาพใน safe หรือ nsfw หรือไม่
-	safeFiles, _ := h.storage.ListFiles(fmt.Sprintf("%s/safe", video.GalleryPath))
-	nsfwFiles, _ := h.storage.ListFiles(fmt.Sprintf("%s/nsfw", video.GalleryPath))
+	basePath := strings.TrimSuffix(video.GalleryPath, "/")
+	safeFiles, _ := h.storage.ListFiles(fmt.Sprintf("%s/safe", basePath))
+	nsfwFiles, _ := h.storage.ListFiles(fmt.Sprintf("%s/nsfw", basePath))
 
 	if len(safeFiles) == 0 && len(nsfwFiles) == 0 {
 		return utils.BadRequestResponse(c, "Cannot publish: No images in safe or nsfw folders")
@@ -326,6 +327,8 @@ func (h *GalleryAdminHandler) PublishGallery(c *fiber.Ctx) error {
 
 // listFolderImages list ภาพใน folder และสร้าง presigned URLs
 func (h *GalleryAdminHandler) listFolderImages(basePath, folder string, expiry time.Duration) []GalleryImage {
+	// Remove trailing slash from basePath to avoid double slash
+	basePath = strings.TrimSuffix(basePath, "/")
 	folderPath := fmt.Sprintf("%s/%s", basePath, folder)
 	files, err := h.storage.ListFiles(folderPath)
 	if err != nil {
@@ -358,6 +361,7 @@ func (h *GalleryAdminHandler) listFolderImages(basePath, folder string, expiry t
 
 // moveFile ย้ายไฟล์ระหว่าง folders โดยใช้ copy + delete
 func (h *GalleryAdminHandler) moveFile(basePath, filename, fromFolder, toFolder string) error {
+	basePath = strings.TrimSuffix(basePath, "/")
 	srcPath := fmt.Sprintf("%s/%s/%s", basePath, fromFolder, filename)
 	dstPath := fmt.Sprintf("%s/%s/%s", basePath, toFolder, filename)
 
@@ -387,9 +391,10 @@ func (h *GalleryAdminHandler) moveFile(basePath, filename, fromFolder, toFolder 
 
 // updateGalleryCounts อัพเดท counts ใน database จากไฟล์จริง
 func (h *GalleryAdminHandler) updateGalleryCounts(ctx context.Context, videoID uuid.UUID, galleryPath string) error {
-	sourceFiles, _ := h.storage.ListFiles(fmt.Sprintf("%s/source", galleryPath))
-	safeFiles, _ := h.storage.ListFiles(fmt.Sprintf("%s/safe", galleryPath))
-	nsfwFiles, _ := h.storage.ListFiles(fmt.Sprintf("%s/nsfw", galleryPath))
+	basePath := strings.TrimSuffix(galleryPath, "/")
+	sourceFiles, _ := h.storage.ListFiles(fmt.Sprintf("%s/source", basePath))
+	safeFiles, _ := h.storage.ListFiles(fmt.Sprintf("%s/safe", basePath))
+	nsfwFiles, _ := h.storage.ListFiles(fmt.Sprintf("%s/nsfw", basePath))
 
 	sourceCount := len(sourceFiles)
 	safeCount := len(safeFiles)
