@@ -508,7 +508,32 @@ export function VideoDetailSheet({ videoId, open, onOpenChange }: VideoDetailShe
                   </div>
                 )}
 
-                {video.galleryCount && video.galleryCount > 0 ? (
+                {/* Gallery Status: pending_review - Show Admin Link */}
+                {video.galleryStatus === 'pending_review' && (
+                  <Button variant="default" className="w-full" asChild>
+                    <Link to={`/admin/videos/${video.id}/gallery`}>
+                      <Images className="size-4 mr-1.5" />
+                      จัดการ Gallery ({video.gallerySourceCount ?? 0} ภาพรอตรวจ)
+                    </Link>
+                  </Button>
+                )}
+
+                {/* Gallery Status: ready - Show View & Regenerate */}
+                {video.galleryStatus === 'ready' && video.galleryCount && video.galleryCount > 0 ? (
+                  <div className="flex gap-2">
+                    <Button variant="outline" className="flex-1" asChild>
+                      <Link to={`/gallery/${video.code}`}>
+                        <Images className="size-4 mr-1.5" />
+                        ดู Gallery ({video.galleryCount} ภาพ)
+                      </Link>
+                    </Button>
+                    <Button variant="outline" size="icon" asChild title="จัดการ Gallery">
+                      <Link to={`/admin/videos/${video.id}/gallery`}>
+                        <RefreshCw className="size-4" />
+                      </Link>
+                    </Button>
+                  </div>
+                ) : video.galleryCount && video.galleryCount > 0 ? (
                   <div className="flex gap-2">
                     <Button variant="outline" className="flex-1" asChild>
                       <Link to={`/gallery/${video.code}`}>

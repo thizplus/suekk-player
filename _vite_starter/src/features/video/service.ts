@@ -1,5 +1,5 @@
 import { apiClient, type PaginationMeta } from '@/lib/api-client'
-import { VIDEO_ROUTES, TRANSCODING_ROUTES, CONFIG_ROUTES, HLS_ROUTES } from '@/constants/api-routes'
+import { VIDEO_ROUTES, TRANSCODING_ROUTES, CONFIG_ROUTES, HLS_ROUTES, GALLERY_ADMIN_ROUTES } from '@/constants/api-routes'
 import type {
   Video,
   VideoUploadResponse,
@@ -12,6 +12,11 @@ import type {
   DLQVideo,
   UploadLimits,
   GalleryUrlsResponse,
+  GalleryImagesResponse,
+  MoveImageRequest,
+  MoveBatchRequest,
+  MoveBatchResponse,
+  PublishGalleryResponse,
 } from './types'
 
 export const videoService = {
@@ -131,5 +136,29 @@ export const videoService = {
   // ดึง presigned URLs สำหรับ gallery images ทั้งหมด (single API call)
   async getGalleryUrls(videoCode: string): Promise<GalleryUrlsResponse> {
     return apiClient.get<GalleryUrlsResponse>(HLS_ROUTES.GALLERY_URLS(videoCode))
+  },
+
+  // ═══════════════════════════════════════════════════════════════════════════════
+  // Gallery Admin - Manual Selection Flow
+  // ═══════════════════════════════════════════════════════════════════════════════
+
+  // ดึงภาพทั้งหมดใน gallery (source, safe, nsfw พร้อม presigned URLs)
+  async getGalleryImages(videoId: string): Promise<GalleryImagesResponse> {
+    return apiClient.get<GalleryImagesResponse>(GALLERY_ADMIN_ROUTES.IMAGES(videoId))
+  },
+
+  // ย้ายภาพเดี่ยว
+  async moveImage(videoId: string, data: MoveImageRequest): Promise<{ message: string }> {
+    return apiClient.post<{ message: string }>(GALLERY_ADMIN_ROUTES.MOVE(videoId), data)
+  },
+
+  // ย้ายหลายภาพ (batch)
+  async moveBatch(videoId: string, data: MoveBatchRequest): Promise<MoveBatchResponse> {
+    return apiClient.post<MoveBatchResponse>(GALLERY_ADMIN_ROUTES.MOVE_BATCH(videoId), data)
+  },
+
+  // Publish gallery (set status = ready)
+  async publishGallery(videoId: string): Promise<PublishGalleryResponse> {
+    return apiClient.post<PublishGalleryResponse>(GALLERY_ADMIN_ROUTES.PUBLISH(videoId))
   },
 }

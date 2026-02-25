@@ -132,12 +132,17 @@ type Video struct {
 	CacheError      string     `gorm:"type:text"`               // error message if failed
 	LastWarmedAt    *time.Time `gorm:"type:timestamptz"`        // last warm time
 
-	// Gallery fields (สร้างหลัง transcode สำหรับ video > 20 นาที) - Three-Tier
-	GalleryPath           string `gorm:"type:text"`  // S3 path prefix e.g., "gallery/ABC123"
-	GalleryCount          int    `gorm:"default:0"`  // จำนวนภาพทั้งหมด (super_safe + safe + nsfw)
-	GallerySuperSafeCount int    `gorm:"default:0"`  // จำนวนภาพ super_safe (< 0.15 + face) สำหรับ Public SEO
-	GallerySafeCount      int    `gorm:"default:0"`  // จำนวนภาพ safe (0.15-0.3) Lazy load
-	GalleryNsfwCount      int    `gorm:"default:0"`  // จำนวนภาพ nsfw (>= 0.3) Member only
+	// Gallery fields - Manual Selection Flow
+	// Status: none → processing → pending_review → ready
+	GalleryStatus      string `gorm:"size:20;default:none"` // none, processing, pending_review, ready
+	GalleryPath        string `gorm:"type:text"`            // S3 path prefix e.g., "gallery/ABC123"
+	GallerySourceCount int    `gorm:"default:0"`            // ภาพใน source/ (ผ่าน gender filter, รอ admin เลือก)
+	GalleryCount       int    `gorm:"default:0"`            // จำนวนภาพทั้งหมด (safe + nsfw)
+	GallerySafeCount   int    `gorm:"default:0"`            // ภาพ safe (admin เลือก) - Public
+	GalleryNsfwCount   int    `gorm:"default:0"`            // ภาพ nsfw (admin เลือก) - Members only
+
+	// Deprecated - kept for backward compatibility
+	GallerySuperSafeCount int `gorm:"default:0"` // ไม่ใช้แล้ว (backward compat)
 
 	CreatedAt time.Time
 	UpdatedAt time.Time

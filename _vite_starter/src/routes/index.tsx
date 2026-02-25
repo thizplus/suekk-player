@@ -50,6 +50,9 @@ const DLQPage = lazyWithReload(() =>
 const GalleryPage = lazyWithReload(() =>
   import('@/features/video').then((m) => ({ default: m.GalleryPage }))
 )
+const GalleryManagerPage = lazyWithReload(() =>
+  import('@/features/video').then((m) => ({ default: m.GalleryManagerPage }))
+)
 
 // Lazy load category pages
 const CategoryListPage = lazyWithReload(() =>
@@ -154,6 +157,9 @@ export default function AppRoutes() {
             <Route path="/videos" element={<VideoListPage />} />
             <Route path="/videos/page/:page" element={<VideoListPage />} />
             <Route path="/videos/dlq" element={<DLQPage />} />
+
+            {/* Gallery Admin - Manual Selection Flow */}
+            <Route path="/admin/videos/:id/gallery" element={<GalleryManagerPage />} />
 
             {/* Category routes */}
             <Route path="/categories" element={<CategoryListPage />} />

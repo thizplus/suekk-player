@@ -29,6 +29,7 @@ func SetupRoutes(app *fiber.App, h *handlers.Handlers) {
 	SetupQueueRoutes(api, h)          // Queue management (transcode/subtitle/warmcache)
 	SetupDirectUploadRoutes(api, h)   // Direct Upload via Presigned URL
 	SetupReelRoutes(api, h)           // Reel Generator
+	SetupGalleryAdminRoutes(api, h)   // Gallery Manual Selection (Admin)
 
 	// Setup Monitoring routes (needs app for /api/v1/monitoring)
 	SetupMonitoringRoutes(app, h)

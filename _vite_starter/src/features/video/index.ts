@@ -7,6 +7,7 @@ export { videoService } from './service'
 export { VideoListPage } from './pages/VideoListPage'
 export { DLQPage } from './pages/DLQPage'
 export { GalleryPage } from './pages/GalleryPage'
+export { GalleryManagerPage } from './pages/GalleryManagerPage'
 
 // Components
 export { VideoPlayer, type SubtitleOption } from './components/VideoPlayer'

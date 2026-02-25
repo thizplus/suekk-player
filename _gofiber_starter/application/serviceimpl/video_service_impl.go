@@ -368,21 +368,27 @@ func (s *VideoServiceImpl) Update(ctx context.Context, id uuid.UUID, req *dto.Up
 		video.CategoryID = req.CategoryID
 	}
 
-	// Gallery fields (set by worker callback) - Three-Tier
+	// Gallery fields - Manual Selection Flow
 	if req.GalleryPath != nil {
 		video.GalleryPath = *req.GalleryPath
 	}
+	if req.GalleryStatus != nil {
+		video.GalleryStatus = *req.GalleryStatus
+	}
+	if req.GallerySourceCount != nil {
+		video.GallerySourceCount = *req.GallerySourceCount
+	}
 	if req.GalleryCount != nil {
 		video.GalleryCount = *req.GalleryCount
-	}
-	if req.GallerySuperSafeCount != nil {
-		video.GallerySuperSafeCount = *req.GallerySuperSafeCount
 	}
 	if req.GallerySafeCount != nil {
 		video.GallerySafeCount = *req.GallerySafeCount
 	}
 	if req.GalleryNsfwCount != nil {
 		video.GalleryNsfwCount = *req.GalleryNsfwCount
+	}
+	if req.GallerySuperSafeCount != nil {
+		video.GallerySuperSafeCount = *req.GallerySuperSafeCount // Deprecated
 	}
 
 	video.UpdatedAt = time.Now()

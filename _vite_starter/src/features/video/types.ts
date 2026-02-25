@@ -3,6 +3,12 @@ import type { Subtitle } from '@/features/subtitle/types'
 // Video Status enum ตรงกับ backend
 export type VideoStatus = 'pending' | 'queued' | 'processing' | 'ready' | 'failed' | 'dead_letter'
 
+// Gallery Status - Manual Selection Flow
+export type GalleryStatus = 'none' | 'processing' | 'pending_review' | 'ready'
+
+// Gallery Folder types
+export type GalleryFolder = 'source' | 'safe' | 'nsfw'
+
 // Subtitle Brief (สำหรับแสดงใน video list)
 export interface SubtitleBrief {
   language: string
@@ -36,11 +42,14 @@ export interface Video {
   subtitleSummary?: SubtitleSummary  // สรุป subtitle
   subtitles?: Subtitle[]             // Full subtitle list (สำหรับ embed/preview)
   reelCount?: number                 // จำนวน reels ที่สร้างจาก video นี้
+  // Gallery - Manual Selection Flow
   galleryPath?: string               // S3 path prefix e.g., "gallery/ABC123"
-  galleryCount?: number              // จำนวนภาพทั้งหมด (0 = ไม่มี)
-  gallerySuperSafeCount?: number     // จำนวนภาพ super_safe (< 0.15 + face) สำหรับ Public SEO
-  gallerySafeCount?: number          // จำนวนภาพ safe (0.15-0.3) Lazy load
-  galleryNsfwCount?: number          // จำนวนภาพ nsfw (>= 0.3) Member only
+  galleryStatus?: GalleryStatus      // none, processing, pending_review, ready
+  gallerySourceCount?: number        // ภาพใน source/ (รอ admin เลือก)
+  galleryCount?: number              // Total = safe + nsfw
+  gallerySafeCount?: number          // Admin เลือก - Public
+  galleryNsfwCount?: number          // Admin เลือก - Members only
+  gallerySuperSafeCount?: number     // Deprecated - backward compat
   createdAt: string
   updatedAt: string
 }
@@ -226,4 +235,57 @@ export interface GalleryUrlsResponse {
   safeUrls: string[]         // presigned URLs for safe images (Lazy load)
   nsfwUrls: string[]         // presigned URLs for nsfw images (Member only)
   expires_at: number         // Unix timestamp
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Gallery Admin - Manual Selection Flow
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// ภาพในแต่ละ folder
+export interface GalleryImage {
+  filename: string
+  url: string       // Presigned URL
+  folder: GalleryFolder
+}
+
+// Response จาก GET /api/v1/admin/videos/:id/gallery
+export interface GalleryImagesResponse {
+  videoCode: string
+  status: GalleryStatus
+  source: GalleryImage[]
+  safe: GalleryImage[]
+  nsfw: GalleryImage[]
+  sourceCount: number
+  safeCount: number
+  nsfwCount: number
+}
+
+// Request สำหรับย้ายภาพเดี่ยว
+export interface MoveImageRequest {
+  filename: string
+  from: GalleryFolder
+  to: GalleryFolder
+}
+
+// Request สำหรับย้ายหลายภาพ (batch)
+export interface MoveBatchRequest {
+  files: string[]
+  from: GalleryFolder
+  to: GalleryFolder
+}
+
+// Response จาก batch move
+export interface MoveBatchResponse {
+  message: string
+  movedCount: number
+  failedFiles: string[]
+}
+
+// Response จาก publish
+export interface PublishGalleryResponse {
+  message: string
+  status: GalleryStatus
+  safeCount: number
+  nsfwCount: number
+  total: number
 }

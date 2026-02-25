@@ -252,3 +252,62 @@ export function useGalleryUrls(videoCode: string, options?: { enabled?: boolean 
     gcTime: 60 * 60 * 1000,    // Keep in cache 1 ชม.
   })
 }
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Gallery Admin - Manual Selection Flow
+// ═══════════════════════════════════════════════════════════════════════════════
+
+export const galleryAdminKeys = {
+  all: ['gallery-admin'] as const,
+  images: (videoId: string) => [...galleryAdminKeys.all, 'images', videoId] as const,
+}
+
+// ดึงภาพทั้งหมดใน gallery (source, safe, nsfw)
+export function useGalleryImages(videoId: string, options?: { enabled?: boolean }) {
+  return useQuery({
+    queryKey: galleryAdminKeys.images(videoId),
+    queryFn: () => videoService.getGalleryImages(videoId),
+    enabled: options?.enabled ?? !!videoId,
+    staleTime: 0, // Don't cache - ต้องการ fresh data หลังย้ายภาพ
+  })
+}
+
+// ย้ายภาพเดี่ยว
+export function useMoveImage() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: ({ videoId, data }: { videoId: string; data: { filename: string; from: string; to: string } }) =>
+      videoService.moveImage(videoId, data as import('./types').MoveImageRequest),
+    onSuccess: (_, { videoId }) => {
+      queryClient.invalidateQueries({ queryKey: galleryAdminKeys.images(videoId) })
+    },
+  })
+}
+
+// ย้ายหลายภาพ (batch)
+export function useMoveBatch() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: ({ videoId, data }: { videoId: string; data: { files: string[]; from: string; to: string } }) =>
+      videoService.moveBatch(videoId, data as import('./types').MoveBatchRequest),
+    onSuccess: (_, { videoId }) => {
+      queryClient.invalidateQueries({ queryKey: galleryAdminKeys.images(videoId) })
+    },
+  })
+}
+
+// Publish gallery
+export function usePublishGallery() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (videoId: string) => videoService.publishGallery(videoId),
+    onSuccess: (_, videoId) => {
+      queryClient.invalidateQueries({ queryKey: galleryAdminKeys.images(videoId) })
+      queryClient.invalidateQueries({ queryKey: videoKeys.detail(videoId) })
+      queryClient.invalidateQueries({ queryKey: videoKeys.lists() })
+    },
+  })
+}

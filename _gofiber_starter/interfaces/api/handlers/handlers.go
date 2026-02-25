@@ -57,6 +57,7 @@ type Handlers struct {
 	QueueHandler         *QueueHandler                    // Queue management (transcode/subtitle/warmcache)
 	DirectUploadHandler  *DirectUploadHandler             // Direct Upload via Presigned URL
 	ReelHandler          *ReelHandler                     // Reel Generator
+	GalleryAdminHandler  *GalleryAdminHandler             // Gallery Manual Selection (Admin)
 	StreamCookieService  *serviceimpl.StreamCookieService // Signed cookie สำหรับ CDN access
 }
 
@@ -82,6 +83,7 @@ func NewHandlers(services *Services) *Handlers {
 		QueueHandler:         NewQueueHandler(services.QueueService),
 		DirectUploadHandler:  NewDirectUploadHandler(services.StoragePort, services.VideoService, services.SettingService, services.CategoryService, services.NATSPublisher),
 		ReelHandler:          NewReelHandler(services.ReelService),
+		GalleryAdminHandler:  NewGalleryAdminHandler(services.VideoService, services.StoragePort),
 		StreamCookieService:  services.StreamCookieService,
 	}
 }

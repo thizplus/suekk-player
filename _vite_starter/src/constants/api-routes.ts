@@ -178,6 +178,18 @@ export const HLS_ROUTES = {
   GALLERY_URLS: (code: string) => `/api/v1/hls/${code}/gallery`,
 }
 
+// Gallery Admin - Manual Selection Flow
+export const GALLERY_ADMIN_ROUTES = {
+  // ดึงภาพทั้งหมด (source, safe, nsfw พร้อม presigned URLs)
+  IMAGES: (videoId: string) => `/api/v1/admin/videos/${videoId}/gallery`,
+  // ย้ายภาพเดี่ยว
+  MOVE: (videoId: string) => `/api/v1/admin/videos/${videoId}/gallery/move`,
+  // ย้ายหลายภาพ (batch)
+  MOVE_BATCH: (videoId: string) => `/api/v1/admin/videos/${videoId}/gallery/move-batch`,
+  // Publish gallery (set status = ready)
+  PUBLISH: (videoId: string) => `/api/v1/admin/videos/${videoId}/gallery/publish`,
+}
+
 // Subtitle - จัดการ subtitle และ translation
 export const SUBTITLE_ROUTES = {
   // ภาษาที่รองรับ
