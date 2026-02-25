@@ -1025,10 +1025,13 @@ func (h *VideoHandler) getBestAvailableQuality(video *models.Video) string {
 
 // UpdateGalleryRequest request body for updating gallery
 type UpdateGalleryRequest struct {
-	GalleryPath      string `json:"gallery_path"`
-	GalleryCount     int    `json:"gallery_count"`      // Total count (safe + nsfw)
-	GallerySafeCount int    `json:"gallery_safe_count"` // Safe images count
-	GalleryNsfwCount int    `json:"gallery_nsfw_count"` // NSFW images count
+	GalleryPath           string `json:"gallery_path"`
+	GalleryStatus         string `json:"gallery_status"`           // none, processing, pending_review, ready
+	GallerySourceCount    int    `json:"gallery_source_count"`     // ภาพใน source/ (รอ admin เลือก)
+	GalleryCount          int    `json:"gallery_count"`            // Total count (safe + nsfw)
+	GallerySafeCount      int    `json:"gallery_safe_count"`       // Safe images count
+	GalleryNsfwCount      int    `json:"gallery_nsfw_count"`       // NSFW images count
+	GallerySuperSafeCount int    `json:"gallery_super_safe_count"` // Deprecated - backward compat
 }
 
 // UpdateGallery updates video gallery info (called by worker after gallery generation)
@@ -1055,10 +1058,13 @@ func (h *VideoHandler) UpdateGallery(c *fiber.Ctx) error {
 
 	// Update gallery fields via service
 	updateReq := &dto.UpdateVideoRequest{
-		GalleryPath:      &req.GalleryPath,
-		GalleryCount:     &galleryCount,
-		GallerySafeCount: &req.GallerySafeCount,
-		GalleryNsfwCount: &req.GalleryNsfwCount,
+		GalleryPath:           &req.GalleryPath,
+		GalleryStatus:         &req.GalleryStatus,
+		GallerySourceCount:    &req.GallerySourceCount,
+		GalleryCount:          &galleryCount,
+		GallerySafeCount:      &req.GallerySafeCount,
+		GalleryNsfwCount:      &req.GalleryNsfwCount,
+		GallerySuperSafeCount: &req.GallerySuperSafeCount,
 	}
 
 	video, err := h.videoService.Update(ctx, id, updateReq)
@@ -1074,6 +1080,8 @@ func (h *VideoHandler) UpdateGallery(c *fiber.Ctx) error {
 		"video_id", id,
 		"video_code", video.Code,
 		"gallery_path", req.GalleryPath,
+		"gallery_status", req.GalleryStatus,
+		"source_count", req.GallerySourceCount,
 		"gallery_count", galleryCount,
 		"safe_count", req.GallerySafeCount,
 		"nsfw_count", req.GalleryNsfwCount,
@@ -1083,6 +1091,8 @@ func (h *VideoHandler) UpdateGallery(c *fiber.Ctx) error {
 		"message":       "Gallery updated",
 		"video_id":      video.ID,
 		"video_code":    video.Code,
+		"status":        req.GalleryStatus,
+		"source_count":  req.GallerySourceCount,
 		"gallery_count": galleryCount,
 		"safe_count":    req.GallerySafeCount,
 		"nsfw_count":    req.GalleryNsfwCount,
