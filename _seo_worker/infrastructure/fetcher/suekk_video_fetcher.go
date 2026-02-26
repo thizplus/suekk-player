@@ -119,8 +119,8 @@ func (f *SuekkVideoFetcher) FetchVideoInfo(ctx context.Context, videoCode string
 }
 
 // ListGalleryImages ดึงรายการ gallery images จาก storage (ใช้ presigned URLs)
-// Three-Tier Priority: super_safe → safe → fallback to main gallery
-// super_safe = NSFW < 0.15 + มีหน้าคน (ดีที่สุดสำหรับ SEO)
+// Two-Tier System: safe (admin approved) → fallback to main gallery
+// safe = Admin เลือกแล้วว่า safe สำหรับ SEO
 func (f *SuekkVideoFetcher) ListGalleryImages(ctx context.Context, galleryPath string) ([]string, error) {
 	if galleryPath == "" {
 		return nil, nil
@@ -133,37 +133,25 @@ func (f *SuekkVideoFetcher) ListGalleryImages(ctx context.Context, galleryPath s
 	var err error
 	var usedPath string
 
-	// Priority 1: super_safe (NSFW < 0.15 + face) - ดีที่สุดสำหรับ SEO
-	superSafePath := galleryPath + "/super_safe"
-	files, err = f.storage.ListFiles(superSafePath)
+	// Priority 1: safe (admin approved - safe for public/SEO)
+	safePath := galleryPath + "/safe"
+	files, err = f.storage.ListFiles(safePath)
 	if err == nil && len(files) > 0 {
-		usedPath = superSafePath
-		f.logger.InfoContext(ctx, "Using super_safe gallery (Three-Tier)",
-			"path", superSafePath,
+		usedPath = safePath
+		f.logger.InfoContext(ctx, "Using safe gallery (admin approved)",
+			"path", safePath,
 			"count", len(files),
 		)
 	} else {
-		// Priority 2: safe (NSFW 0.15-0.3)
-		safePath := galleryPath + "/safe"
-		files, err = f.storage.ListFiles(safePath)
-		if err == nil && len(files) > 0 {
-			usedPath = safePath
-			f.logger.InfoContext(ctx, "Using safe gallery (fallback from super_safe)",
-				"path", safePath,
-				"count", len(files),
-			)
-		} else {
-			// Priority 3: Fallback to main gallery (legacy videos)
-			f.logger.WarnContext(ctx, "No classified gallery found, falling back to main gallery",
-				"super_safe_path", superSafePath,
-				"safe_path", safePath,
-			)
-			files, err = f.storage.ListFiles(galleryPath)
-			if err != nil {
-				return nil, err
-			}
-			usedPath = galleryPath
+		// Priority 2: Fallback to main gallery (legacy videos)
+		f.logger.WarnContext(ctx, "No classified gallery found, falling back to main gallery",
+			"safe_path", safePath,
+		)
+		files, err = f.storage.ListFiles(galleryPath)
+		if err != nil {
+			return nil, err
 		}
+		usedPath = galleryPath
 	}
 
 	// Filter only image files and build presigned URLs
@@ -173,7 +161,7 @@ func (f *SuekkVideoFetcher) ListGalleryImages(ctx context.Context, galleryPath s
 	for _, file := range files {
 		// Skip subfolders เฉพาะเมื่อใช้ main gallery (ป้องกัน fallback ดึงภาพจาก subfolder มา)
 		if isUsingMainGallery {
-			if strings.Contains(file, "/nsfw/") || strings.Contains(file, "/safe/") || strings.Contains(file, "/super_safe/") {
+			if strings.Contains(file, "/nsfw/") || strings.Contains(file, "/safe/") {
 				continue
 			}
 		}
@@ -212,7 +200,8 @@ func isImageFile(filename string) bool {
 	return false
 }
 
-// ListAllGalleryImages ดึงรายการ gallery images จากทุก tier (super_safe, safe, nsfw)
+// ListAllGalleryImages ดึงรายการ gallery images จากทุก tier (safe, nsfw)
+// Two-Tier System: safe (admin approved for SEO), nsfw (members only)
 // Return presigned URLs แยกตาม tier
 func (f *SuekkVideoFetcher) ListAllGalleryImages(ctx context.Context, galleryPath string) (*models.TieredGalleryImages, error) {
 	if galleryPath == "" {
@@ -223,9 +212,8 @@ func (f *SuekkVideoFetcher) ListAllGalleryImages(ctx context.Context, galleryPat
 	galleryPath = strings.TrimSuffix(galleryPath, "/")
 
 	result := &models.TieredGalleryImages{
-		SuperSafe: []string{},
-		Safe:      []string{},
-		NSFW:      []string{},
+		Safe: []string{},
+		NSFW: []string{},
 	}
 
 	// Fetch from each tier
@@ -234,7 +222,6 @@ func (f *SuekkVideoFetcher) ListAllGalleryImages(ctx context.Context, galleryPat
 		target *[]string
 		name   string
 	}{
-		{galleryPath + "/super_safe", &result.SuperSafe, "super_safe"},
 		{galleryPath + "/safe", &result.Safe, "safe"},
 		{galleryPath + "/nsfw", &result.NSFW, "nsfw"},
 	}
@@ -267,10 +254,9 @@ func (f *SuekkVideoFetcher) ListAllGalleryImages(ctx context.Context, galleryPat
 	}
 
 	f.logger.InfoContext(ctx, "All gallery images listed",
-		"super_safe", len(result.SuperSafe),
 		"safe", len(result.Safe),
 		"nsfw", len(result.NSFW),
-		"total", len(result.SuperSafe)+len(result.Safe)+len(result.NSFW),
+		"total", len(result.Safe)+len(result.NSFW),
 	)
 
 	return result, nil

@@ -18,10 +18,10 @@ type SuekkVideoFetcherPort interface {
 	// FetchVideoInfo ดึงข้อมูล video (duration, gallery)
 	FetchVideoInfo(ctx context.Context, videoCode string) (*models.SuekkVideoInfo, error)
 
-	// ListGalleryImages ดึงรายการ gallery images จาก storage (super_safe priority)
+	// ListGalleryImages ดึงรายการ gallery images จาก storage (safe priority)
 	ListGalleryImages(ctx context.Context, galleryPath string) ([]string, error)
 
-	// ListAllGalleryImages ดึงรายการ gallery images จากทุก tier (super_safe, safe, nsfw)
+	// ListAllGalleryImages ดึงรายการ gallery images จากทุก tier (safe, nsfw)
 	ListAllGalleryImages(ctx context.Context, galleryPath string) (*models.TieredGalleryImages, error)
 }
 

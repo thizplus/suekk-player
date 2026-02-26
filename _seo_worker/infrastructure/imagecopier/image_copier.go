@@ -230,8 +230,9 @@ func extractFilename(rawURL string, fallbackIdx int) string {
 }
 
 // CopyTieredGallery copy ภาพจากทุก tier ไป r2 แยก path
-// - articles/{code}/gallery/public/  = super_safe
-// - articles/{code}/gallery/member/  = safe + nsfw
+// Two-Tier System (Admin Manual Selection):
+// - articles/{code}/gallery/public/  = safe (admin approved - SEO safe)
+// - articles/{code}/gallery/member/  = nsfw (admin approved - members only)
 func (c *ImageCopier) CopyTieredGallery(ctx context.Context, videoCode string, tiered *models.TieredGalleryImages) (*ports.CopiedGalleryResult, error) {
 	if tiered == nil {
 		return nil, nil
@@ -244,19 +245,18 @@ func (c *ImageCopier) CopyTieredGallery(ctx context.Context, videoCode string, t
 
 	c.logger.InfoContext(ctx, "Starting tiered gallery copy",
 		"video_code", videoCode,
-		"super_safe", len(tiered.SuperSafe),
 		"safe", len(tiered.Safe),
 		"nsfw", len(tiered.NSFW),
 	)
 
-	// Copy super_safe → public/
-	for i, srcURL := range tiered.SuperSafe {
+	// Copy safe → public/ (admin approved for SEO)
+	for i, srcURL := range tiered.Safe {
 		filename := fmt.Sprintf("%03d.jpg", i+1)
 		destPath := fmt.Sprintf("articles/%s/gallery/public/%s", videoCode, filename)
 
 		newURL, err := c.copyToPath(ctx, srcURL, destPath)
 		if err != nil {
-			c.logger.WarnContext(ctx, "Failed to copy super_safe image", "error", err)
+			c.logger.WarnContext(ctx, "Failed to copy safe image", "error", err)
 			continue
 		}
 
@@ -276,29 +276,9 @@ func (c *ImageCopier) CopyTieredGallery(ctx context.Context, videoCode string, t
 		}
 	}
 
-	// Copy safe → member/
-	memberIdx := 1
-	for _, srcURL := range tiered.Safe {
-		filename := fmt.Sprintf("%03d.jpg", memberIdx)
-		destPath := fmt.Sprintf("articles/%s/gallery/member/%s", videoCode, filename)
-
-		newURL, err := c.copyToPath(ctx, srcURL, destPath)
-		if err != nil {
-			c.logger.WarnContext(ctx, "Failed to copy safe image", "error", err)
-			continue
-		}
-
-		result.MemberImages = append(result.MemberImages, models.GalleryImage{
-			URL:    newURL,
-			Width:  1280,
-			Height: 720,
-		})
-		memberIdx++
-	}
-
-	// Copy nsfw → member/
-	for _, srcURL := range tiered.NSFW {
-		filename := fmt.Sprintf("%03d.jpg", memberIdx)
+	// Copy nsfw → member/ (members only)
+	for i, srcURL := range tiered.NSFW {
+		filename := fmt.Sprintf("%03d.jpg", i+1)
 		destPath := fmt.Sprintf("articles/%s/gallery/member/%s", videoCode, filename)
 
 		newURL, err := c.copyToPath(ctx, srcURL, destPath)
@@ -312,7 +292,6 @@ func (c *ImageCopier) CopyTieredGallery(ctx context.Context, videoCode string, t
 			Width:  1280,
 			Height: 720,
 		})
-		memberIdx++
 	}
 
 	c.logger.InfoContext(ctx, "Tiered gallery copy completed",

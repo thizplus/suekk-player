@@ -109,7 +109,7 @@ type ArticleContent struct {
 	AudioDuration   int    `json:"audioDuration,omitempty"`   // seconds
 
 	// === Gallery ===
-	GalleryImages       []GalleryImage `json:"galleryImages,omitempty"`       // Public (super_safe)
+	GalleryImages       []GalleryImage `json:"galleryImages,omitempty"`       // Public (safe - admin approved)
 	MemberGalleryImages []GalleryImage `json:"memberGalleryImages,omitempty"` // Member only (safe + nsfw)
 	MemberGalleryCount  int            `json:"memberGalleryCount,omitempty"`  // จำนวนภาพ member
 
@@ -167,20 +167,18 @@ type GalleryImage struct {
 	Height int    `json:"height"`
 }
 
-// GalleryTier - ประเภทของ gallery (Three-Tier Classification)
+// GalleryTier - ประเภทของ gallery (Manual Selection)
 type GalleryTier string
 
 const (
-	GalleryTierSuperSafe GalleryTier = "super_safe" // NSFW < 0.15 + face
-	GalleryTierSafe      GalleryTier = "safe"       // NSFW 0.15-0.3
-	GalleryTierNSFW      GalleryTier = "nsfw"       // NSFW >= 0.3
+	GalleryTierSafe GalleryTier = "safe" // Admin approved - safe for public/SEO
+	GalleryTierNSFW GalleryTier = "nsfw" // Admin approved - members only
 )
 
-// TieredGalleryImages - ภาพแยกตาม tier
+// TieredGalleryImages - ภาพแยกตาม tier (Manual Selection)
 type TieredGalleryImages struct {
-	SuperSafe []string // Public (Google-safe)
-	Safe      []string // Member only
-	NSFW      []string // Member only
+	Safe []string // Admin approved - safe for public/SEO
+	NSFW []string // Admin approved - members only
 }
 
 type FAQItem struct {

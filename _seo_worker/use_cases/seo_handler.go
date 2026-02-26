@@ -136,7 +136,7 @@ func (h *SEOHandler) ProcessJob(ctx context.Context, job *models.SEOArticleJob) 
 	var memberGalleryImages []models.GalleryImage
 	var coverURL string
 
-	h.logger.InfoContext(ctx, "[DEBUG] Gallery fetch start (Three-Tier)",
+	h.logger.InfoContext(ctx, "[DEBUG] Gallery fetch start (Two-Tier)",
 		"gallery_path", suekkVideoInfo.GalleryPath,
 		"gallery_count", suekkVideoInfo.GalleryCount,
 		"gallery_safe_count", suekkVideoInfo.GallerySafeCount,
@@ -144,7 +144,7 @@ func (h *SEOHandler) ProcessJob(ctx context.Context, job *models.SEOArticleJob) 
 	)
 
 	if suekkVideoInfo.GalleryPath != "" {
-		// ดึงภาพจากทุก tier (super_safe, safe, nsfw)
+		// ดึงภาพจากทุก tier (safe, nsfw) - Two-Tier System
 		tieredImages, err := h.suekkVideoFetcher.ListAllGalleryImages(ctx, suekkVideoInfo.GalleryPath)
 		if err != nil {
 			h.logger.WarnContext(ctx, "Failed to list tiered gallery images",
@@ -153,7 +153,6 @@ func (h *SEOHandler) ProcessJob(ctx context.Context, job *models.SEOArticleJob) 
 			)
 		} else if tieredImages != nil {
 			h.logger.InfoContext(ctx, "Tiered gallery images fetched",
-				"super_safe", len(tieredImages.SuperSafe),
 				"safe", len(tieredImages.Safe),
 				"nsfw", len(tieredImages.NSFW),
 			)
@@ -177,12 +176,9 @@ func (h *SEOHandler) ProcessJob(ctx context.Context, job *models.SEOArticleJob) 
 					)
 				}
 			} else {
-				// Fallback: ใช้ super_safe URLs ตรงๆ (ไม่ copy)
-				for _, url := range tieredImages.SuperSafe {
-					galleryImages = append(galleryImages, models.GalleryImage{URL: url, Width: 1280, Height: 720})
-				}
+				// Fallback: ใช้ safe/nsfw URLs ตรงๆ (ไม่ copy)
 				for _, url := range tieredImages.Safe {
-					memberGalleryImages = append(memberGalleryImages, models.GalleryImage{URL: url, Width: 1280, Height: 720})
+					galleryImages = append(galleryImages, models.GalleryImage{URL: url, Width: 1280, Height: 720})
 				}
 				for _, url := range tieredImages.NSFW {
 					memberGalleryImages = append(memberGalleryImages, models.GalleryImage{URL: url, Width: 1280, Height: 720})
@@ -624,8 +620,8 @@ func (h *SEOHandler) buildArticle(
 		AudioDuration:   audioDuration,
 
 		// === Gallery & FAQ ===
-		GalleryImages:       galleryImages,       // Public (super_safe) - R2
-		MemberGalleryImages: memberGalleryImages, // Member only (safe + nsfw) - R2
+		GalleryImages:       galleryImages,       // Public (safe - admin approved) - R2
+		MemberGalleryImages: memberGalleryImages, // Member only (nsfw - admin approved) - R2
 		MemberGalleryCount:  len(memberGalleryImages),
 		FAQItems:            aiOutput.FAQItems,
 
