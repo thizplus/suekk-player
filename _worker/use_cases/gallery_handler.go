@@ -42,6 +42,7 @@ type GalleryAuthClientPort interface {
 type GalleryHandler struct {
 	storage         ports.StoragePort
 	messenger       ports.MessengerPort
+	repository      ports.VideoRepository
 	authClient      GalleryAuthClientPort
 	galleryService  *gallery.Service
 	galleryUploader *gallery.Uploader
@@ -53,6 +54,7 @@ type GalleryHandler struct {
 func NewGalleryHandler(
 	storage ports.StoragePort,
 	messenger ports.MessengerPort,
+	repository ports.VideoRepository,
 	authClient GalleryAuthClientPort,
 	galleryService *gallery.Service,
 	galleryUploader *gallery.Uploader,
@@ -61,6 +63,7 @@ func NewGalleryHandler(
 	return &GalleryHandler{
 		storage:         storage,
 		messenger:       messenger,
+		repository:      repository,
 		authClient:      authClient,
 		galleryService:  galleryService,
 		galleryUploader: galleryUploader,
@@ -158,6 +161,13 @@ func (h *GalleryHandler) ProcessJobWithClassification(ctx context.Context, job *
 		"quality", job.VideoQuality,
 		"duration", job.Duration,
 	)
+
+	// Update gallery_status to 'processing'
+	if h.repository != nil {
+		if err := h.repository.UpdateGalleryProcessingStarted(ctx, job.VideoID); err != nil {
+			h.logger.Warn("failed to update gallery processing started", "error", err)
+		}
+	}
 
 	// Publish initial progress
 	h.publishProgress(ctx, job, 0, "เริ่มสร้าง Gallery...")
