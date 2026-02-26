@@ -700,8 +700,9 @@ func (h *SEOHandler) filterValidContextualLinks(
 		}
 
 		if article, ok := validArticleMap[link.LinkedSlug]; ok {
-			// เพิ่ม ThumbnailUrl จาก validArticles
+			// เพิ่ม ThumbnailUrl และ QualityScore จาก validArticles
 			link.ThumbnailUrl = article.ThumbnailUrl
+			link.QualityScore = article.QualityScore
 			filtered = append(filtered, link)
 		} else {
 			h.logger.Warn("Filtered out invalid contextual link",
@@ -764,9 +765,10 @@ func (h *SEOHandler) buildRelatedArticlesForAI(
 			Slug:         slug,
 			Title:        work.Title,
 			RealCode:     work.VideoCode,
-			CastNames:    castNames,        // Same cast as current video
-			Tags:         tagNames,         // Use current video's tags (approximation)
+			CastNames:    castNames,         // Same cast as current video
+			Tags:         tagNames,          // Use current video's tags (approximation)
 			ThumbnailUrl: work.ThumbnailUrl, // Thumbnail for display
+			QualityScore: work.QualityScore, // คะแนนคุณภาพ 1-10
 		}
 	}
 

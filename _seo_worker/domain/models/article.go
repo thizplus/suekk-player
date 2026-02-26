@@ -189,10 +189,11 @@ type FAQItem struct {
 // ContextualLink - ลิงก์เชื่อมโยงในบริบท (SEO Internal Linking)
 // AI สร้างประโยคเชื่อมโยงไปยัง related articles
 type ContextualLink struct {
-	Text         string `json:"text"`         // ประโยคเชื่อมโยง เช่น "ถ้าคุณประทับใจการแสดงแนว Medical ของ Zemba Mami คุณอาจจะสนใจ"
-	LinkedSlug   string `json:"linkedSlug"`   // Slug ของ article ที่ลิงก์ไป เช่น "dldss-470"
-	LinkedTitle  string `json:"linkedTitle"`  // Title สำหรับแสดง เช่น "DLDSS-470 ที่เน้นการสำรวจอารมณ์"
-	ThumbnailUrl string `json:"thumbnailUrl"` // Thumbnail URL สำหรับแสดงภาพ
+	Text         string `json:"text"`                   // ประโยคเชื่อมโยง เช่น "ถ้าคุณประทับใจการแสดงแนว Medical ของ Zemba Mami คุณอาจจะสนใจ"
+	LinkedSlug   string `json:"linkedSlug"`             // Slug ของ article ที่ลิงก์ไป เช่น "dldss-470"
+	LinkedTitle  string `json:"linkedTitle"`            // Title สำหรับแสดง เช่น "DLDSS-470 ที่เน้นการสำรวจอารมณ์"
+	ThumbnailUrl string `json:"thumbnailUrl"`           // Thumbnail URL สำหรับแสดงภาพ
+	QualityScore int    `json:"qualityScore,omitempty"` // คะแนนคุณภาพ 1-10
 }
 
 // TopQuote - ประโยคเด็ดจากซับไตเติ้ล
@@ -243,10 +244,11 @@ type CastMetadata struct {
 // PreviousWork - ผลงานก่อนหน้าของ cast
 type PreviousWork struct {
 	VideoID      string `json:"videoId"`
-	VideoCode    string `json:"videoCode"`    // Internal code (e.g., "3993bp6j")
-	Slug         string `json:"slug"`         // Article slug (e.g., "dass-541") - ใช้สร้าง URL
+	VideoCode    string `json:"videoCode"`              // Internal code (e.g., "3993bp6j")
+	Slug         string `json:"slug"`                   // Article slug (e.g., "dass-541") - ใช้สร้าง URL
 	Title        string `json:"title"`
-	ThumbnailUrl string `json:"thumbnailUrl"` // Thumbnail URL for display
+	ThumbnailUrl string `json:"thumbnailUrl"`           // Thumbnail URL for display
+	QualityScore int    `json:"qualityScore,omitempty"` // คะแนนคุณภาพ 1-10
 }
 
 // EmbeddingData - Vector + Metadata สำหรับ pgvector

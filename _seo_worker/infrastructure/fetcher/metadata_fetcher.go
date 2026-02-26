@@ -246,6 +246,7 @@ type articleSummaryForPreviousWorks struct {
 	Title        string `json:"title"`
 	VideoCode    string `json:"videoCode"`
 	ThumbnailUrl string `json:"thumbnailUrl"`
+	QualityScore int    `json:"qualityScore"`
 }
 
 // FetchPreviousWorks ดึงผลงานก่อนหน้าของ cast จาก articles endpoint
@@ -282,6 +283,7 @@ func (f *MetadataFetcher) FetchPreviousWorks(ctx context.Context, castSlug strin
 			Slug:         article.Slug,         // Article slug (e.g., "dass-541")
 			Title:        article.Title,
 			ThumbnailUrl: article.ThumbnailUrl, // Thumbnail URL for display
+			QualityScore: article.QualityScore, // คะแนนคุณภาพ 1-10
 		})
 	}
 

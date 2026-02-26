@@ -37,6 +37,7 @@ type RelatedArticleForAI struct {
 	CastNames    []string `json:"castNames"`    // รายชื่อนักแสดง
 	Tags         []string `json:"tags"`         // Tags ของ video นั้น
 	ThumbnailUrl string   `json:"thumbnailUrl"` // Thumbnail URL สำหรับแสดงภาพ
+	QualityScore int      `json:"qualityScore"` // คะแนนคุณภาพ 1-10
 }
 
 // AIOutput - ผลลัพธ์จาก AI (E-E-A-T Framework)
