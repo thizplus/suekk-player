@@ -242,9 +242,10 @@ func (f *MetadataFetcher) FetchCasts(ctx context.Context, castIDs []string) ([]m
 
 // articleSummaryForPreviousWorks - response จาก /api/v1/articles/cast/{slug}
 type articleSummaryForPreviousWorks struct {
-	Slug      string `json:"slug"`
-	Title     string `json:"title"`
-	VideoCode string `json:"videoCode"`
+	Slug         string `json:"slug"`
+	Title        string `json:"title"`
+	VideoCode    string `json:"videoCode"`
+	ThumbnailUrl string `json:"thumbnailUrl"`
 }
 
 // FetchPreviousWorks ดึงผลงานก่อนหน้าของ cast จาก articles endpoint
@@ -277,9 +278,10 @@ func (f *MetadataFetcher) FetchPreviousWorks(ctx context.Context, castSlug strin
 	works := make([]models.PreviousWork, 0, len(resp.Data))
 	for _, article := range resp.Data {
 		works = append(works, models.PreviousWork{
-			VideoCode: article.VideoCode, // Internal code (e.g., "3993bp6j")
-			Slug:      article.Slug,      // Article slug (e.g., "dass-541")
-			Title:     article.Title,
+			VideoCode:    article.VideoCode,    // Internal code (e.g., "3993bp6j")
+			Slug:         article.Slug,         // Article slug (e.g., "dass-541")
+			Title:        article.Title,
+			ThumbnailUrl: article.ThumbnailUrl, // Thumbnail URL for display
 		})
 	}
 

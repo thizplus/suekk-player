@@ -31,11 +31,12 @@ type AIInput struct {
 
 // RelatedArticleForAI - ข้อมูล related article สำหรับ AI สร้าง contextual links
 type RelatedArticleForAI struct {
-	Slug      string   `json:"slug"`      // URL slug
-	Title     string   `json:"title"`     // Video title
-	RealCode  string   `json:"realCode"`  // เช่น DLDSS-470
-	CastNames []string `json:"castNames"` // รายชื่อนักแสดง
-	Tags      []string `json:"tags"`      // Tags ของ video นั้น
+	Slug         string   `json:"slug"`         // URL slug
+	Title        string   `json:"title"`        // Video title
+	RealCode     string   `json:"realCode"`     // เช่น DLDSS-470
+	CastNames    []string `json:"castNames"`    // รายชื่อนักแสดง
+	Tags         []string `json:"tags"`         // Tags ของ video นั้น
+	ThumbnailUrl string   `json:"thumbnailUrl"` // Thumbnail URL สำหรับแสดงภาพ
 }
 
 // AIOutput - ผลลัพธ์จาก AI (E-E-A-T Framework)

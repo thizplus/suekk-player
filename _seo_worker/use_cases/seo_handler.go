@@ -669,6 +669,7 @@ func formatDuration(seconds int) string {
 // filterValidContextualLinks กรอง contextual links ที่ valid
 // - slug ต้องมีอยู่จริง (ป้องกัน AI แต่ง slug ขึ้นมาเอง)
 // - ห้าม link ไปหาตัวเอง (self-reference)
+// - เพิ่ม ThumbnailUrl จาก validArticles
 func (h *SEOHandler) filterValidContextualLinks(
 	links []models.ContextualLink,
 	validArticles []ports.RelatedArticleForAI,
@@ -678,10 +679,10 @@ func (h *SEOHandler) filterValidContextualLinks(
 		return nil
 	}
 
-	// สร้าง map ของ valid slugs
-	validSlugs := make(map[string]bool)
+	// สร้าง map ของ valid slugs -> article data (รวม ThumbnailUrl)
+	validArticleMap := make(map[string]ports.RelatedArticleForAI)
 	for _, article := range validArticles {
-		validSlugs[article.Slug] = true
+		validArticleMap[article.Slug] = article
 	}
 
 	// กรองเฉพาะ links ที่:
@@ -698,7 +699,9 @@ func (h *SEOHandler) filterValidContextualLinks(
 			continue
 		}
 
-		if validSlugs[link.LinkedSlug] {
+		if article, ok := validArticleMap[link.LinkedSlug]; ok {
+			// เพิ่ม ThumbnailUrl จาก validArticles
+			link.ThumbnailUrl = article.ThumbnailUrl
 			filtered = append(filtered, link)
 		} else {
 			h.logger.Warn("Filtered out invalid contextual link",
@@ -758,11 +761,12 @@ func (h *SEOHandler) buildRelatedArticlesForAI(
 		}
 
 		related[i] = ports.RelatedArticleForAI{
-			Slug:      slug,
-			Title:     work.Title,
-			RealCode:  work.VideoCode,
-			CastNames: castNames, // Same cast as current video
-			Tags:      tagNames,  // Use current video's tags (approximation)
+			Slug:         slug,
+			Title:        work.Title,
+			RealCode:     work.VideoCode,
+			CastNames:    castNames,        // Same cast as current video
+			Tags:         tagNames,         // Use current video's tags (approximation)
+			ThumbnailUrl: work.ThumbnailUrl, // Thumbnail for display
 		}
 	}
 
