@@ -228,6 +228,17 @@ func (r *reelRepository) CountByVideoID(ctx context.Context, videoID uuid.UUID) 
 	return count, nil
 }
 
+// CountByStatus นับ reels ตาม status
+func (r *reelRepository) CountByStatus(ctx context.Context, status models.ReelStatus) (int64, error) {
+	var count int64
+	if err := r.db.WithContext(ctx).Model(&models.Reel{}).
+		Where("status = ?", status).
+		Count(&count).Error; err != nil {
+		return 0, err
+	}
+	return count, nil
+}
+
 // CountByVideoIDs นับ reels สำหรับหลาย videos พร้อมกัน (batch query)
 func (r *reelRepository) CountByVideoIDs(ctx context.Context, videoIDs []uuid.UUID) (map[uuid.UUID]int64, error) {
 	result := make(map[uuid.UUID]int64)

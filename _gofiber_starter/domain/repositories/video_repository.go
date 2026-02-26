@@ -47,4 +47,12 @@ type VideoRepository interface {
 	// Storage Quota Methods
 	// GetTotalStorageUsed คำนวณ disk_usage รวมทุก video (bytes)
 	GetTotalStorageUsed(ctx context.Context) (int64, error)
+
+	// Gallery Queue Methods
+	// GetByGalleryStatus ดึง videos ตาม gallery_status
+	GetByGalleryStatus(ctx context.Context, galleryStatus string, offset, limit int) ([]*models.Video, error)
+	// CountByGalleryStatus นับ videos ตาม gallery_status
+	CountByGalleryStatus(ctx context.Context, galleryStatus string) (int64, error)
+	// GetGalleryFailed ดึง videos ที่ gallery failed (status=ready, gallery_status=none, last_error not empty)
+	GetGalleryFailed(ctx context.Context, offset, limit int) ([]*models.Video, int64, error)
 }

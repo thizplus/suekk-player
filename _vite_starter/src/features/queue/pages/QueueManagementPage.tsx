@@ -16,6 +16,8 @@ import {
   AlertTriangle,
   Trash2,
   Plus,
+  Images,
+  Film,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -54,8 +56,14 @@ import {
   useWarmCacheFailed,
   useWarmCacheOne,
   useWarmCacheAll,
+  useGalleryProcessing,
+  useGalleryFailed,
+  useRetryGalleryAll,
+  useReelExporting,
+  useReelFailed,
+  useRetryReelAll,
 } from '../hooks'
-import type { TranscodeQueueItem, SubtitleQueueItem, WarmCacheQueueItem } from '../types'
+import type { TranscodeQueueItem, SubtitleQueueItem, WarmCacheQueueItem, GalleryQueueItem, ReelQueueItem } from '../types'
 
 export function QueueManagementPage() {
   const { data: stats, isLoading: statsLoading, refetch: refetchStats } = useQueueStats()
@@ -94,7 +102,7 @@ export function QueueManagementPage() {
             <Skeleton className="h-24" />
           </div>
         ) : stats ? (
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4">
             {/* Transcode Stats */}
             <Card>
               <CardHeader className="pb-2">
@@ -245,12 +253,110 @@ export function QueueManagementPage() {
                 </div>
               </CardContent>
             </Card>
+
+            {/* Gallery Stats */}
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium flex items-center gap-2">
+                  <Images className="h-4 w-4" />
+                  Gallery
+                  <Tooltip>
+                    <TooltipTrigger>
+                      <HelpCircle className="h-3 w-3 text-muted-foreground" />
+                    </TooltipTrigger>
+                    <TooltipContent className="max-w-xs">
+                      <p>สร้างภาพ gallery จากวิดีโอ 100 ภาพ</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="flex flex-wrap gap-2 text-xs">
+                  {stats.gallery?.processing > 0 && (
+                    <Badge className="gap-1 status-processing">
+                      กำลังสร้าง: {stats.gallery.processing}
+                    </Badge>
+                  )}
+                  {stats.gallery?.pendingReview > 0 && (
+                    <Badge variant="secondary" className="gap-1">
+                      <Clock className="h-3 w-3" />
+                      รอตรวจ: {stats.gallery.pendingReview}
+                    </Badge>
+                  )}
+                  {stats.gallery?.ready > 0 && (
+                    <Badge variant="outline" className="gap-1 text-status-success border-status-success">
+                      <CheckCircle className="h-3 w-3" />
+                      พร้อม: {stats.gallery.ready}
+                    </Badge>
+                  )}
+                  {stats.gallery?.failed > 0 && (
+                    <Badge variant="destructive" className="gap-1">
+                      <XCircle className="h-3 w-3" />
+                      ล้มเหลว: {stats.gallery.failed}
+                    </Badge>
+                  )}
+                  {!stats.gallery?.processing &&
+                    !stats.gallery?.pendingReview &&
+                    !stats.gallery?.failed && (
+                      <Badge variant="outline" className="gap-1 text-muted-foreground">
+                        <CheckCircle className="h-3 w-3" />
+                        ไม่มีปัญหา
+                      </Badge>
+                    )}
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Reel Stats */}
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium flex items-center gap-2">
+                  <Film className="h-4 w-4" />
+                  Reel
+                  <Tooltip>
+                    <TooltipTrigger>
+                      <HelpCircle className="h-3 w-3 text-muted-foreground" />
+                    </TooltipTrigger>
+                    <TooltipContent className="max-w-xs">
+                      <p>สร้าง short video clips สำหรับ social media</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="flex flex-wrap gap-2 text-xs">
+                  {stats.reel?.exporting > 0 && (
+                    <Badge className="gap-1 status-processing">
+                      กำลัง export: {stats.reel.exporting}
+                    </Badge>
+                  )}
+                  {stats.reel?.ready > 0 && (
+                    <Badge variant="outline" className="gap-1 text-status-success border-status-success">
+                      <CheckCircle className="h-3 w-3" />
+                      เสร็จ: {stats.reel.ready}
+                    </Badge>
+                  )}
+                  {stats.reel?.failed > 0 && (
+                    <Badge variant="destructive" className="gap-1">
+                      <XCircle className="h-3 w-3" />
+                      ล้มเหลว: {stats.reel.failed}
+                    </Badge>
+                  )}
+                  {!stats.reel?.exporting && !stats.reel?.failed && (
+                    <Badge variant="outline" className="gap-1 text-muted-foreground">
+                      <CheckCircle className="h-3 w-3" />
+                      ไม่มีปัญหา
+                    </Badge>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
           </div>
         ) : null}
 
         {/* Tabs */}
         <Tabs value={activeTab} onValueChange={setActiveTab}>
-          <TabsList className="grid w-full grid-cols-3">
+          <TabsList className="grid w-full grid-cols-5">
             <TabsTrigger value="transcode" className="gap-2">
               <Monitor className="h-4 w-4" />
               แปลงวิดีโอ
@@ -278,6 +384,24 @@ export function QueueManagementPage() {
                 </Badge>
               ) : null}
             </TabsTrigger>
+            <TabsTrigger value="gallery" className="gap-2">
+              <Images className="h-4 w-4" />
+              Gallery
+              {(stats?.gallery?.processing || 0) + (stats?.gallery?.failed || 0) > 0 ? (
+                <Badge variant="destructive" className="ml-1 h-5 px-1.5">
+                  {(stats?.gallery?.processing || 0) + (stats?.gallery?.failed || 0)}
+                </Badge>
+              ) : null}
+            </TabsTrigger>
+            <TabsTrigger value="reel" className="gap-2">
+              <Film className="h-4 w-4" />
+              Reel
+              {(stats?.reel?.exporting || 0) + (stats?.reel?.failed || 0) > 0 ? (
+                <Badge variant="destructive" className="ml-1 h-5 px-1.5">
+                  {(stats?.reel?.exporting || 0) + (stats?.reel?.failed || 0)}
+                </Badge>
+              ) : null}
+            </TabsTrigger>
           </TabsList>
 
           <TabsContent value="transcode" className="mt-4">
@@ -290,6 +414,14 @@ export function QueueManagementPage() {
 
           <TabsContent value="warmcache" className="mt-4">
             <WarmCacheTab />
+          </TabsContent>
+
+          <TabsContent value="gallery" className="mt-4">
+            <GalleryTab />
+          </TabsContent>
+
+          <TabsContent value="reel" className="mt-4">
+            <ReelTab />
           </TabsContent>
         </Tabs>
       </div>
@@ -795,6 +927,367 @@ function WarmCacheTab() {
                           <TooltipContent>ดูรายละเอียด</TooltipContent>
                         </Tooltip>
                       </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+
+            {meta && meta.totalPages > 1 && (
+              <div className="flex items-center justify-between mt-4">
+                <p className="text-sm text-muted-foreground">
+                  หน้า {meta.page} จาก {meta.totalPages} (ทั้งหมด {meta.total} รายการ)
+                </p>
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setPage((p) => Math.max(1, p - 1))}
+                    disabled={!meta.hasPrev}
+                  >
+                    ก่อนหน้า
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setPage((p) => p + 1)}
+                    disabled={!meta.hasNext}
+                  >
+                    ถัดไป
+                  </Button>
+                </div>
+              </div>
+            )}
+          </>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
+// ==================== Gallery Tab ====================
+
+function GalleryTab() {
+  const [subtab, setSubtab] = useState<'processing' | 'failed'>('processing')
+  const [page, setPage] = useState(1)
+
+  const processingQuery = useGalleryProcessing(page)
+  const failedQuery = useGalleryFailed(page)
+  const retryAll = useRetryGalleryAll()
+
+  const { data, isLoading } = subtab === 'processing' ? processingQuery : failedQuery
+  const items = data?.data ?? []
+  const meta = data?.meta
+
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex flex-row items-start justify-between">
+          <div>
+            <CardTitle>Gallery Queue</CardTitle>
+            <CardDescription>
+              รายการวิดีโอที่กำลังสร้าง gallery หรือล้มเหลว
+            </CardDescription>
+          </div>
+          <div className="flex gap-2">
+            <Button
+              variant={subtab === 'processing' ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => {
+                setSubtab('processing')
+                setPage(1)
+              }}
+            >
+              กำลังสร้าง
+            </Button>
+            <Button
+              variant={subtab === 'failed' ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => {
+                setSubtab('failed')
+                setPage(1)
+              }}
+            >
+              ล้มเหลว
+            </Button>
+            {subtab === 'failed' && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => retryAll.mutate()}
+                disabled={retryAll.isPending || items.length === 0}
+              >
+                <RotateCcw className={`h-4 w-4 mr-2 ${retryAll.isPending ? 'animate-spin' : ''}`} />
+                ลองใหม่ทั้งหมด
+              </Button>
+            )}
+          </div>
+        </div>
+
+        <Alert className="mt-4">
+          <HelpCircle className="h-4 w-4" />
+          <AlertDescription>
+            {subtab === 'processing' ? (
+              <>
+                <strong>กำลังสร้าง:</strong> วิดีโอเหล่านี้กำลังอยู่ระหว่างการสร้าง gallery
+                โดยปกติใช้เวลา 2-5 นาทีต่อวิดีโอ
+              </>
+            ) : (
+              <>
+                <strong>ล้มเหลว:</strong> กด "ลองใหม่ทั้งหมด" เพื่อ queue การสร้าง gallery ใหม่
+              </>
+            )}
+          </AlertDescription>
+        </Alert>
+      </CardHeader>
+      <CardContent>
+        {isLoading ? (
+          <div className="space-y-2">
+            <Skeleton className="h-10 w-full" />
+            <Skeleton className="h-10 w-full" />
+            <Skeleton className="h-10 w-full" />
+          </div>
+        ) : items.length === 0 ? (
+          <div className="text-center py-8 text-muted-foreground">
+            <CheckCircle className="h-12 w-12 mx-auto mb-2 text-status-success" />
+            <p>
+              {subtab === 'processing'
+                ? 'ไม่มีวิดีโอที่กำลังสร้าง gallery'
+                : 'ไม่มีวิดีโอที่ gallery ล้มเหลว'}
+            </p>
+          </div>
+        ) : (
+          <>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>รหัส</TableHead>
+                  <TableHead>ชื่อ</TableHead>
+                  <TableHead>สถานะ</TableHead>
+                  <TableHead>ภาพ</TableHead>
+                  {subtab === 'failed' && <TableHead>ข้อผิดพลาด</TableHead>}
+                  <TableHead className="w-20">จัดการ</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {items.map((item: GalleryQueueItem) => (
+                  <TableRow key={item.id}>
+                    <TableCell className="font-mono text-xs">{item.code}</TableCell>
+                    <TableCell className="max-w-[200px] truncate">{item.title}</TableCell>
+                    <TableCell>
+                      <Badge
+                        variant={item.galleryStatus === 'failed' ? 'destructive' : 'secondary'}
+                      >
+                        {item.galleryStatus === 'processing' && 'กำลังสร้าง'}
+                        {item.galleryStatus === 'pending_review' && 'รอตรวจ'}
+                        {item.galleryStatus === 'ready' && 'พร้อม'}
+                        {item.galleryStatus === 'failed' && 'ล้มเหลว'}
+                        {item.galleryStatus === 'none' && 'ยังไม่สร้าง'}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex gap-2 text-xs">
+                        <span>ต้นฉบับ: {item.sourceCount}</span>
+                        <span>Safe: {item.safeCount}</span>
+                        <span>NSFW: {item.nsfwCount}</span>
+                      </div>
+                    </TableCell>
+                    {subtab === 'failed' && (
+                      <TableCell className="max-w-[200px]">
+                        <span className="text-destructive text-xs line-clamp-2">
+                          {item.error || '-'}
+                        </span>
+                      </TableCell>
+                    )}
+                    <TableCell>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button variant="ghost" size="sm" asChild>
+                            <Link to={`/videos?code=${item.code}`}>
+                              <ExternalLink className="h-4 w-4" />
+                            </Link>
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>ดูรายละเอียด</TooltipContent>
+                      </Tooltip>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+
+            {meta && meta.totalPages > 1 && (
+              <div className="flex items-center justify-between mt-4">
+                <p className="text-sm text-muted-foreground">
+                  หน้า {meta.page} จาก {meta.totalPages} (ทั้งหมด {meta.total} รายการ)
+                </p>
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setPage((p) => Math.max(1, p - 1))}
+                    disabled={!meta.hasPrev}
+                  >
+                    ก่อนหน้า
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setPage((p) => p + 1)}
+                    disabled={!meta.hasNext}
+                  >
+                    ถัดไป
+                  </Button>
+                </div>
+              </div>
+            )}
+          </>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
+// ==================== Reel Tab ====================
+
+function ReelTab() {
+  const [subtab, setSubtab] = useState<'exporting' | 'failed'>('exporting')
+  const [page, setPage] = useState(1)
+
+  const exportingQuery = useReelExporting(page)
+  const failedQuery = useReelFailed(page)
+  const retryAll = useRetryReelAll()
+
+  const { data, isLoading } = subtab === 'exporting' ? exportingQuery : failedQuery
+  const items = data?.data ?? []
+  const meta = data?.meta
+
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex flex-row items-start justify-between">
+          <div>
+            <CardTitle>Reel Queue</CardTitle>
+            <CardDescription>
+              รายการ reel ที่กำลัง export หรือล้มเหลว
+            </CardDescription>
+          </div>
+          <div className="flex gap-2">
+            <Button
+              variant={subtab === 'exporting' ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => {
+                setSubtab('exporting')
+                setPage(1)
+              }}
+            >
+              กำลัง export
+            </Button>
+            <Button
+              variant={subtab === 'failed' ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => {
+                setSubtab('failed')
+                setPage(1)
+              }}
+            >
+              ล้มเหลว
+            </Button>
+            {subtab === 'failed' && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => retryAll.mutate()}
+                disabled={retryAll.isPending || items.length === 0}
+              >
+                <RotateCcw className={`h-4 w-4 mr-2 ${retryAll.isPending ? 'animate-spin' : ''}`} />
+                ลองใหม่ทั้งหมด
+              </Button>
+            )}
+          </div>
+        </div>
+
+        <Alert className="mt-4">
+          <HelpCircle className="h-4 w-4" />
+          <AlertDescription>
+            {subtab === 'exporting' ? (
+              <>
+                <strong>กำลัง export:</strong> Reel เหล่านี้กำลังอยู่ระหว่างการ render
+                โดยปกติใช้เวลา 1-3 นาทีต่อ reel
+              </>
+            ) : (
+              <>
+                <strong>ล้มเหลว:</strong> กด "ลองใหม่ทั้งหมด" เพื่อ export reel ใหม่
+              </>
+            )}
+          </AlertDescription>
+        </Alert>
+      </CardHeader>
+      <CardContent>
+        {isLoading ? (
+          <div className="space-y-2">
+            <Skeleton className="h-10 w-full" />
+            <Skeleton className="h-10 w-full" />
+            <Skeleton className="h-10 w-full" />
+          </div>
+        ) : items.length === 0 ? (
+          <div className="text-center py-8 text-muted-foreground">
+            <CheckCircle className="h-12 w-12 mx-auto mb-2 text-status-success" />
+            <p>
+              {subtab === 'exporting'
+                ? 'ไม่มี reel ที่กำลัง export'
+                : 'ไม่มี reel ที่ export ล้มเหลว'}
+            </p>
+          </div>
+        ) : (
+          <>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Video Code</TableHead>
+                  <TableHead>ชื่อ Reel</TableHead>
+                  <TableHead>สถานะ</TableHead>
+                  <TableHead>ความยาว</TableHead>
+                  {subtab === 'failed' && <TableHead>ข้อผิดพลาด</TableHead>}
+                  <TableHead className="w-20">จัดการ</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {items.map((item: ReelQueueItem) => (
+                  <TableRow key={item.id}>
+                    <TableCell className="font-mono text-xs">{item.videoCode}</TableCell>
+                    <TableCell className="max-w-[200px] truncate">{item.reelTitle}</TableCell>
+                    <TableCell>
+                      <Badge
+                        variant={item.status === 'failed' ? 'destructive' : 'secondary'}
+                      >
+                        {item.status === 'exporting' && 'กำลัง export'}
+                        {item.status === 'ready' && 'เสร็จ'}
+                        {item.status === 'failed' && 'ล้มเหลว'}
+                        {item.status === 'draft' && 'ร่าง'}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
+                      <span className="text-xs">{item.duration}s</span>
+                    </TableCell>
+                    {subtab === 'failed' && (
+                      <TableCell className="max-w-[200px]">
+                        <span className="text-destructive text-xs line-clamp-2">
+                          {item.error || '-'}
+                        </span>
+                      </TableCell>
+                    )}
+                    <TableCell>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button variant="ghost" size="sm" asChild>
+                            <Link to={`/reels/create?videoId=${item.videoId}`}>
+                              <ExternalLink className="h-4 w-4" />
+                            </Link>
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>ไปหน้า Reel</TooltipContent>
+                      </Tooltip>
                     </TableCell>
                   </TableRow>
                 ))}

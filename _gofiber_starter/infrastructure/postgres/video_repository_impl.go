@@ -331,3 +331,56 @@ func (r *VideoRepositoryImpl) GetTotalStorageUsed(ctx context.Context) (int64, e
 		Scan(&total).Error
 	return total, err
 }
+
+// === Gallery Queue Methods ===
+
+// GetByGalleryStatus ดึง videos ตาม gallery_status
+func (r *VideoRepositoryImpl) GetByGalleryStatus(ctx context.Context, galleryStatus string, offset, limit int) ([]*models.Video, error) {
+	var videos []*models.Video
+	err := r.db.WithContext(ctx).
+		Preload("User").
+		Preload("Category").
+		Where("status = ? AND gallery_status = ?", models.VideoStatusReady, galleryStatus).
+		Order("updated_at DESC").
+		Offset(offset).Limit(limit).
+		Find(&videos).Error
+	return videos, err
+}
+
+// CountByGalleryStatus นับ videos ตาม gallery_status
+func (r *VideoRepositoryImpl) CountByGalleryStatus(ctx context.Context, galleryStatus string) (int64, error) {
+	var count int64
+	err := r.db.WithContext(ctx).
+		Model(&models.Video{}).
+		Where("status = ? AND gallery_status = ?", models.VideoStatusReady, galleryStatus).
+		Count(&count).Error
+	return count, err
+}
+
+// GetGalleryFailed ดึง videos ที่ gallery failed
+// เงื่อนไข: video status = ready, gallery_status = none, มี last_error ที่เกี่ยวกับ gallery
+func (r *VideoRepositoryImpl) GetGalleryFailed(ctx context.Context, offset, limit int) ([]*models.Video, int64, error) {
+	var videos []*models.Video
+	var total int64
+
+	query := r.db.WithContext(ctx).
+		Model(&models.Video{}).
+		Where("status = ?", models.VideoStatusReady).
+		Where("gallery_status = ?", "none").
+		Where("last_error LIKE ?", "%gallery%")
+
+	// Count total
+	if err := query.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+
+	// Get paginated results
+	err := query.
+		Preload("User").
+		Preload("Category").
+		Order("updated_at DESC").
+		Offset(offset).Limit(limit).
+		Find(&videos).Error
+
+	return videos, total, err
+}

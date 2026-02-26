@@ -122,15 +122,17 @@ func (c *Container) Initialize() error {
 		return err
 	}
 
-	// Initialize QueueService after TranscodingService is available
+	// Initialize QueueService after TranscodingService and ReelService are available
 	c.QueueService = serviceimpl.NewQueueService(
 		c.VideoRepository,
 		c.SubtitleRepository,
 		c.ReelRepository,
 		c.TranscodingService,
 		c.SubtitleService,
-		c.NATSPublisher,
-		c.NATSClient, // สำหรับ PurgeSubtitleStream
+		c.ReelService,       // For reel retry
+		c.NATSPublisher,     // WarmCachePublisher
+		c.NATSPublisher,     // GalleryJobPublisher
+		c.NATSClient,        // SubtitleStreamPurger
 	)
 	logger.Info("Queue service initialized")
 

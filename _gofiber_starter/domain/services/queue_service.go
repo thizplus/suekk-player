@@ -55,4 +55,26 @@ type QueueService interface {
 
 	// WarmCacheAll warm cache ทุก video ที่ยังไม่ได้ warm
 	WarmCacheAll(ctx context.Context) (*dto.WarmAllResponse, error)
+
+	// === Gallery Queue ===
+
+	// GetGalleryProcessing ดึงรายการ video ที่กำลังสร้าง gallery
+	GetGalleryProcessing(ctx context.Context, page, limit int) ([]dto.GalleryQueueItem, int64, error)
+
+	// GetGalleryFailed ดึงรายการ video ที่ gallery failed
+	GetGalleryFailed(ctx context.Context, page, limit int) ([]dto.GalleryQueueItem, int64, error)
+
+	// RetryGalleryAll retry gallery ที่ failed ทั้งหมด
+	RetryGalleryAll(ctx context.Context) (*dto.RetryResponse, error)
+
+	// === Reel Queue ===
+
+	// GetReelExporting ดึงรายการ reel ที่กำลัง export
+	GetReelExporting(ctx context.Context, page, limit int) ([]dto.ReelQueueItem, int64, error)
+
+	// GetReelFailed ดึงรายการ reel ที่ export failed
+	GetReelFailed(ctx context.Context, page, limit int) ([]dto.ReelQueueItem, int64, error)
+
+	// RetryReelAll retry reel ที่ failed ทั้งหมด
+	RetryReelAll(ctx context.Context) (*dto.RetryResponse, error)
 }

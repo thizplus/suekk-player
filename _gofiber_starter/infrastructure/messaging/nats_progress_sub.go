@@ -34,9 +34,9 @@ func (s *NATSProgressSubscriber) Subscribe(ctx context.Context, handler ports.Pr
 			return
 		}
 
-		// ดัก invalid data
-		if update.VideoID == "" {
-			logger.Warn("Received progress update with empty video_id")
+		// ดัก invalid data - ต้องมี VideoID หรือ ReelID
+		if update.VideoID == "" && update.ReelID == "" {
+			logger.Warn("Received progress update with empty video_id and reel_id")
 			return
 		}
 
@@ -55,6 +55,9 @@ func (s *NATSProgressSubscriber) Subscribe(ctx context.Context, handler ports.Pr
 			WorkerID:        update.WorkerID,
 			SubtitleID:      update.SubtitleID,
 			CurrentLanguage: update.CurrentLanguage,
+			// Reel-specific fields
+			ReelID:   update.ReelID,
+			FileSize: update.FileSize,
 		})
 	}
 

@@ -21,10 +21,27 @@ export interface WarmCacheStats {
   failed: number
 }
 
+export interface GalleryStats {
+  none: number
+  processing: number
+  pendingReview: number
+  ready: number
+  failed: number
+}
+
+export interface ReelStats {
+  draft: number
+  exporting: number
+  ready: number
+  failed: number
+}
+
 export interface QueueStatsResponse {
   transcode: TranscodeStats
   subtitle: SubtitleStats
   warmCache: WarmCacheStats
+  gallery: GalleryStats
+  reel: ReelStats
 }
 
 // ==================== Queue Items ====================
@@ -62,6 +79,32 @@ export interface WarmCacheQueueItem {
   qualities: string[]
   error: string
   lastWarmedAt: string | null
+}
+
+export interface GalleryQueueItem {
+  id: string
+  code: string
+  title: string
+  galleryStatus: string
+  sourceCount: number
+  safeCount: number
+  nsfwCount: number
+  error?: string
+  createdAt: string
+  updatedAt: string
+}
+
+export interface ReelQueueItem {
+  id: string
+  videoId: string
+  videoCode: string
+  videoTitle: string
+  reelTitle: string
+  status: string
+  error?: string
+  duration: number
+  createdAt: string
+  updatedAt: string
 }
 
 // ==================== Response Types ====================

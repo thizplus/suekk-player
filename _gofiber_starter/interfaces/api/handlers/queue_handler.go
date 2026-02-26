@@ -249,3 +249,107 @@ func (h *QueueHandler) WarmCacheAll(c *fiber.Ctx) error {
 
 	return utils.SuccessResponse(c, result)
 }
+
+// === Gallery Queue ===
+
+// GetGalleryProcessing ดึงรายการ gallery ที่กำลังสร้าง
+// GET /api/v1/admin/queues/gallery/processing
+func (h *QueueHandler) GetGalleryProcessing(c *fiber.Ctx) error {
+	ctx := c.UserContext()
+
+	page, _ := strconv.Atoi(c.Query("page", "1"))
+	limit, _ := strconv.Atoi(c.Query("limit", "20"))
+
+	items, total, err := h.queueService.GetGalleryProcessing(ctx, page, limit)
+	if err != nil {
+		logger.ErrorContext(ctx, "Failed to get gallery processing", "error", err)
+		return utils.InternalServerErrorResponse(c)
+	}
+
+	return utils.PaginatedSuccessResponse(c, items, total, page, limit)
+}
+
+// GetGalleryFailed ดึงรายการ gallery ที่ล้มเหลว
+// GET /api/v1/admin/queues/gallery/failed
+func (h *QueueHandler) GetGalleryFailed(c *fiber.Ctx) error {
+	ctx := c.UserContext()
+
+	page, _ := strconv.Atoi(c.Query("page", "1"))
+	limit, _ := strconv.Atoi(c.Query("limit", "20"))
+
+	items, total, err := h.queueService.GetGalleryFailed(ctx, page, limit)
+	if err != nil {
+		logger.ErrorContext(ctx, "Failed to get gallery failed", "error", err)
+		return utils.InternalServerErrorResponse(c)
+	}
+
+	return utils.PaginatedSuccessResponse(c, items, total, page, limit)
+}
+
+// RetryGalleryAll retry gallery ที่ failed ทั้งหมด
+// POST /api/v1/admin/queues/gallery/retry-all
+func (h *QueueHandler) RetryGalleryAll(c *fiber.Ctx) error {
+	ctx := c.UserContext()
+
+	logger.InfoContext(ctx, "Retry gallery all request")
+
+	result, err := h.queueService.RetryGalleryAll(ctx)
+	if err != nil {
+		logger.ErrorContext(ctx, "Failed to retry gallery all", "error", err)
+		return utils.InternalServerErrorResponse(c)
+	}
+
+	return utils.SuccessResponse(c, result)
+}
+
+// === Reel Queue ===
+
+// GetReelExporting ดึงรายการ reel ที่กำลัง export
+// GET /api/v1/admin/queues/reel/exporting
+func (h *QueueHandler) GetReelExporting(c *fiber.Ctx) error {
+	ctx := c.UserContext()
+
+	page, _ := strconv.Atoi(c.Query("page", "1"))
+	limit, _ := strconv.Atoi(c.Query("limit", "20"))
+
+	items, total, err := h.queueService.GetReelExporting(ctx, page, limit)
+	if err != nil {
+		logger.ErrorContext(ctx, "Failed to get reel exporting", "error", err)
+		return utils.InternalServerErrorResponse(c)
+	}
+
+	return utils.PaginatedSuccessResponse(c, items, total, page, limit)
+}
+
+// GetReelFailed ดึงรายการ reel ที่ export failed
+// GET /api/v1/admin/queues/reel/failed
+func (h *QueueHandler) GetReelFailed(c *fiber.Ctx) error {
+	ctx := c.UserContext()
+
+	page, _ := strconv.Atoi(c.Query("page", "1"))
+	limit, _ := strconv.Atoi(c.Query("limit", "20"))
+
+	items, total, err := h.queueService.GetReelFailed(ctx, page, limit)
+	if err != nil {
+		logger.ErrorContext(ctx, "Failed to get reel failed", "error", err)
+		return utils.InternalServerErrorResponse(c)
+	}
+
+	return utils.PaginatedSuccessResponse(c, items, total, page, limit)
+}
+
+// RetryReelAll retry reel ที่ failed ทั้งหมด
+// POST /api/v1/admin/queues/reel/retry-all
+func (h *QueueHandler) RetryReelAll(c *fiber.Ctx) error {
+	ctx := c.UserContext()
+
+	logger.InfoContext(ctx, "Retry reel all request")
+
+	result, err := h.queueService.RetryReelAll(ctx)
+	if err != nil {
+		logger.ErrorContext(ctx, "Failed to retry reel all", "error", err)
+		return utils.InternalServerErrorResponse(c)
+	}
+
+	return utils.SuccessResponse(c, result)
+}

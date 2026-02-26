@@ -34,4 +34,16 @@ func SetupQueueRoutes(api fiber.Router, h *handlers.Handlers) {
 	warmCache.Get("/failed", h.QueueHandler.GetWarmCacheFailed)
 	warmCache.Post("/:id/warm", h.QueueHandler.WarmCacheOne)
 	warmCache.Post("/warm-all", h.QueueHandler.WarmCacheAll)
+
+	// Gallery queue
+	gallery := admin.Group("/gallery")
+	gallery.Get("/processing", h.QueueHandler.GetGalleryProcessing)
+	gallery.Get("/failed", h.QueueHandler.GetGalleryFailed)
+	gallery.Post("/retry-all", h.QueueHandler.RetryGalleryAll)
+
+	// Reel queue
+	reel := admin.Group("/reel")
+	reel.Get("/exporting", h.QueueHandler.GetReelExporting)
+	reel.Get("/failed", h.QueueHandler.GetReelFailed)
+	reel.Post("/retry-all", h.QueueHandler.RetryReelAll)
 }

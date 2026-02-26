@@ -66,15 +66,23 @@ func (pb *ProgressBroadcaster) Start() error {
 
 // handleProgressUpdate จัดการ progress update จาก messaging (ผ่าน interface)
 func (pb *ProgressBroadcaster) handleProgressUpdate(update *ports.ProgressData) {
-	// Validate input
-	if update == nil || update.VideoID == "" {
+	// Validate input - ถ้าไม่มี VideoID ให้ลองใช้ ReelID แทน (สำหรับ reel progress)
+	if update == nil || (update.VideoID == "" && update.ReelID == "") {
 		logger.Warn("Invalid progress data received")
 		return
 	}
 
-	// ตรวจสอบว่าเป็น subtitle progress หรือ transcode progress หรือ gallery progress
+	// ตรวจสอบว่าเป็น reel progress
+	isReelProgress := update.ReelID != ""
+	if isReelProgress {
+		pb.handleReelProgress(update)
+		return
+	}
+
+	// ตรวจสอบว่าเป็น subtitle progress หรือ transcode progress หรือ gallery progress หรือ warmcache
 	isSubtitleProgress := update.SubtitleID != "" || update.Stage != ""
 	isGalleryProgress := update.Quality == "gallery"
+	isWarmCacheProgress := update.Quality == "warmcache"
 
 	if isSubtitleProgress {
 		pb.handleSubtitleProgress(update)
@@ -83,6 +91,11 @@ func (pb *ProgressBroadcaster) handleProgressUpdate(update *ports.ProgressData) 
 
 	if isGalleryProgress {
 		pb.handleGalleryProgress(update)
+		return
+	}
+
+	if isWarmCacheProgress {
+		pb.handleWarmCacheProgress(update)
 		return
 	}
 
@@ -405,6 +418,77 @@ func (pb *ProgressBroadcaster) handleGalleryProgress(update *ports.ProgressData)
 	)
 }
 
+// handleWarmCacheProgress จัดการ warm cache progress update
+func (pb *ProgressBroadcaster) handleWarmCacheProgress(update *ports.ProgressData) {
+	// Map status
+	status := update.Status
+	if status == "processing" && update.Progress == 0 {
+		status = "started"
+	}
+
+	// ดึง video title จาก cache หรือ database
+	videoTitle := pb.getVideoTitle(update.VideoID, update.VideoCode)
+
+	// สร้าง WebSocket message สำหรับ warm cache
+	wsMessage := ProgressMessage{
+		VideoID:      update.VideoID,
+		VideoCode:    update.VideoCode,
+		VideoTitle:   videoTitle,
+		Type:         "warmcache",
+		Status:       status,
+		Progress:     update.Progress,
+		CurrentStep:  update.Message,
+		Message:      update.Message,
+		ErrorMessage: update.Error,
+	}
+
+	// Broadcast ไปยังทุก client
+	pb.manager.BroadcastToAll("video_progress", wsMessage)
+
+	logger.Info("WarmCache progress broadcasted to WebSocket",
+		"video_id", update.VideoID,
+		"status", update.Status,
+		"progress", update.Progress,
+		"worker_id", update.WorkerID,
+		"clients_count", pb.manager.GetTotalClients(),
+	)
+}
+
+// handleReelProgress จัดการ reel progress update
+func (pb *ProgressBroadcaster) handleReelProgress(update *ports.ProgressData) {
+	// Map status
+	status := update.Status
+	if status == "processing" && update.Progress == 0 {
+		status = "started"
+	}
+
+	// สร้าง WebSocket message สำหรับ reel
+	wsMessage := ReelProgressMessage{
+		ReelID:       update.ReelID,
+		VideoCode:    update.VideoCode,
+		Type:         "reel",
+		Status:       status,
+		Progress:     update.Progress,
+		CurrentStep:  update.Message,
+		Message:      update.Message,
+		ErrorMessage: update.Error,
+		OutputURL:    update.OutputPath,
+		FileSize:     update.FileSize,
+	}
+
+	// Broadcast ไปยังทุก client
+	pb.manager.BroadcastToAll("reel_progress", wsMessage)
+
+	logger.Info("Reel progress broadcasted to WebSocket",
+		"reel_id", update.ReelID,
+		"video_code", update.VideoCode,
+		"status", update.Status,
+		"progress", update.Progress,
+		"worker_id", update.WorkerID,
+		"clients_count", pb.manager.GetTotalClients(),
+	)
+}
+
 // getVideoTitle ดึง video title จาก cache หรือ database
 func (pb *ProgressBroadcaster) getVideoTitle(videoID, videoCode string) string {
 	// ลอง cache ก่อน
@@ -456,4 +540,18 @@ type ProgressMessage struct {
 	// Subtitle-specific fields
 	SubtitleID string `json:"subtitleId,omitempty"`
 	Language   string `json:"language,omitempty"`
+}
+
+// ReelProgressMessage โครงสร้าง message สำหรับ reel progress
+type ReelProgressMessage struct {
+	ReelID       string  `json:"reelId"`
+	VideoCode    string  `json:"videoCode"`
+	Type         string  `json:"type"`         // "reel"
+	Status       string  `json:"status"`       // "started", "processing", "completed", "failed"
+	Progress     float64 `json:"progress"`     // 0-100
+	CurrentStep  string  `json:"currentStep"`
+	Message      string  `json:"message"`
+	ErrorMessage string  `json:"errorMessage,omitempty"`
+	OutputURL    string  `json:"outputUrl,omitempty"`
+	FileSize     int64   `json:"fileSize,omitempty"`
 }

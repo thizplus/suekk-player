@@ -23,13 +23,20 @@ type SubtitleStreamPurger interface {
 	PurgeSubtitleStream(ctx context.Context) (uint64, error)
 }
 
+// GalleryJobPublisher interface สำหรับส่ง gallery jobs
+type GalleryJobPublisher interface {
+	PublishGalleryJob(ctx context.Context, job *nats.GalleryJob) error
+}
+
 type QueueServiceImpl struct {
 	videoRepo            repositories.VideoRepository
 	subtitleRepo         repositories.SubtitleRepository
 	reelRepo             repositories.ReelRepository
 	transcodingService   services.TranscodingService
 	subtitleService      services.SubtitleService
+	reelService          services.ReelService
 	warmCachePublisher   WarmCachePublisher
+	galleryJobPublisher  GalleryJobPublisher
 	subtitleStreamPurger SubtitleStreamPurger
 }
 
@@ -39,7 +46,9 @@ func NewQueueService(
 	reelRepo repositories.ReelRepository,
 	transcodingService services.TranscodingService,
 	subtitleService services.SubtitleService,
+	reelService services.ReelService,
 	warmCachePublisher WarmCachePublisher,
+	galleryJobPublisher GalleryJobPublisher,
 	subtitleStreamPurger SubtitleStreamPurger,
 ) services.QueueService {
 	return &QueueServiceImpl{
@@ -48,7 +57,9 @@ func NewQueueService(
 		reelRepo:             reelRepo,
 		transcodingService:   transcodingService,
 		subtitleService:      subtitleService,
+		reelService:          reelService,
 		warmCachePublisher:   warmCachePublisher,
+		galleryJobPublisher:  galleryJobPublisher,
 		subtitleStreamPurger: subtitleStreamPurger,
 	}
 }
@@ -76,6 +87,9 @@ func (s *QueueServiceImpl) GetQueueStats(ctx context.Context) (*dto.QueueStatsRe
 	// Reel stats
 	reelDraft, reelExporting, reelReady, reelFailed := s.countReelStats(ctx)
 
+	// Gallery stats
+	galleryNone, galleryProcessing, galleryPendingReview, galleryReady, galleryFailed := s.countGalleryStats(ctx)
+
 	return &dto.QueueStatsResponse{
 		Transcode: dto.TranscodeStats{
 			Pending:    pending,
@@ -94,6 +108,13 @@ func (s *QueueServiceImpl) GetQueueStats(ctx context.Context) (*dto.QueueStatsRe
 			Warming:   warming,
 			Cached:    cached,
 			Failed:    warmFailed,
+		},
+		Gallery: dto.GalleryStats{
+			None:          galleryNone,
+			Processing:    galleryProcessing,
+			PendingReview: galleryPendingReview,
+			Ready:         galleryReady,
+			Failed:        galleryFailed,
 		},
 		Reel: dto.ReelStats{
 			Draft:     reelDraft,
@@ -686,6 +707,248 @@ func (s *QueueServiceImpl) WarmCacheAll(ctx context.Context) (*dto.WarmAllRespon
 	logger.InfoContext(ctx, "Warm cache all completed",
 		"total_found", response.TotalFound,
 		"total_queued", response.TotalQueued,
+	)
+
+	return response, nil
+}
+
+// === Gallery Queue ===
+
+func (s *QueueServiceImpl) countGalleryStats(ctx context.Context) (none, processing, pendingReview, ready, failed int64) {
+	none, _ = s.videoRepo.CountByGalleryStatus(ctx, "none")
+	processing, _ = s.videoRepo.CountByGalleryStatus(ctx, "processing")
+	pendingReview, _ = s.videoRepo.CountByGalleryStatus(ctx, "pending_review")
+	ready, _ = s.videoRepo.CountByGalleryStatus(ctx, "ready")
+
+	// Failed: gallery_status = none และมี error ที่เกี่ยวกับ gallery
+	_, failed, _ = s.videoRepo.GetGalleryFailed(ctx, 0, 1)
+	return
+}
+
+func (s *QueueServiceImpl) GetGalleryProcessing(ctx context.Context, page, limit int) ([]dto.GalleryQueueItem, int64, error) {
+	offset := (page - 1) * limit
+	videos, err := s.videoRepo.GetByGalleryStatus(ctx, "processing", offset, limit)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	total, _ := s.videoRepo.CountByGalleryStatus(ctx, "processing")
+
+	items := make([]dto.GalleryQueueItem, len(videos))
+	for i, v := range videos {
+		items[i] = dto.GalleryQueueItem{
+			ID:            v.ID,
+			Code:          v.Code,
+			Title:         v.Title,
+			GalleryStatus: v.GalleryStatus,
+			SourceCount:   v.GallerySourceCount,
+			SafeCount:     v.GallerySafeCount,
+			NsfwCount:     v.GalleryNsfwCount,
+			Error:         v.LastError,
+			CreatedAt:     v.CreatedAt,
+			UpdatedAt:     v.UpdatedAt,
+		}
+	}
+
+	return items, total, nil
+}
+
+func (s *QueueServiceImpl) GetGalleryFailed(ctx context.Context, page, limit int) ([]dto.GalleryQueueItem, int64, error) {
+	offset := (page - 1) * limit
+	videos, total, err := s.videoRepo.GetGalleryFailed(ctx, offset, limit)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	items := make([]dto.GalleryQueueItem, len(videos))
+	for i, v := range videos {
+		items[i] = dto.GalleryQueueItem{
+			ID:            v.ID,
+			Code:          v.Code,
+			Title:         v.Title,
+			GalleryStatus: v.GalleryStatus,
+			SourceCount:   v.GallerySourceCount,
+			SafeCount:     v.GallerySafeCount,
+			NsfwCount:     v.GalleryNsfwCount,
+			Error:         v.LastError,
+			CreatedAt:     v.CreatedAt,
+			UpdatedAt:     v.UpdatedAt,
+		}
+	}
+
+	return items, total, nil
+}
+
+func (s *QueueServiceImpl) RetryGalleryAll(ctx context.Context) (*dto.RetryResponse, error) {
+	logger.InfoContext(ctx, "Retrying all gallery failed videos")
+
+	videos, _, err := s.videoRepo.GetGalleryFailed(ctx, 0, 1000)
+	if err != nil {
+		return nil, err
+	}
+
+	response := &dto.RetryResponse{
+		TotalFound: len(videos),
+	}
+
+	if len(videos) == 0 {
+		response.Message = "No failed gallery videos found"
+		return response, nil
+	}
+
+	if s.galleryJobPublisher == nil {
+		return nil, fmt.Errorf("gallery job publisher not available")
+	}
+
+	var errors []string
+	for _, v := range videos {
+		// Create gallery job
+		outputPath := fmt.Sprintf("gallery/%s", v.Code)
+		job := nats.NewGalleryJob(
+			v.ID.String(),
+			v.Code,
+			fmt.Sprintf("hls/%s", v.Code),
+			"720p",
+			v.Duration,
+			outputPath,
+			100,
+		)
+
+		if err := s.galleryJobPublisher.PublishGalleryJob(ctx, job); err != nil {
+			errors = append(errors, fmt.Sprintf("%s: %v", v.Code, err))
+			response.Skipped++
+			continue
+		}
+
+		// Update gallery status to processing
+		v.GalleryStatus = "processing"
+		v.LastError = ""
+		s.videoRepo.Update(ctx, v)
+
+		response.TotalRetried++
+	}
+
+	response.Errors = errors
+	response.Message = fmt.Sprintf("Retried %d/%d gallery failed videos", response.TotalRetried, response.TotalFound)
+
+	logger.InfoContext(ctx, "Retry gallery all completed",
+		"total_found", response.TotalFound,
+		"total_retried", response.TotalRetried,
+	)
+
+	return response, nil
+}
+
+// === Reel Queue ===
+
+func (s *QueueServiceImpl) GetReelExporting(ctx context.Context, page, limit int) ([]dto.ReelQueueItem, int64, error) {
+	offset := (page - 1) * limit
+	reels, err := s.reelRepo.GetByStatus(ctx, models.ReelStatusExporting, offset, limit)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	total, _ := s.reelRepo.CountByStatus(ctx, models.ReelStatusExporting)
+
+	items := make([]dto.ReelQueueItem, len(reels))
+	for i, r := range reels {
+		videoCode := ""
+		videoTitle := ""
+		if r.Video != nil {
+			videoCode = r.Video.Code
+			videoTitle = r.Video.Title
+		}
+
+		items[i] = dto.ReelQueueItem{
+			ID:         r.ID,
+			VideoID:    r.VideoID,
+			VideoCode:  videoCode,
+			VideoTitle: videoTitle,
+			ReelTitle:  r.Title,
+			Status:     string(r.Status),
+			Error:      r.ExportError,
+			Duration:   r.Duration,
+			CreatedAt:  r.CreatedAt,
+			UpdatedAt:  r.UpdatedAt,
+		}
+	}
+
+	return items, total, nil
+}
+
+func (s *QueueServiceImpl) GetReelFailed(ctx context.Context, page, limit int) ([]dto.ReelQueueItem, int64, error) {
+	offset := (page - 1) * limit
+	reels, err := s.reelRepo.GetByStatus(ctx, models.ReelStatusFailed, offset, limit)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	total, _ := s.reelRepo.CountByStatus(ctx, models.ReelStatusFailed)
+
+	items := make([]dto.ReelQueueItem, len(reels))
+	for i, r := range reels {
+		videoCode := ""
+		videoTitle := ""
+		if r.Video != nil {
+			videoCode = r.Video.Code
+			videoTitle = r.Video.Title
+		}
+
+		items[i] = dto.ReelQueueItem{
+			ID:         r.ID,
+			VideoID:    r.VideoID,
+			VideoCode:  videoCode,
+			VideoTitle: videoTitle,
+			ReelTitle:  r.Title,
+			Status:     string(r.Status),
+			Error:      r.ExportError,
+			Duration:   r.Duration,
+			CreatedAt:  r.CreatedAt,
+			UpdatedAt:  r.UpdatedAt,
+		}
+	}
+
+	return items, total, nil
+}
+
+func (s *QueueServiceImpl) RetryReelAll(ctx context.Context) (*dto.RetryResponse, error) {
+	logger.InfoContext(ctx, "Retrying all reel failed exports")
+
+	reels, err := s.reelRepo.GetByStatus(ctx, models.ReelStatusFailed, 0, 1000)
+	if err != nil {
+		return nil, err
+	}
+
+	response := &dto.RetryResponse{
+		TotalFound: len(reels),
+	}
+
+	if len(reels) == 0 {
+		response.Message = "No failed reels found"
+		return response, nil
+	}
+
+	if s.reelService == nil {
+		return nil, fmt.Errorf("reel service not available")
+	}
+
+	var errors []string
+	for _, r := range reels {
+		// Use existing reel service Export method
+		if err := s.reelService.Export(ctx, r.ID, r.UserID); err != nil {
+			errors = append(errors, fmt.Sprintf("%s: %v", r.ID, err))
+			response.Skipped++
+			continue
+		}
+		response.TotalRetried++
+	}
+
+	response.Errors = errors
+	response.Message = fmt.Sprintf("Retried %d/%d failed reels", response.TotalRetried, response.TotalFound)
+
+	logger.InfoContext(ctx, "Retry reel all completed",
+		"total_found", response.TotalFound,
+		"total_retried", response.TotalRetried,
 	)
 
 	return response, nil

@@ -72,6 +72,11 @@ type ProgressUpdate struct {
 	// Subtitle-specific fields (from Python worker)
 	SubtitleID      string `json:"subtitle_id,omitempty"`
 	CurrentLanguage string `json:"current_language,omitempty"`
+
+	// Reel-specific fields (from reel worker - uses different field names)
+	ReelID   string `json:"reel_id,omitempty"`
+	FileSize int64  `json:"file_size,omitempty"`
+	// Note: reel worker ใช้ output_url แทน output_path แต่เรา map เป็น OutputPath
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════

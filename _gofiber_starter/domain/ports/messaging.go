@@ -55,6 +55,10 @@ type ProgressData struct {
 	// Subtitle-specific fields
 	SubtitleID      string
 	CurrentLanguage string
+
+	// Reel-specific fields
+	ReelID   string
+	FileSize int64
 }
 
 // ProgressPublisherPort - Interface สำหรับส่ง progress

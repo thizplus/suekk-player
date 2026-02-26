@@ -19,6 +19,16 @@ export const queueKeys = {
     [...queueKeys.warmCache(), 'pending', { page, limit }] as const,
   warmCacheFailed: (page: number, limit: number) =>
     [...queueKeys.warmCache(), 'failed', { page, limit }] as const,
+  gallery: () => [...queueKeys.all, 'gallery'] as const,
+  galleryProcessing: (page: number, limit: number) =>
+    [...queueKeys.gallery(), 'processing', { page, limit }] as const,
+  galleryFailed: (page: number, limit: number) =>
+    [...queueKeys.gallery(), 'failed', { page, limit }] as const,
+  reel: () => [...queueKeys.all, 'reel'] as const,
+  reelExporting: (page: number, limit: number) =>
+    [...queueKeys.reel(), 'exporting', { page, limit }] as const,
+  reelFailed: (page: number, limit: number) =>
+    [...queueKeys.reel(), 'failed', { page, limit }] as const,
 }
 
 // ==================== Stats ====================
@@ -166,6 +176,66 @@ export function useWarmCacheAll() {
     },
     onError: () => {
       toast.error('Warm cache failed')
+    },
+  })
+}
+
+// ==================== Gallery Queue ====================
+
+export function useGalleryProcessing(page = 1, limit = 20) {
+  return useQuery({
+    queryKey: queueKeys.galleryProcessing(page, limit),
+    queryFn: () => queueService.getGalleryProcessing({ page, limit }),
+  })
+}
+
+export function useGalleryFailed(page = 1, limit = 20) {
+  return useQuery({
+    queryKey: queueKeys.galleryFailed(page, limit),
+    queryFn: () => queueService.getGalleryFailed({ page, limit }),
+  })
+}
+
+export function useRetryGalleryAll() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: () => queueService.retryGalleryAll(),
+    onSuccess: (data) => {
+      toast.success(data.message)
+      queryClient.invalidateQueries({ queryKey: queueKeys.all })
+    },
+    onError: () => {
+      toast.error('Retry gallery failed')
+    },
+  })
+}
+
+// ==================== Reel Queue ====================
+
+export function useReelExporting(page = 1, limit = 20) {
+  return useQuery({
+    queryKey: queueKeys.reelExporting(page, limit),
+    queryFn: () => queueService.getReelExporting({ page, limit }),
+  })
+}
+
+export function useReelFailed(page = 1, limit = 20) {
+  return useQuery({
+    queryKey: queueKeys.reelFailed(page, limit),
+    queryFn: () => queueService.getReelFailed({ page, limit }),
+  })
+}
+
+export function useRetryReelAll() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: () => queueService.retryReelAll(),
+    onSuccess: (data) => {
+      toast.success(data.message)
+      queryClient.invalidateQueries({ queryKey: queueKeys.all })
+    },
+    onError: () => {
+      toast.error('Retry reel failed')
     },
   })
 }

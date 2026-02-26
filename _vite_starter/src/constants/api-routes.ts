@@ -152,6 +152,14 @@ export const QUEUE_ROUTES = {
   WARM_CACHE_FAILED: '/api/v1/admin/queues/warm-cache/failed',
   WARM_CACHE_ONE: (id: string) => `/api/v1/admin/queues/warm-cache/${id}/warm`,
   WARM_CACHE_ALL: '/api/v1/admin/queues/warm-cache/warm-all',
+  // Gallery Queue
+  GALLERY_PROCESSING: '/api/v1/admin/queues/gallery/processing',
+  GALLERY_FAILED: '/api/v1/admin/queues/gallery/failed',
+  GALLERY_RETRY_ALL: '/api/v1/admin/queues/gallery/retry-all',
+  // Reel Queue
+  REEL_EXPORTING: '/api/v1/admin/queues/reel/exporting',
+  REEL_FAILED: '/api/v1/admin/queues/reel/failed',
+  REEL_RETRY_ALL: '/api/v1/admin/queues/reel/retry-all',
 }
 
 // Reel Generator - สร้าง reels สำหรับ social media

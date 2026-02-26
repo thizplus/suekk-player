@@ -32,6 +32,7 @@ type ReelRepository interface {
 	CountByUserID(ctx context.Context, userID uuid.UUID) (int64, error)
 	CountByVideoID(ctx context.Context, videoID uuid.UUID) (int64, error)
 	CountByVideoIDs(ctx context.Context, videoIDs []uuid.UUID) (map[uuid.UUID]int64, error) // Batch count for multiple videos
+	CountByStatus(ctx context.Context, status models.ReelStatus) (int64, error)
 }
 
 type ReelTemplateRepository interface {

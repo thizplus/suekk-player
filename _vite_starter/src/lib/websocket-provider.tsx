@@ -1,9 +1,10 @@
 import { createContext, useContext, useEffect, useRef, useState, useCallback, type ReactNode } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { videoKeys } from '@/features/video/hooks'
+import { queueKeys } from '@/features/queue/hooks'
 
 // Progress Types (ตรงกับ backend ProgressData)
-export type ProgressType = 'upload' | 'transcode' | 'subtitle' | 'gallery'
+export type ProgressType = 'upload' | 'transcode' | 'subtitle' | 'gallery' | 'reel' | 'warmcache'
 export type ProgressStatus = 'started' | 'processing' | 'completed' | 'failed'
 
 export interface VideoProgress {
@@ -20,6 +21,20 @@ export interface VideoProgress {
   // Subtitle-specific fields
   subtitleId?: string
   language?: string
+}
+
+export interface ReelProgress {
+  reelId: string
+  videoCode: string
+  type: 'reel'
+  status: ProgressStatus
+  progress: number
+  currentStep: string
+  message: string
+  errorMessage?: string
+  outputUrl?: string
+  fileSize?: number
+  timestamp?: number
 }
 
 interface WebSocketContextValue {
@@ -86,9 +101,10 @@ export function WebSocketProvider({ children }: WebSocketProviderProps) {
                 // อัพเดทให้แสดง 100% ก่อน
                 newMap.set(progressKey, progressData)
 
-                // Invalidate video queries เพื่อ refresh list
+                // Invalidate video queries และ queue stats เพื่อ refresh
                 setTimeout(() => {
                   queryClient.invalidateQueries({ queryKey: videoKeys.all })
+                  queryClient.invalidateQueries({ queryKey: queueKeys.all })
                 }, 500)
 
                 // ลบออกหลังจาก 3 วินาที (ลดเวลาลง)
@@ -122,11 +138,12 @@ export function WebSocketProvider({ children }: WebSocketProviderProps) {
               if (progressData.status === 'completed' || progressData.status === 'failed') {
                 newMap.set(progressKey, progressData)
 
-                // Invalidate subtitle และ video queries เพื่อ refresh
+                // Invalidate subtitle, video และ queue queries เพื่อ refresh
                 setTimeout(() => {
                   queryClient.invalidateQueries({ queryKey: ['subtitle', 'video', progressData.videoId] })
                   queryClient.invalidateQueries({ queryKey: videoKeys.lists() })
                   queryClient.invalidateQueries({ queryKey: videoKeys.detail(progressData.videoId) })
+                  queryClient.invalidateQueries({ queryKey: queueKeys.all })
                 }, 500)
 
                 // ลบออกหลังจาก 3 วินาที
@@ -143,6 +160,22 @@ export function WebSocketProvider({ children }: WebSocketProviderProps) {
 
               return newMap
             })
+            break
+          }
+
+          case 'reel_progress': {
+            const progressData = message.data as ReelProgress
+            progressData.timestamp = Date.now()
+            console.log('[WebSocket] Reel progress:', progressData.reelId, progressData.videoCode, progressData.progress + '%', progressData.currentStep)
+
+            // Invalidate queue stats เมื่อ reel เสร็จหรือ fail
+            if (progressData.status === 'completed' || progressData.status === 'failed') {
+              setTimeout(() => {
+                queryClient.invalidateQueries({ queryKey: queueKeys.all })
+                // Invalidate reel queries ด้วย
+                queryClient.invalidateQueries({ queryKey: ['reel'] })
+              }, 500)
+            }
             break
           }
 

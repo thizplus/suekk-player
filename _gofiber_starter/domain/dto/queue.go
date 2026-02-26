@@ -13,6 +13,7 @@ type QueueStatsResponse struct {
 	Transcode TranscodeStats `json:"transcode"`
 	Subtitle  SubtitleStats  `json:"subtitle"`
 	WarmCache WarmCacheStats `json:"warmCache"`
+	Gallery   GalleryStats   `json:"gallery"`
 	Reel      ReelStats      `json:"reel"`
 }
 
@@ -46,6 +47,15 @@ type ReelStats struct {
 	Exporting int64 `json:"exporting"` // กำลัง export
 	Ready     int64 `json:"ready"`     // export สำเร็จ
 	Failed    int64 `json:"failed"`    // export ล้มเหลว
+}
+
+// GalleryStats สถิติ gallery generation queue
+type GalleryStats struct {
+	None          int64 `json:"none"`          // ยังไม่มี gallery
+	Processing    int64 `json:"processing"`    // กำลังสร้าง
+	PendingReview int64 `json:"pendingReview"` // รอ admin review
+	Ready         int64 `json:"ready"`         // พร้อมใช้งาน
+	Failed        int64 `json:"failed"`        // ล้มเหลว
 }
 
 // === Transcode Queue Items ===
@@ -105,6 +115,48 @@ type WarmCacheQueueItem struct {
 // WarmCacheQueueListResponse รายการ warm cache pending/failed
 type WarmCacheQueueListResponse struct {
 	Items []WarmCacheQueueItem `json:"items"`
+}
+
+// === Gallery Queue Items ===
+
+// GalleryQueueItem รายการ video ใน gallery queue
+type GalleryQueueItem struct {
+	ID            uuid.UUID `json:"id"`
+	Code          string    `json:"code"`
+	Title         string    `json:"title"`
+	GalleryStatus string    `json:"galleryStatus"` // none, processing, pending_review, ready
+	SourceCount   int       `json:"sourceCount"`   // ภาพใน source/
+	SafeCount     int       `json:"safeCount"`     // ภาพ safe
+	NsfwCount     int       `json:"nsfwCount"`     // ภาพ nsfw
+	Error         string    `json:"error,omitempty"`
+	CreatedAt     time.Time `json:"createdAt"`
+	UpdatedAt     time.Time `json:"updatedAt"`
+}
+
+// GalleryQueueListResponse รายการ gallery processing/failed
+type GalleryQueueListResponse struct {
+	Items []GalleryQueueItem `json:"items"`
+}
+
+// === Reel Queue Items ===
+
+// ReelQueueItem รายการ reel ใน queue
+type ReelQueueItem struct {
+	ID         uuid.UUID `json:"id"`
+	VideoID    uuid.UUID `json:"videoId"`
+	VideoCode  string    `json:"videoCode"`
+	VideoTitle string    `json:"videoTitle"`
+	ReelTitle  string    `json:"reelTitle"`
+	Status     string    `json:"status"` // draft, exporting, ready, failed
+	Error      string    `json:"error,omitempty"`
+	Duration   int       `json:"duration"`
+	CreatedAt  time.Time `json:"createdAt"`
+	UpdatedAt  time.Time `json:"updatedAt"`
+}
+
+// ReelQueueListResponse รายการ reel exporting/failed
+type ReelQueueListResponse struct {
+	Items []ReelQueueItem `json:"items"`
 }
 
 // === Retry Responses ===

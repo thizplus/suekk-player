@@ -5,6 +5,8 @@ import type {
   TranscodeQueueItem,
   SubtitleQueueItem,
   WarmCacheQueueItem,
+  GalleryQueueItem,
+  ReelQueueItem,
   RetryResponse,
   ClearResponse,
   QueueMissingResponse,
@@ -92,5 +94,43 @@ export const queueService = {
 
   async warmCacheAll(): Promise<WarmAllResponse> {
     return apiClient.post<WarmAllResponse>(QUEUE_ROUTES.WARM_CACHE_ALL)
+  },
+
+  // === Gallery Queue ===
+  async getGalleryProcessing(params?: ListParams): Promise<PaginatedResult<GalleryQueueItem>> {
+    return apiClient.getPaginated<GalleryQueueItem>(
+      QUEUE_ROUTES.GALLERY_PROCESSING,
+      { params }
+    )
+  },
+
+  async getGalleryFailed(params?: ListParams): Promise<PaginatedResult<GalleryQueueItem>> {
+    return apiClient.getPaginated<GalleryQueueItem>(
+      QUEUE_ROUTES.GALLERY_FAILED,
+      { params }
+    )
+  },
+
+  async retryGalleryAll(): Promise<RetryResponse> {
+    return apiClient.post<RetryResponse>(QUEUE_ROUTES.GALLERY_RETRY_ALL)
+  },
+
+  // === Reel Queue ===
+  async getReelExporting(params?: ListParams): Promise<PaginatedResult<ReelQueueItem>> {
+    return apiClient.getPaginated<ReelQueueItem>(
+      QUEUE_ROUTES.REEL_EXPORTING,
+      { params }
+    )
+  },
+
+  async getReelFailed(params?: ListParams): Promise<PaginatedResult<ReelQueueItem>> {
+    return apiClient.getPaginated<ReelQueueItem>(
+      QUEUE_ROUTES.REEL_FAILED,
+      { params }
+    )
+  },
+
+  async retryReelAll(): Promise<RetryResponse> {
+    return apiClient.post<RetryResponse>(QUEUE_ROUTES.REEL_RETRY_ALL)
   },
 }
