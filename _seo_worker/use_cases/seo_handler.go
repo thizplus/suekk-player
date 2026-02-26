@@ -118,10 +118,10 @@ func (h *SEOHandler) ProcessJob(ctx context.Context, job *models.SEOArticleJob) 
 	makerInfo := metadata.Maker
 	tags := metadata.Tags
 
-	// 1.5 Fetch previous works for each cast
+	// 1.5 Fetch previous works for each cast (จาก articles ที่ publish แล้ว)
 	var previousWorks []models.PreviousWork
 	for _, cast := range casts {
-		works, _ := h.metadataFetcher.FetchPreviousWorks(ctx, cast.ID, 5)
+		works, _ := h.metadataFetcher.FetchPreviousWorks(ctx, cast.Slug, 5)
 		previousWorks = append(previousWorks, works...)
 	}
 
@@ -558,7 +558,7 @@ func (h *SEOHandler) buildArticle(
 		MakerInfo:       makerInfo,
 		PreviousWorks:   previousWorks,
 		TagDescriptions: tagDescs,
-		ContextualLinks: h.filterValidContextualLinks(aiOutput.ContextualLinks, relatedArticles),
+		ContextualLinks: h.filterValidContextualLinks(aiOutput.ContextualLinks, relatedArticles, slug),
 
 		// === [E] Experience ===
 		SceneLocations: aiOutput.SceneLocations,
@@ -666,11 +666,13 @@ func formatDuration(seconds int) string {
 	return result
 }
 
-// filterValidContextualLinks กรอง contextual links ที่ valid (slug ต้องมีอยู่จริง)
-// ป้องกัน AI แต่ง slug ขึ้นมาเอง
+// filterValidContextualLinks กรอง contextual links ที่ valid
+// - slug ต้องมีอยู่จริง (ป้องกัน AI แต่ง slug ขึ้นมาเอง)
+// - ห้าม link ไปหาตัวเอง (self-reference)
 func (h *SEOHandler) filterValidContextualLinks(
 	links []models.ContextualLink,
 	validArticles []ports.RelatedArticleForAI,
+	currentSlug string,
 ) []models.ContextualLink {
 	if len(links) == 0 || len(validArticles) == 0 {
 		return nil
@@ -682,9 +684,20 @@ func (h *SEOHandler) filterValidContextualLinks(
 		validSlugs[article.Slug] = true
 	}
 
-	// กรองเฉพาะ links ที่ slug อยู่ใน valid slugs
+	// กรองเฉพาะ links ที่:
+	// 1. slug อยู่ใน valid slugs
+	// 2. ไม่ใช่ตัวเอง (self-reference)
 	filtered := make([]models.ContextualLink, 0, len(links))
 	for _, link := range links {
+		// ห้าม link ไปหาตัวเอง
+		if link.LinkedSlug == currentSlug {
+			h.logger.Warn("Filtered out self-referencing contextual link",
+				"slug", link.LinkedSlug,
+				"reason", "self-reference",
+			)
+			continue
+		}
+
 		if validSlugs[link.LinkedSlug] {
 			filtered = append(filtered, link)
 		} else {
@@ -735,8 +748,14 @@ func (h *SEOHandler) buildRelatedArticlesForAI(
 	related := make([]ports.RelatedArticleForAI, maxRelated)
 	for i := 0; i < maxRelated; i++ {
 		work := previousWorks[i]
-		// Slug = lowercase video code
-		slug := strings.ToLower(work.VideoCode)
+
+		// ใช้ Slug จาก API โดยตรง (e.g., "dass-541")
+		// ไม่ใช้ VideoCode เพราะเป็น internal code (e.g., "3993bp6j")
+		slug := work.Slug
+		if slug == "" {
+			// Fallback: ถ้าไม่มี slug ให้ใช้ lowercase VideoCode (legacy)
+			slug = strings.ToLower(work.VideoCode)
+		}
 
 		related[i] = ports.RelatedArticleForAI{
 			Slug:      slug,

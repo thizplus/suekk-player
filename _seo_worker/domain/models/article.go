@@ -242,7 +242,8 @@ type CastMetadata struct {
 // PreviousWork - ผลงานก่อนหน้าของ cast
 type PreviousWork struct {
 	VideoID   string `json:"videoId"`
-	VideoCode string `json:"videoCode"`
+	VideoCode string `json:"videoCode"` // Internal code (e.g., "3993bp6j")
+	Slug      string `json:"slug"`      // Article slug (e.g., "dass-541") - ใช้สร้าง URL
 	Title     string `json:"title"`
 }
 

@@ -43,6 +43,21 @@ type apiResponse[T any] struct {
 	Error   string `json:"error,omitempty"`
 }
 
+// paginatedResponse - response จาก paginated endpoints
+type paginatedResponse[T any] struct {
+	Success bool   `json:"success"`
+	Data    T      `json:"data"`
+	Meta    struct {
+		Total      int  `json:"total"`
+		Page       int  `json:"page"`
+		Limit      int  `json:"limit"`
+		TotalPages int  `json:"totalPages"`
+		HasNext    bool `json:"hasNext"`
+		HasPrev    bool `json:"hasPrev"`
+	} `json:"meta"`
+	Error string `json:"error,omitempty"`
+}
+
 // videoIDResponse - response จาก find-by-codes
 type videoIDResponse struct {
 	ID       string `json:"id"`
@@ -225,23 +240,55 @@ func (f *MetadataFetcher) FetchCasts(ctx context.Context, castIDs []string) ([]m
 	return resp.Data, nil
 }
 
-func (f *MetadataFetcher) FetchPreviousWorks(ctx context.Context, castID string, limit int) ([]models.PreviousWork, error) {
+// articleSummaryForPreviousWorks - response จาก /api/v1/articles/cast/{slug}
+type articleSummaryForPreviousWorks struct {
+	Slug      string `json:"slug"`
+	Title     string `json:"title"`
+	VideoCode string `json:"videoCode"`
+}
+
+// FetchPreviousWorks ดึงผลงานก่อนหน้าของ cast จาก articles endpoint
+// ใช้ castSlug (ไม่ใช่ ID) เพื่อเรียก /api/v1/articles/cast/{slug}
+func (f *MetadataFetcher) FetchPreviousWorks(ctx context.Context, castSlug string, limit int) ([]models.PreviousWork, error) {
+	if castSlug == "" {
+		return nil, nil
+	}
 	if limit <= 0 {
 		limit = 5
 	}
 
-	url := fmt.Sprintf("%s/api/v1/casts/%s/videos?limit=%d", f.apiURL, castID, limit)
+	// ใช้ articles/cast endpoint แทน (มีอยู่แล้ว)
+	url := fmt.Sprintf("%s/api/v1/articles/cast/%s?limit=%d&lang=th", f.apiURL, castSlug, limit)
 
-	var resp apiResponse[[]models.PreviousWork]
+	var resp paginatedResponse[[]articleSummaryForPreviousWorks]
 	if err := f.doRequest(ctx, url, &resp); err != nil {
-		return nil, err
+		f.logger.WarnContext(ctx, "Failed to fetch previous works",
+			"cast_slug", castSlug,
+			"error", err,
+		)
+		return nil, nil // ไม่ error เพราะอาจยังไม่มี articles
 	}
 
 	if !resp.Success {
-		return nil, fmt.Errorf("API error: %s", resp.Error)
+		return nil, nil
 	}
 
-	return resp.Data, nil
+	// Map to PreviousWork
+	works := make([]models.PreviousWork, 0, len(resp.Data))
+	for _, article := range resp.Data {
+		works = append(works, models.PreviousWork{
+			VideoCode: article.VideoCode, // Internal code (e.g., "3993bp6j")
+			Slug:      article.Slug,      // Article slug (e.g., "dass-541")
+			Title:     article.Title,
+		})
+	}
+
+	f.logger.InfoContext(ctx, "Previous works fetched",
+		"cast_slug", castSlug,
+		"count", len(works),
+	)
+
+	return works, nil
 }
 
 func (f *MetadataFetcher) FetchGalleryImages(ctx context.Context, videoID string) ([]models.GalleryImage, error) {

@@ -39,7 +39,7 @@ func (c *GeminiClient) buildChunk2Schema() *genai.Schema {
 			},
 			"comparisonNote": {
 				Type:        genai.TypeString,
-				Description: "เปรียบเทียบกับเรื่องอื่นในค่ายเดียวกัน ต้องระบุ VIDEO CODE จริง (50 คำ)",
+				Description: "เปรียบเทียบกับผลงานก่อนหน้าของนักแสดงคนเดียวกัน ระบุ VIDEO CODE จาก Previous Works (50 คำ) - ถ้าไม่มี Previous Works ให้เว้นว่าง",
 			},
 			"topQuotes": {
 				Type: genai.TypeArray,
@@ -141,7 +141,7 @@ func (c *GeminiClient) buildChunk2Schema() *genai.Schema {
 			// Expertise (ห้ามว่าง)
 			"dialogueAnalysis", "characterInsight", "topQuotes",
 			"expertAnalysis", "detailedReview", "castBios", "tagDescriptions",
-			"comparisonNote",
+			// NOTE: comparisonNote is OPTIONAL - only generated if PreviousWorks exist
 			// Authoritativeness
 			"characterDynamic", "plotAnalysis", "recommendation",
 			"recommendedFor", "settingDescription", "moodTone", "thematicKeywords",
@@ -249,8 +249,9 @@ func (c *GeminiClient) buildChunk2Prompt(input *ports.AIInput, chunk1 *Chunk1Out
 ### Casts (ต้อง generate bio สำหรับแต่ละคน):
 %s
 
-### Cast Previous Works (ใช้เปรียบเทียบการแสดง):
+### Cast Previous Works (⚠️ ใช้สำหรับ comparisonNote และ actorPerformanceTrend):
 %s
+⚠️ **ถ้ารายการว่าง = นักแสดงยังไม่มีผลงานก่อนหน้า → ให้ comparisonNote เว้นว่าง**
 
 ### Tags (⚠️ ต้อง generate description ภาษาไทยสำหรับแต่ละ tag!):
 %s
@@ -271,7 +272,10 @@ func (c *GeminiClient) buildChunk2Prompt(input *ports.AIInput, chunk1 *Chunk1Out
     - พร้อม timestamp (วินาที), emotion, context
 4. **languageNotes**: หมายเหตุภาษา (50 คำ)
 5. **actorPerformanceTrend**: เปรียบเทียบการแสดงกับผลงานก่อนหน้า (100 คำ)
-6. **comparisonNote**: ⚠️ ต้องระบุ VIDEO CODE จริง (50 คำ)
+6. **comparisonNote**: (OPTIONAL) เปรียบเทียบกับผลงานก่อนหน้าของนักแสดงคนเดียวกัน
+    - ⚠️ **ถ้ามี Previous Works → ต้องอ้างอิง VIDEO CODE จริงจากรายการที่ให้มาเท่านั้น**
+    - ⚠️ **ถ้าไม่มี Previous Works → ให้เว้นว่างหรือไม่ต้องใส่ field นี้**
+    - ❌ ห้ามแต่ง VIDEO CODE ขึ้นมาเอง!
 7. **expertAnalysis**: บทวิเคราะห์ผู้เชี่ยวชาญ **ห้ามว่าง** (100 คำ)
 8. **detailedReview**: ⚠️ บทวิเคราะห์ **800-1000 คำ (3,000-4,000 ตัวอักษร)** - ห้ามสั้น! เขียน 6-7 ย่อหน้า
 9. **castBios**: bio สำหรับแต่ละ cast (50-100 คำต่อคน)

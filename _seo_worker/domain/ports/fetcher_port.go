@@ -48,8 +48,9 @@ type MetadataFetcherPort interface {
 	// FetchTags ดึงข้อมูล tags
 	FetchTags(ctx context.Context, tagIDs []string) ([]models.TagMetadata, error)
 
-	// FetchPreviousWorks ดึงผลงานก่อนหน้าของ cast
-	FetchPreviousWorks(ctx context.Context, castID string, limit int) ([]models.PreviousWork, error)
+	// FetchPreviousWorks ดึงผลงานก่อนหน้าของ cast (จาก articles ที่ publish แล้ว)
+	// ใช้ castSlug (ไม่ใช่ ID) เพื่อเรียก /api/v1/articles/cast/{slug}
+	FetchPreviousWorks(ctx context.Context, castSlug string, limit int) ([]models.PreviousWork, error)
 
 	// FetchGalleryImages ดึงข้อมูล gallery
 	FetchGalleryImages(ctx context.Context, videoID string) ([]models.GalleryImage, error)

@@ -542,21 +542,14 @@ export function VideoDetailSheet({ videoId, open, onOpenChange }: VideoDetailShe
                   </div>
                 )}
 
-                {/* Gallery Status: ready - Show View & Manage */}
+                {/* Gallery Status: ready - Show Manage Button */}
                 {video.galleryStatus === 'ready' && video.galleryCount && video.galleryCount > 0 && (
-                  <div className="flex gap-2">
-                    <Button variant="outline" className="flex-1" asChild>
-                      <Link to={`/gallery/${video.code}`}>
-                        <Images className="size-4 mr-1.5" />
-                        ดู Gallery ({video.galleryCount} ภาพ)
-                      </Link>
-                    </Button>
-                    <Button variant="outline" size="icon" asChild title="จัดการ Gallery">
-                      <Link to={`/admin/videos/${video.id}/gallery`}>
-                        <RefreshCw className="size-4" />
-                      </Link>
-                    </Button>
-                  </div>
+                  <Button variant="outline" className="w-full" asChild>
+                    <Link to={`/admin/videos/${video.id}/gallery`}>
+                      <Images className="size-4 mr-1.5" />
+                      จัดการ Gallery ({video.galleryCount} ภาพ)
+                    </Link>
+                  </Button>
                 )}
 
                 {/* Gallery Status: none or no gallery - Show Generate Button */}
