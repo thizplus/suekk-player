@@ -460,7 +460,7 @@ func (h *SEOHandler) buildArticle(
 			}
 		}
 
-		km.URL = fmt.Sprintf("/videos/%s?t=%d", job.VideoCode, km.StartOffset)
+		km.URL = fmt.Sprintf("/member/videos/%s?t=%d", metadata.ID, km.StartOffset)
 		safeKeyMoments = append(safeKeyMoments, km)
 	}
 
@@ -546,8 +546,8 @@ func (h *SEOHandler) buildArticle(
 		ThumbnailAlt:     aiOutput.ThumbnailAlt,
 		UploadDate:       metadata.ReleaseDate,
 		Duration:         formatDuration(metadata.Duration),
-		ContentURL:       fmt.Sprintf("https://subth.com/videos/%s", job.VideoCode),
-		EmbedURL:         fmt.Sprintf("https://subth.com/embed/%s", job.VideoCode),
+		ContentURL:       fmt.Sprintf("https://subth.com/member/videos/%s", metadata.ID),
+		EmbedURL:         "", // ไม่มี embed page
 		KeyMoments:       aiOutput.KeyMoments,
 		Summary:          aiOutput.Summary,
 		Highlights:       aiOutput.Highlights,
