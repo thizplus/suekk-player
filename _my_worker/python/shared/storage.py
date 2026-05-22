@@ -62,8 +62,15 @@ class S3Client:
         try:
             head = self.client.head_object(Bucket=self.bucket, Key=remote_path)
             total_size = head.get("ContentLength", 0)
-        except Exception:
-            total_size = 0
+            logger.info(f"File exists: {remote_path} ({total_size / 1024 / 1024:.1f} MB)")
+        except self.client.exceptions.ClientError as e:
+            error_code = e.response["Error"]["Code"]
+            error_msg = e.response["Error"]["Message"]
+            logger.error(f"HeadObject failed: {remote_path} → {error_code}: {error_msg}")
+            raise Exception(f"File not accessible: {remote_path} ({error_code}: {error_msg})")
+        except Exception as e:
+            logger.error(f"HeadObject unexpected error: {remote_path} → {type(e).__name__}: {e}")
+            raise
 
         # Download with progress tracking
         downloaded = 0
@@ -74,12 +81,17 @@ class S3Client:
             if on_progress and total_size > 0:
                 on_progress(downloaded, total_size)
 
-        self.client.download_file(
-            self.bucket,
-            remote_path,
-            local_path,
-            Callback=progress_callback if on_progress else None,
-        )
+        try:
+            self.client.download_file(
+                self.bucket,
+                remote_path,
+                local_path,
+                Callback=progress_callback if on_progress else None,
+            )
+            logger.info(f"Downloaded: {remote_path} → {local_path}")
+        except Exception as e:
+            logger.error(f"Download failed: {remote_path} → {type(e).__name__}: {e}")
+            raise
 
         logger.debug(f"Downloaded: {remote_path} -> {local_path}")
 

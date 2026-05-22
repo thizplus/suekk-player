@@ -17,9 +17,18 @@ from shared.storage import S3Client
 
 from handler import SubtitleTranslateHandler
 
+log_format = '{"time":"%(asctime)s","level":"%(levelname)s","component":"%(name)s","msg":"%(message)s"}'
+log_dir = Path(__file__).parent.parent.parent / "logs"
+log_dir.mkdir(parents=True, exist_ok=True)
+
 logging.basicConfig(
     level=logging.INFO,
-    format='{"time":"%(asctime)s","level":"%(levelname)s","component":"%(name)s","msg":"%(message)s"}',
+    format=log_format,
+    datefmt='%Y-%m-%dT%H:%M:%S',
+    handlers=[
+        logging.StreamHandler(),
+        logging.FileHandler(log_dir / "subtitle_translate.log", encoding="utf-8"),
+    ],
 )
 logger = logging.getLogger("subtitle_translate")
 

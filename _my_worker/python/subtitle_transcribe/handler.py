@@ -319,10 +319,21 @@ class SubtitleTranscribeHandler:
             # =================================================================
             # Stage 4: Whisper transcribe (20-50%)
             # =================================================================
-            await self._publish_progress(meta, STAGE_TRANSCRIBING, 20, "กำลังถอดเสียง...")
+            whisper = get_whisper_turbo(self.config.whisper_device)
+
+            # Auto-detect language if "auto" (กรณี API ส่งมาโดยไม่ผ่าน detect worker)
+            if language == "auto":
+                await self._publish_progress(meta, STAGE_TRANSCRIBING, 15, "กำลังตรวจจับภาษา...")
+                detected_lang, confidence = whisper.detect_language(str(audio_for_whisper))
+                language = detected_lang
+                logger.info(f"Auto-detected language: {language} ({confidence:.2f})")
+                # อัพเดท output path ให้ตรงกับภาษาจริง
+                if output_path.endswith("/auto.srt"):
+                    output_path = output_path.replace("/auto.srt", f"/{language}.srt")
+
+            await self._publish_progress(meta, STAGE_TRANSCRIBING, 20, f"กำลังถอดเสียง ({language})...")
 
             lang_code = LanguageCode(language)
-            whisper = get_whisper_turbo(self.config.whisper_device)
 
             segments = whisper.transcribe(audio_for_whisper, lang_code)
             logger.info(f"Whisper completed: {len(segments)} segments")
