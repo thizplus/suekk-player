@@ -10,7 +10,6 @@ import (
 func SetupWorkerJobRoutes(api fiber.Router, h *handlers.Handlers) {
 	workerJobs := api.Group("/worker-jobs")
 	workerJobs.Use(middleware.Protected())
-	workerJobs.Use(middleware.AdminOnly()) // All worker job operations require admin access
 
 	// Stats endpoints (must be before /:id to avoid route conflict)
 	workerJobs.Get("/stats", h.WorkerJobHandler.GetStats)
