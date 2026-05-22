@@ -349,17 +349,15 @@ function TranscodeTab() {
       <div className="flex items-center justify-between">
         <h3 className="font-medium">วิดีโอที่แปลงล้มเหลว</h3>
         <div className="flex gap-2">
-          {jobs.length > 0 && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => retryAll.mutate(jobs.map(j => j.entity_id))}
-              disabled={retryAll.isPending}
-            >
-              <RotateCcw className={`h-4 w-4 mr-2 ${retryAll.isPending ? 'animate-spin' : ''}`} />
-              Queue ใหม่ทั้งหมด ({jobs.length})
-            </Button>
-          )}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => retryAll.mutate()}
+            disabled={retryAll.isPending}
+          >
+            <RotateCcw className={`h-4 w-4 mr-2 ${retryAll.isPending ? 'animate-spin' : ''}`} />
+            Queue ใหม่ทั้งหมด
+          </Button>
           <Button
             variant="outline"
             size="sm"

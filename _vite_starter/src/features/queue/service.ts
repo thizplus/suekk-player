@@ -183,22 +183,28 @@ export const queueService = {
 
   // ==================== Stream Management ====================
 
-  async retryAllTranscode(videoIds: string[]): Promise<RetryResponse> {
+  async retryAllTranscode(): Promise<RetryResponse> {
+    // ดึง failed videos จาก videos table (ไม่ใช่ WorkerJob)
+    const res = await apiClient.getPaginated<{ id: string }>('/api/v1/videos', {
+      params: { status: 'failed', limit: 200 },
+    })
+    const videos = res.data
+
     let retried = 0
     const errors: string[] = []
 
-    for (const id of videoIds) {
+    for (const v of videos) {
       try {
-        await apiClient.post(`/api/v1/videos/${id}/transcode`, {})
+        await apiClient.post(`/api/v1/videos/${v.id}/transcode`, {})
         retried++
       } catch {
-        errors.push(id)
+        errors.push(v.id)
       }
     }
 
     return {
-      message: `Queue ใหม่ ${retried}/${videoIds.length} วิดีโอ`,
-      totalFound: videoIds.length,
+      message: `Queue ใหม่ ${retried}/${videos.length} วิดีโอ`,
+      totalFound: videos.length,
       totalRetried: retried,
       skipped: errors.length,
       errors,
