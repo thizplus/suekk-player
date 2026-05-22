@@ -143,15 +143,29 @@ export function SubtitlePanel({ videoId, videoCode, videoStatus }: SubtitlePanel
 
   const handleCreateSubtitle = () => {
     setIsJobPending(true)
-    setPendingAutoTranslate(true) // จะ auto translate หลัง transcribe เสร็จ
-    setCurrentStep('transcribing')
-    transcribe.mutate(videoId, {
-      onError: () => {
-        setIsJobPending(false)
-        setPendingAutoTranslate(false)
-        setCurrentStep('idle')
-      },
-    })
+    setPendingAutoTranslate(true)
+
+    if (!detectedLanguage) {
+      // ยังไม่ detect → detect ก่อน → API จะ auto-trigger transcribe → translate
+      setCurrentStep('transcribing')
+      detectLanguage.mutate(videoId, {
+        onError: () => {
+          setIsJobPending(false)
+          setPendingAutoTranslate(false)
+          setCurrentStep('idle')
+        },
+      })
+    } else {
+      // detect แล้ว → transcribe เลย
+      setCurrentStep('transcribing')
+      transcribe.mutate(videoId, {
+        onError: () => {
+          setIsJobPending(false)
+          setPendingAutoTranslate(false)
+          setCurrentStep('idle')
+        },
+      })
+    }
   }
 
   const handleTranslate = () => {
