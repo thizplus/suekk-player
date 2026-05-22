@@ -158,6 +158,7 @@ export const QUEUE_ROUTES = {
   // Online Workers (from NATS KV)
   WORKERS_ONLINE: '/api/v1/admin/queues/workers/online',
   // Transcode Queue
+  TRANSCODE_RETRY_ALL: '/api/v1/admin/queues/transcode/retry-all',
   TRANSCODE_PURGE: '/api/v1/admin/queues/transcode/purge',
   // Subtitle Queue (special operations)
   SUBTITLE_RETRY_ALL: '/api/v1/admin/queues/subtitle/retry-all',

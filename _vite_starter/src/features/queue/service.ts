@@ -183,6 +183,10 @@ export const queueService = {
 
   // ==================== Stream Management ====================
 
+  async retryAllTranscode(): Promise<RetryResponse> {
+    return apiClient.post<RetryResponse>(QUEUE_ROUTES.TRANSCODE_RETRY_ALL)
+  },
+
   async purgeTranscodeStream(): Promise<{ message: string }> {
     return apiClient.deleteWithResponse<{ message: string }>(QUEUE_ROUTES.TRANSCODE_PURGE)
   },

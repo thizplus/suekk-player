@@ -14,13 +14,14 @@ import {
   Database,
   Images,
   Film,
-  Wifi,
-  WifiOff,
+  Clock,
+  Loader2,
 } from 'lucide-react'
 import { Progress } from '@/components/ui/progress'
 import { useWebSocketConnection, useVideoProgress, type VideoProgress } from '@/lib/websocket-provider'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
+import { Separator } from '@/components/ui/separator'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import {
@@ -42,6 +43,7 @@ import {
   useFailedJobs,
   useProcessingJobs,
   useRetryJob,
+  useRetryAllTranscode,
   useRetrySubtitleAll,
   useClearSubtitleAll,
   useQueueMissingSubtitles,
@@ -58,167 +60,131 @@ import type { WorkerJob, WarmCacheQueueItem } from '../types'
 
 export function QueueManagementPage() {
   const { data: stats, isLoading: statsLoading, refetch: refetchStats } = useLegacyStats()
-  const { isConnected, reconnect } = useWebSocketConnection()
+  const { isConnected } = useWebSocketConnection()
   const activeProgress = useVideoProgress()
 
-  // Cleanup mutations
   const deleteOrphaned = useDeleteOrphanedJobs()
   const deleteCompleted = useDeleteCompletedJobs()
   const deleteFailed = useDeleteFailedJobs()
 
-  // Calculate totals for header
-  const totalProcessing =
-    (stats?.transcode?.processing || 0) +
-    (stats?.subtitle?.processing || 0) +
-    (stats?.warmCache?.warming || 0) +
-    (stats?.gallery?.processing || 0) +
-    (stats?.reel?.exporting || 0)
-
   return (
     <TooltipProvider>
-      <div className="space-y-6">
-        {/* Header */}
+      <div className="space-y-8">
+        {/* Header - match AdminDashboard style */}
         <div className="flex items-center justify-between">
           <div>
-            <div className="flex items-center gap-3">
-              <h1 className="text-2xl font-semibold">Queue Dashboard</h1>
-              {totalProcessing > 0 && (
-                <Badge className="bg-blue-500 text-white animate-pulse">
-                  {totalProcessing} กำลังทำงาน
-                </Badge>
-              )}
-              {/* WebSocket Status */}
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className={`gap-1 ${isConnected ? 'text-green-500' : 'text-red-500'}`}
-                    onClick={() => !isConnected && reconnect()}
-                  >
-                    {isConnected ? <Wifi className="h-4 w-4" /> : <WifiOff className="h-4 w-4" />}
-                    <span className="text-xs">{isConnected ? 'Live' : 'Offline'}</span>
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>
-                  {isConnected ? 'WebSocket เชื่อมต่อแล้ว - รับ progress แบบ real-time' : 'คลิกเพื่อเชื่อมต่อใหม่'}
-                </TooltipContent>
-              </Tooltip>
-            </div>
-            <p className="text-sm text-muted-foreground mt-1">
-              จัดการและดูสถานะคิวงานทั้งหมด
-            </p>
+            <h1 className="text-2xl font-semibold">จัดการคิว</h1>
+            <p className="text-muted-foreground">จัดการและดูสถานะคิวงานทั้งหมด</p>
           </div>
-          <div className="flex gap-2">
-            {/* Cleanup Buttons */}
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => deleteOrphaned.mutate()}
-                  disabled={deleteOrphaned.isPending}
-                >
-                  <Trash2 className={`h-4 w-4 mr-2 ${deleteOrphaned.isPending ? 'animate-pulse' : ''}`} />
-                  ลบ Orphaned
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>ลบ jobs ที่ video/subtitle ถูกลบไปแล้ว</TooltipContent>
-            </Tooltip>
-
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => deleteCompleted.mutate(7)}
-                  disabled={deleteCompleted.isPending}
-                >
-                  <Trash2 className={`h-4 w-4 mr-2 ${deleteCompleted.isPending ? 'animate-pulse' : ''}`} />
-                  ลบ Completed
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>ลบ jobs ที่สำเร็จแล้ว (เก่ากว่า 7 วัน)</TooltipContent>
-            </Tooltip>
-
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="destructive"
-                  size="sm"
-                  onClick={() => deleteFailed.mutate()}
-                  disabled={deleteFailed.isPending}
-                >
-                  <Trash2 className={`h-4 w-4 mr-2 ${deleteFailed.isPending ? 'animate-pulse' : ''}`} />
-                  ลบ Failed
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>ลบ jobs ที่ล้มเหลวทั้งหมด</TooltipContent>
-            </Tooltip>
-
+          <div className="flex items-center gap-3">
+            {isConnected && (
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <span className="relative flex h-2 w-2">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full indicator-online-ping opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2 w-2 indicator-online"></span>
+                </span>
+                Live
+              </div>
+            )}
             <Button
-              variant="outline"
+              variant="ghost"
               size="sm"
               onClick={() => refetchStats()}
               disabled={statsLoading}
             >
-              <RefreshCw className={`h-4 w-4 mr-2 ${statsLoading ? 'animate-spin' : ''}`} />
-              รีเฟรช
+              <RefreshCw className={`h-4 w-4 ${statsLoading ? 'animate-spin' : ''}`} />
             </Button>
           </div>
         </div>
 
-        {/* Active Progress - Real-time via WebSocket */}
+        {/* Stats - inline style like AdminDashboard */}
+        <div className="space-y-3">
+          <p className="text-muted-foreground text-sm">สถานะคิว</p>
+          {statsLoading ? (
+            <div className="flex items-center gap-6">
+              {[1, 2, 3, 4, 5].map(i => <Skeleton key={i} className="h-8 w-20" />)}
+            </div>
+          ) : (
+            <div className="flex items-center gap-6 flex-wrap">
+              <StatInline
+                icon={<Monitor className="h-4 w-4" />}
+                label="แปลงวิดีโอ"
+                processing={stats?.transcode?.processing || 0}
+                pending={(stats?.transcode?.pending || 0) + (stats?.transcode?.queued || 0)}
+                failed={(stats?.transcode?.failed || 0) + (stats?.transcode?.deadLetter || 0)}
+              />
+              <Separator orientation="vertical" className="h-10" />
+              <StatInline
+                icon={<Languages className="h-4 w-4" />}
+                label="ซับไตเติ้ล"
+                processing={stats?.subtitle?.processing || 0}
+                pending={stats?.subtitle?.queued || 0}
+                failed={stats?.subtitle?.failed || 0}
+              />
+              <Separator orientation="vertical" className="h-10" />
+              <StatInline
+                icon={<Database className="h-4 w-4" />}
+                label="แคช CDN"
+                processing={stats?.warmCache?.warming || 0}
+                pending={stats?.warmCache?.notCached || 0}
+                failed={stats?.warmCache?.failed || 0}
+              />
+              <Separator orientation="vertical" className="h-10" />
+              <StatInline
+                icon={<Images className="h-4 w-4" />}
+                label="Gallery"
+                processing={stats?.gallery?.processing || 0}
+                failed={stats?.gallery?.failed || 0}
+              />
+              <Separator orientation="vertical" className="h-10" />
+              <StatInline
+                icon={<Film className="h-4 w-4" />}
+                label="Reel"
+                processing={stats?.reel?.exporting || 0}
+                failed={stats?.reel?.failed || 0}
+              />
+            </div>
+          )}
+        </div>
+
+        {/* Active Progress */}
         {activeProgress.size > 0 && (
           <ActiveProgressSection activeProgress={activeProgress} />
         )}
 
-        {/* Stats Overview */}
-        {statsLoading ? (
-          <div className="grid grid-cols-5 gap-4">
-            {[...Array(5)].map((_, i) => (
-              <Skeleton key={i} className="h-20" />
-            ))}
+        {/* Actions */}
+        <div className="space-y-3">
+          <p className="text-muted-foreground text-sm">จัดการ</p>
+          <div className="flex items-center gap-2 flex-wrap">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => deleteOrphaned.mutate()}
+              disabled={deleteOrphaned.isPending}
+            >
+              <Trash2 className={`h-4 w-4 mr-2 ${deleteOrphaned.isPending ? 'animate-pulse' : ''}`} />
+              ลบ Orphaned
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => deleteCompleted.mutate(7)}
+              disabled={deleteCompleted.isPending}
+            >
+              <Trash2 className={`h-4 w-4 mr-2 ${deleteCompleted.isPending ? 'animate-pulse' : ''}`} />
+              ลบ Completed
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => deleteFailed.mutate()}
+              disabled={deleteFailed.isPending}
+            >
+              <Trash2 className={`h-4 w-4 mr-2 ${deleteFailed.isPending ? 'animate-pulse' : ''}`} />
+              ลบ Failed
+            </Button>
           </div>
-        ) : stats ? (
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
-            <StatBox
-              icon={<Monitor className="h-5 w-5" />}
-              label="แปลงวิดีโอ"
-              processing={stats.transcode.processing || 0}
-              failed={(stats.transcode.failed || 0) + (stats.transcode.deadLetter || 0)}
-              pending={(stats.transcode.pending || 0) + (stats.transcode.queued || 0)}
-            />
-            <StatBox
-              icon={<Languages className="h-5 w-5" />}
-              label="ซับไตเติ้ล"
-              processing={stats.subtitle.processing || 0}
-              failed={stats.subtitle.failed || 0}
-              pending={stats.subtitle.queued || 0}
-            />
-            <StatBox
-              icon={<Database className="h-5 w-5" />}
-              label="แคช CDN"
-              processing={stats.warmCache.warming || 0}
-              failed={stats.warmCache.failed || 0}
-              pending={stats.warmCache.notCached || 0}
-              success={stats.warmCache.cached || 0}
-            />
-            <StatBox
-              icon={<Images className="h-5 w-5" />}
-              label="Gallery"
-              processing={stats.gallery?.processing || 0}
-              failed={stats.gallery?.failed || 0}
-              pending={stats.gallery?.pendingReview || 0}
-            />
-            <StatBox
-              icon={<Film className="h-5 w-5" />}
-              label="Reel"
-              processing={stats.reel?.exporting || 0}
-              failed={stats.reel?.failed || 0}
-            />
-          </div>
-        ) : null}
+        </div>
 
         {/* Tabs */}
         <Tabs defaultValue="transcode" className="space-y-4">
@@ -236,7 +202,7 @@ export function QueueManagementPage() {
             <TabsTrigger value="warmcache" className="gap-2">
               <Database className="h-4 w-4" />
               แคช CDN
-              <CountBadge count={stats?.warmCache?.notCached || 0} variant="warning" />
+              <CountBadge count={stats?.warmCache?.notCached || 0} />
             </TabsTrigger>
             <TabsTrigger value="gallery" className="gap-2">
               <Images className="h-4 w-4" />
@@ -250,137 +216,96 @@ export function QueueManagementPage() {
             </TabsTrigger>
           </TabsList>
 
-          <TabsContent value="transcode">
-            <TranscodeTab />
-          </TabsContent>
-          <TabsContent value="subtitle">
-            <SubtitleTab />
-          </TabsContent>
-          <TabsContent value="warmcache">
-            <WarmCacheTab />
-          </TabsContent>
-          <TabsContent value="gallery">
-            <GalleryTab />
-          </TabsContent>
-          <TabsContent value="reel">
-            <ReelTab />
-          </TabsContent>
+          <TabsContent value="transcode"><TranscodeTab /></TabsContent>
+          <TabsContent value="subtitle"><SubtitleTab /></TabsContent>
+          <TabsContent value="warmcache"><WarmCacheTab /></TabsContent>
+          <TabsContent value="gallery"><GalleryTab /></TabsContent>
+          <TabsContent value="reel"><ReelTab /></TabsContent>
         </Tabs>
       </div>
     </TooltipProvider>
   )
 }
 
-// ==================== Stats Box ====================
+// ==================== Inline Stat (like AdminDashboard) ====================
 
-function StatBox({
+function StatInline({
   icon,
   label,
   processing = 0,
-  failed = 0,
   pending = 0,
-  success,
+  failed = 0,
 }: {
   icon: React.ReactNode
   label: string
   processing?: number
-  failed?: number
   pending?: number
-  success?: number
+  failed?: number
 }) {
-  const hasIssue = failed > 0 || pending > 0
-
   return (
-    <div className={`rounded-lg border p-4 ${hasIssue ? 'border-yellow-500/50 bg-yellow-500/5' : ''}`}>
-      <div className="flex items-center gap-2 text-muted-foreground mb-2">
+    <div>
+      <div className="flex items-center gap-1.5 text-muted-foreground text-sm mb-1">
         {icon}
-        <span className="text-sm font-medium">{label}</span>
+        <span>{label}</span>
       </div>
       <div className="flex items-center gap-3 text-sm">
         {processing > 0 && (
-          <span className="text-blue-500 flex items-center gap-1">
-            <span className="relative flex h-2 w-2">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-500"></span>
-            </span>
+          <span className="flex items-center gap-1.5 font-semibold tabular-nums">
+            <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
             {processing}
           </span>
         )}
-        {pending > 0 && <span className="text-yellow-600">{pending} รอ</span>}
-        {failed > 0 && <span className="text-red-500">{failed} ผิดพลาด</span>}
-        {success !== undefined && success > 0 && (
-          <span className="text-green-500">{success} สำเร็จ</span>
+        {pending > 0 && (
+          <span className="flex items-center gap-1 tabular-nums text-muted-foreground">
+            <Clock className="h-3.5 w-3.5" />
+            {pending}
+          </span>
+        )}
+        {failed > 0 && (
+          <span className="flex items-center gap-1 tabular-nums text-muted-foreground">
+            <XCircle className="h-3.5 w-3.5" />
+            {failed}
+          </span>
         )}
         {processing === 0 && pending === 0 && failed === 0 && (
-          <span className="text-muted-foreground">-</span>
+          <span className="text-muted-foreground tabular-nums">-</span>
         )}
       </div>
     </div>
   )
 }
 
-function CountBadge({ count, variant = 'error' }: { count: number; variant?: 'error' | 'warning' }) {
+function CountBadge({ count }: { count: number }) {
   if (count === 0) return null
   return (
-    <Badge
-      variant={variant === 'error' ? 'destructive' : 'secondary'}
-      className="h-5 px-1.5 text-xs"
-    >
+    <Badge variant="secondary" className="h-5 px-1.5 text-xs">
       {count}
     </Badge>
   )
 }
 
-// ==================== Active Progress Section ====================
+// ==================== Active Progress ====================
 
 function ActiveProgressSection({ activeProgress }: { activeProgress: Map<string, VideoProgress> }) {
-  const progressItems = Array.from(activeProgress.values())
-
-  // Group by type
-  const transcodeItems = progressItems.filter(p => p.type === 'transcode')
-  const subtitleItems = progressItems.filter(p => p.type === 'subtitle')
-  const galleryItems = progressItems.filter(p => p.type === 'gallery')
-  const reelItems = progressItems.filter(p => p.type === 'reel')
+  const items = Array.from(activeProgress.values())
 
   return (
-    <div className="rounded-lg border border-blue-500/30 bg-blue-500/5 p-4 space-y-4">
+    <div className="space-y-3">
       <div className="flex items-center gap-2">
-        <span className="relative flex h-3 w-3">
-          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
-          <span className="relative inline-flex rounded-full h-3 w-3 bg-blue-500"></span>
-        </span>
-        <h3 className="font-medium">กำลังประมวลผล (Real-time)</h3>
-        <Badge variant="secondary" className="text-xs">{progressItems.length} งาน</Badge>
+        <p className="text-muted-foreground text-sm">กำลังประมวลผล</p>
+        <Badge variant="secondary" className="text-xs">{items.length} งาน</Badge>
       </div>
-
-      <div className="grid gap-3">
-        {transcodeItems.map(item => (
-          <ProgressItem key={`${item.videoId}-${item.type}`} item={item} icon={<Monitor className="h-4 w-4" />} />
-        ))}
-        {subtitleItems.map(item => (
-          <ProgressItem key={`${item.videoId}-${item.type}`} item={item} icon={<Languages className="h-4 w-4" />} />
-        ))}
-        {galleryItems.map(item => (
-          <ProgressItem key={`${item.videoId}-${item.type}`} item={item} icon={<Images className="h-4 w-4" />} />
-        ))}
-        {reelItems.map(item => (
-          <ProgressItem key={`${item.videoId}-${item.type}`} item={item} icon={<Film className="h-4 w-4" />} />
+      <div className="space-y-2">
+        {items.map(item => (
+          <ProgressItem key={`${item.videoId}-${item.type}`} item={item} />
         ))}
       </div>
     </div>
   )
 }
 
-function ProgressItem({ item, icon }: { item: VideoProgress; icon: React.ReactNode }) {
-  const getStatusColor = () => {
-    switch (item.status) {
-      case 'completed': return 'text-green-500'
-      case 'failed': return 'text-red-500'
-      default: return 'text-blue-500'
-    }
-  }
-
-  const getTypeLabel = () => {
+function ProgressItem({ item }: { item: VideoProgress }) {
+  const typeLabel = (() => {
     switch (item.type) {
       case 'transcode': return 'แปลงวิดีโอ'
       case 'subtitle': return item.language ? `ซับ ${item.language}` : 'ซับไตเติ้ล'
@@ -388,33 +313,23 @@ function ProgressItem({ item, icon }: { item: VideoProgress; icon: React.ReactNo
       case 'reel': return 'Reel'
       default: return item.type
     }
-  }
+  })()
 
   return (
-    <div className="bg-background rounded-lg border p-3 space-y-2">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <span className="text-muted-foreground">{icon}</span>
-          <span className="font-mono text-sm">{item.videoCode}</span>
-          <Badge variant="outline" className="text-xs">{getTypeLabel()}</Badge>
-        </div>
-        <div className="flex items-center gap-2">
-          <span className={`text-sm font-medium ${getStatusColor()}`}>
-            {item.progress}%
-          </span>
-          {item.status === 'completed' && <CheckCircle className="h-4 w-4 text-green-500" />}
-          {item.status === 'failed' && <XCircle className="h-4 w-4 text-red-500" />}
-        </div>
+    <div className="flex items-center gap-3 px-3 py-2.5 rounded-lg border border-dashed hover:bg-accent/50 transition-colors">
+      <span className="font-mono text-sm">{item.videoCode}</span>
+      <Badge variant="outline" className="text-xs">{typeLabel}</Badge>
+      <div className="flex-1">
+        <Progress value={item.progress} className="h-1.5" />
       </div>
-
-      <Progress value={item.progress} className="h-2" />
-
-      <div className="flex items-center justify-between text-xs text-muted-foreground">
-        <span>{item.currentStep || item.message}</span>
-        {item.errorMessage && (
-          <span className="text-red-500 truncate max-w-[200px]">{item.errorMessage}</span>
-        )}
-      </div>
+      <span className="text-sm font-semibold tabular-nums w-12 text-right">
+        {item.progress}%
+      </span>
+      {item.status === 'completed' && <CheckCircle className="h-4 w-4 text-muted-foreground" />}
+      {item.status === 'failed' && <XCircle className="h-4 w-4 text-muted-foreground" />}
+      <span className="text-xs text-muted-foreground max-w-[180px] truncate">
+        {item.currentStep || item.message}
+      </span>
     </div>
   )
 }
@@ -425,6 +340,7 @@ function TranscodeTab() {
   const [page, _setPage] = useState(1)
   const { data, isLoading } = useFailedJobs('transcode', page)
   const retryJob = useRetryJob()
+  const retryAll = useRetryAllTranscode()
   const purgeStream = usePurgeTranscodeStream()
   const jobs = data?.jobs ?? []
 
@@ -432,15 +348,28 @@ function TranscodeTab() {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h3 className="font-medium">วิดีโอที่แปลงล้มเหลว</h3>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => purgeStream.mutate()}
-          disabled={purgeStream.isPending}
-        >
-          <Trash2 className={`h-4 w-4 mr-2 ${purgeStream.isPending ? 'animate-pulse' : ''}`} />
-          Purge NATS Stream
-        </Button>
+        <div className="flex gap-2">
+          {jobs.length > 0 && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => retryAll.mutate()}
+              disabled={retryAll.isPending}
+            >
+              <RotateCcw className={`h-4 w-4 mr-2 ${retryAll.isPending ? 'animate-spin' : ''}`} />
+              Queue ใหม่ทั้งหมด
+            </Button>
+          )}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => purgeStream.mutate()}
+            disabled={purgeStream.isPending}
+          >
+            <Trash2 className={`h-4 w-4 mr-2 ${purgeStream.isPending ? 'animate-pulse' : ''}`} />
+            Purge Stream
+          </Button>
+        </div>
       </div>
 
       {isLoading ? (
@@ -475,12 +404,8 @@ function SubtitleTab() {
         <div className="flex items-center gap-2">
           <h3 className="font-medium">ซับไตเติ้ล</h3>
           <div className="flex gap-1 ml-4">
-            <Button variant={view === 'failed' ? 'secondary' : 'ghost'} size="sm" onClick={() => setView('failed')}>
-              ล้มเหลว
-            </Button>
-            <Button variant={view === 'processing' ? 'secondary' : 'ghost'} size="sm" onClick={() => setView('processing')}>
-              กำลังทำ
-            </Button>
+            <Button variant={view === 'failed' ? 'secondary' : 'ghost'} size="sm" onClick={() => setView('failed')}>ล้มเหลว</Button>
+            <Button variant={view === 'processing' ? 'secondary' : 'ghost'} size="sm" onClick={() => setView('processing')}>กำลังทำ</Button>
           </div>
         </div>
         <div className="flex gap-2">
@@ -491,12 +416,10 @@ function SubtitleTab() {
           {view === 'processing' && (
             <>
               <Button variant="outline" size="sm" onClick={() => clearAll.mutate()} disabled={clearAll.isPending}>
-                <Trash2 className="h-4 w-4 mr-1" />
-                Clear
+                <Trash2 className="h-4 w-4 mr-1" /> Clear
               </Button>
               <Button variant="outline" size="sm" onClick={() => queueMissing.mutate()} disabled={queueMissing.isPending}>
-                <Plus className="h-4 w-4 mr-1" />
-                Queue Missing
+                <Plus className="h-4 w-4 mr-1" /> Queue Missing
               </Button>
             </>
           )}
@@ -532,20 +455,11 @@ function WarmCacheTab() {
         <div className="flex items-center gap-2">
           <h3 className="font-medium">แคช CDN</h3>
           <div className="flex gap-1 ml-4">
-            <Button variant={view === 'pending' ? 'secondary' : 'ghost'} size="sm" onClick={() => setView('pending')}>
-              รอแคช
-            </Button>
-            <Button variant={view === 'failed' ? 'secondary' : 'ghost'} size="sm" onClick={() => setView('failed')}>
-              ล้มเหลว
-            </Button>
+            <Button variant={view === 'pending' ? 'secondary' : 'ghost'} size="sm" onClick={() => setView('pending')}>รอแคช</Button>
+            <Button variant={view === 'failed' ? 'secondary' : 'ghost'} size="sm" onClick={() => setView('failed')}>ล้มเหลว</Button>
           </div>
         </div>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => warmAll.mutate()}
-          disabled={warmAll.isPending || items.length === 0}
-        >
+        <Button variant="outline" size="sm" onClick={() => warmAll.mutate()} disabled={warmAll.isPending || items.length === 0}>
           <Flame className={`h-4 w-4 mr-1 ${warmAll.isPending ? 'animate-pulse' : ''}`} />
           Warm All
         </Button>
@@ -575,9 +489,7 @@ function WarmCacheTab() {
                   <TableCell>
                     <div className="flex gap-1">
                       {item.qualities?.map((q) => (
-                        <Badge key={q} variant="outline" className="text-xs px-1">
-                          {q}
-                        </Badge>
+                        <Badge key={q} variant="outline" className="text-xs px-1">{q}</Badge>
                       ))}
                     </div>
                   </TableCell>
@@ -626,12 +538,8 @@ function GalleryTab() {
         <div className="flex items-center gap-2">
           <h3 className="font-medium">Gallery</h3>
           <div className="flex gap-1 ml-4">
-            <Button variant={view === 'failed' ? 'secondary' : 'ghost'} size="sm" onClick={() => setView('failed')}>
-              ล้มเหลว
-            </Button>
-            <Button variant={view === 'processing' ? 'secondary' : 'ghost'} size="sm" onClick={() => setView('processing')}>
-              กำลังสร้าง
-            </Button>
+            <Button variant={view === 'failed' ? 'secondary' : 'ghost'} size="sm" onClick={() => setView('failed')}>ล้มเหลว</Button>
+            <Button variant={view === 'processing' ? 'secondary' : 'ghost'} size="sm" onClick={() => setView('processing')}>กำลังสร้าง</Button>
           </div>
         </div>
       </div>
@@ -664,12 +572,8 @@ function ReelTab() {
         <div className="flex items-center gap-2">
           <h3 className="font-medium">Reel</h3>
           <div className="flex gap-1 ml-4">
-            <Button variant={view === 'failed' ? 'secondary' : 'ghost'} size="sm" onClick={() => setView('failed')}>
-              ล้มเหลว
-            </Button>
-            <Button variant={view === 'processing' ? 'secondary' : 'ghost'} size="sm" onClick={() => setView('processing')}>
-              กำลัง export
-            </Button>
+            <Button variant={view === 'failed' ? 'secondary' : 'ghost'} size="sm" onClick={() => setView('failed')}>ล้มเหลว</Button>
+            <Button variant={view === 'processing' ? 'secondary' : 'ghost'} size="sm" onClick={() => setView('processing')}>กำลัง export</Button>
           </div>
         </div>
       </div>
@@ -699,9 +603,9 @@ function TableSkeleton() {
 
 function EmptyState({ message }: { message: string }) {
   return (
-    <div className="text-center py-12 text-muted-foreground border rounded-lg bg-muted/20">
-      <CheckCircle className="h-10 w-10 mx-auto mb-3 text-green-500" />
-      <p>{message}</p>
+    <div className="text-center py-12 text-muted-foreground border border-dashed rounded-lg">
+      <CheckCircle className="h-8 w-8 mx-auto mb-2 text-muted-foreground" />
+      <p className="text-sm">{message}</p>
     </div>
   )
 }
@@ -755,7 +659,7 @@ function JobTable({
                 <span className="text-xs text-muted-foreground line-clamp-1">{job.last_error || '-'}</span>
               </TableCell>
               <TableCell className="text-center">
-                <span className="text-xs text-muted-foreground">{job.retry_count}x</span>
+                <span className="text-xs text-muted-foreground tabular-nums">{job.retry_count}x</span>
               </TableCell>
               <TableCell>
                 <div className="flex gap-1">

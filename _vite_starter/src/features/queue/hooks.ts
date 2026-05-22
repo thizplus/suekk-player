@@ -277,6 +277,20 @@ export function useWarmCacheAll() {
 
 // ==================== Stream Management ====================
 
+export function useRetryAllTranscode() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: () => queueService.retryAllTranscode(),
+    onSuccess: (data) => {
+      toast.success(data.message)
+      queryClient.invalidateQueries({ queryKey: queueKeys.all })
+    },
+    onError: () => {
+      toast.error('Queue ใหม่ทั้งหมดไม่สำเร็จ')
+    },
+  })
+}
+
 export function usePurgeTranscodeStream() {
   const queryClient = useQueryClient()
   return useMutation({
