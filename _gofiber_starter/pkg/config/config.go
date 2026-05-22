@@ -1,6 +1,7 @@
 package config
 
 import (
+	"fmt"
 	"os"
 	"strconv"
 	"strings"
@@ -114,7 +115,24 @@ func LoadConfig() (*Config, error) {
 	err := godotenv.Load()
 	if err != nil {
 		// ไม่ error ถ้าไม่มี .env file (ใช้ environment variables แทน)
+		fmt.Printf("[DEBUG] godotenv.Load() error: %v\n", err)
+	} else {
+		fmt.Println("[DEBUG] .env loaded successfully")
 	}
+
+	// DEBUG: Print database config
+	dbPass := getEnv("DB_PASSWORD", "")
+	passDisplay := "(empty)"
+	if dbPass != "" {
+		passDisplay = "***SET***"
+	}
+	fmt.Printf("[DEBUG] DB_HOST=%s, DB_PORT=%s, DB_USER=%s, DB_PASSWORD=%s, DB_NAME=%s\n",
+		getEnv("DB_HOST", "localhost"),
+		getEnv("DB_PORT", "5432"),
+		getEnv("DB_USER", "postgres"),
+		passDisplay,
+		getEnv("DB_NAME", "suekk_stream"),
+	)
 
 	logMaxSize, _ := strconv.Atoi(getEnv("LOG_MAX_SIZE", "100"))
 	logMaxBackups, _ := strconv.Atoi(getEnv("LOG_MAX_BACKUPS", "5"))

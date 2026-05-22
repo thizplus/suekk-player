@@ -46,7 +46,7 @@ type Container struct {
 	UserRepository             repositories.UserRepository
 	TaskRepository             repositories.TaskRepository
 	FileRepository             repositories.FileRepository
-	JobRepository              repositories.JobRepository
+	ScheduledJobRepository     repositories.ScheduledJobRepository
 	VideoRepository            repositories.VideoRepository
 	CategoryRepository         repositories.CategoryRepository
 	AllowedDomainRepository    repositories.AllowedDomainRepository
@@ -56,12 +56,13 @@ type Container struct {
 	SubtitleRepository         repositories.SubtitleRepository
 	ReelRepository             repositories.ReelRepository
 	ReelTemplateRepository     repositories.ReelTemplateRepository
+	WorkerJobRepository        repositories.WorkerJobRepository
 
 	// Services
 	UserService            services.UserService
 	TaskService            services.TaskService
 	FileService            services.FileService
-	JobService             services.JobService
+	ScheduledJobService    services.ScheduledJobService
 	VideoService           services.VideoService
 	CategoryService        services.CategoryService
 	TranscodingService     services.TranscodingService
@@ -71,6 +72,7 @@ type Container struct {
 	SubtitleService        services.SubtitleService
 	QueueService           services.QueueService
 	ReelService            services.ReelService
+	WorkerJobService       services.WorkerJobService
 
 	// Settings Cache
 	SettingsCache *settings.SettingsCache
@@ -341,7 +343,7 @@ func (c *Container) initRepositories() error {
 	c.UserRepository = postgres.NewUserRepository(c.DB)
 	c.TaskRepository = postgres.NewTaskRepository(c.DB)
 	c.FileRepository = postgres.NewFileRepository(c.DB)
-	c.JobRepository = postgres.NewJobRepository(c.DB)
+	c.ScheduledJobRepository = postgres.NewScheduledJobRepository(c.DB)
 	c.VideoRepository = postgres.NewVideoRepository(c.DB)
 	c.CategoryRepository = postgres.NewCategoryRepository(c.DB)
 	c.AllowedDomainRepository = postgres.NewAllowedDomainRepository(c.DB)
@@ -355,6 +357,8 @@ func (c *Container) initRepositories() error {
 	// Reel Generator
 	c.ReelRepository = postgres.NewReelRepository(c.DB)
 	c.ReelTemplateRepository = postgres.NewReelTemplateRepository(c.DB)
+	// Worker Jobs (Queue Jobs Tracking)
+	c.WorkerJobRepository = postgres.NewWorkerJobRepository(c.DB)
 	logger.Info("Repositories initialized")
 	return nil
 }
@@ -379,13 +383,23 @@ func (c *Container) initServices() error {
 			c.UserRepository,
 			c.SubtitleRepository,
 			c.ReelRepository,
+			c.WorkerJobRepository, // for cascade delete
 			c.Storage,
 			c.RedisClient,
 			c.Config,
 		)
 		logger.Info("Video service initialized with Redis cache")
 	} else {
-		c.VideoService = serviceimpl.NewVideoService(c.VideoRepository, c.CategoryRepository, c.UserRepository, c.SubtitleRepository, c.ReelRepository, c.Storage, c.Config)
+		c.VideoService = serviceimpl.NewVideoService(
+			c.VideoRepository,
+			c.CategoryRepository,
+			c.UserRepository,
+			c.SubtitleRepository,
+			c.ReelRepository,
+			c.WorkerJobRepository, // for cascade delete
+			c.Storage,
+			c.Config,
+		)
 		logger.Info("Video service initialized without cache")
 	}
 
@@ -427,6 +441,15 @@ func (c *Container) initServices() error {
 	c.ReelService = serviceimpl.NewReelService(c.ReelRepository, c.ReelTemplateRepository, c.VideoRepository, reelPublisher, c.Storage)
 	logger.Info("Reel service initialized", "has_publisher", reelPublisher != nil, "has_storage", c.Storage != nil)
 
+	// Worker Job Service (Queue Jobs Tracking)
+	c.WorkerJobService = serviceimpl.NewWorkerJobService(c.WorkerJobRepository)
+	logger.Info("Worker job service initialized")
+
+	// Inject WorkerJobService into NATSPublisher for Dual Write
+	if c.NATSPublisher != nil {
+		c.NATSPublisher.SetWorkerJobService(c.WorkerJobService)
+	}
+
 	// Queue Service (unified queue management)
 	// Note: TranscodingService ต้องถูก init ก่อนใน initTranscoding()
 	// จึงย้ายไป init หลังจาก initTranscoding()
@@ -438,7 +461,7 @@ func (c *Container) initServices() error {
 
 func (c *Container) initScheduler() error {
 	c.EventScheduler = scheduler.NewEventScheduler()
-	c.JobService = serviceimpl.NewJobService(c.JobRepository, c.EventScheduler)
+	c.ScheduledJobService = serviceimpl.NewScheduledJobService(c.ScheduledJobRepository, c.EventScheduler)
 
 	// Start the scheduler
 	c.EventScheduler.Start()
@@ -446,7 +469,7 @@ func (c *Container) initScheduler() error {
 
 	// Load and schedule existing active jobs
 	ctx := context.Background()
-	jobs, _, err := c.JobService.ListJobs(ctx, 0, 1000)
+	jobs, _, err := c.ScheduledJobService.ListJobs(ctx, 0, 1000)
 	if err != nil {
 		logger.Warn("Failed to load existing jobs", "error", err)
 		return nil
@@ -456,7 +479,7 @@ func (c *Container) initScheduler() error {
 	for _, job := range jobs {
 		if job.IsActive {
 			err := c.EventScheduler.AddJob(job.ID.String(), job.CronExpr, func() {
-				c.JobService.ExecuteJob(ctx, job)
+				c.ScheduledJobService.ExecuteJob(ctx, job)
 			})
 			if err != nil {
 				logger.Warn("Failed to schedule job", "job", job.Name, "error", err)
@@ -560,6 +583,7 @@ func (c *Container) initStuckDetector() error {
 
 	stuckDetector := serviceimpl.NewStuckDetectorService(
 		detectorConfig,
+		c.WorkerJobService,
 		c.VideoRepository,
 		c.EventScheduler,
 	)
@@ -584,6 +608,7 @@ func (c *Container) initStuckDetector() error {
 
 	subtitleStuckDetector := serviceimpl.NewSubtitleStuckDetectorService(
 		subtitleDetectorConfig,
+		c.WorkerJobService,
 		c.SubtitleRepository,
 		c.EventScheduler,
 	)
@@ -627,6 +652,11 @@ func (c *Container) injectNotifierToProgressBroadcaster() {
 	if c.ProgressBroadcaster != nil && c.Notifier != nil {
 		c.ProgressBroadcaster.SetNotifier(c.Notifier)
 		logger.Info("Notifier injected into progress broadcaster (transcode complete/fail notifications enabled)")
+	}
+
+	// Inject WorkerJobService for Dual Write
+	if c.ProgressBroadcaster != nil && c.WorkerJobService != nil {
+		c.ProgressBroadcaster.SetWorkerJobService(c.WorkerJobService)
 	}
 }
 
@@ -721,8 +751,8 @@ func (c *Container) Cleanup() error {
 	return nil
 }
 
-func (c *Container) GetServices() (services.UserService, services.TaskService, services.FileService, services.JobService) {
-	return c.UserService, c.TaskService, c.FileService, c.JobService
+func (c *Container) GetServices() (services.UserService, services.TaskService, services.FileService, services.ScheduledJobService) {
+	return c.UserService, c.TaskService, c.FileService, c.ScheduledJobService
 }
 
 func (c *Container) GetConfig() *config.Config {
@@ -747,7 +777,7 @@ func (c *Container) GetHandlerServices() *handlers.Services {
 		UserService:         c.UserService,
 		TaskService:         c.TaskService,
 		FileService:         c.FileService,
-		JobService:          c.JobService,
+		ScheduledJobService: c.ScheduledJobService,
 		VideoService:        c.VideoService,
 		CategoryService:     c.CategoryService,
 		TranscodingService:  c.TranscodingService,
@@ -758,6 +788,7 @@ func (c *Container) GetHandlerServices() *handlers.Services {
 		SubtitleService:     c.SubtitleService,
 		QueueService:        c.QueueService,
 		ReelService:         c.ReelService,
+		WorkerJobService:    c.WorkerJobService,
 		VideoRepository:     c.VideoRepository, // สำหรับ SubtitleHandler
 		StreamCookieService: c.StreamCookieService, // Signed cookie สำหรับ CDN access
 		NATSPublisher:       c.NATSPublisher,

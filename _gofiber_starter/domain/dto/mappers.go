@@ -82,41 +82,6 @@ func UpdateTaskRequestToTask(req *UpdateTaskRequest) *models.Task {
 	}
 }
 
-func JobToJobResponse(job *models.Job) *JobResponse {
-	if job == nil {
-		return nil
-	}
-	return &JobResponse{
-		ID:        job.ID,
-		Name:      job.Name,
-		CronExpr:  job.CronExpr,
-		Payload:   job.Payload,
-		Status:    job.Status,
-		LastRun:   job.LastRun,
-		NextRun:   job.NextRun,
-		IsActive:  job.IsActive,
-		CreatedAt: job.CreatedAt,
-		UpdatedAt: job.UpdatedAt,
-	}
-}
-
-func CreateJobRequestToJob(req *CreateJobRequest) *models.Job {
-	return &models.Job{
-		Name:     req.Name,
-		CronExpr: req.CronExpr,
-		Payload:  req.Payload,
-	}
-}
-
-func UpdateJobRequestToJob(req *UpdateJobRequest) *models.Job {
-	return &models.Job{
-		Name:     req.Name,
-		CronExpr: req.CronExpr,
-		Payload:  req.Payload,
-		IsActive: req.IsActive,
-	}
-}
-
 func FileToFileResponse(file *models.File) *FileResponse {
 	if file == nil {
 		return nil

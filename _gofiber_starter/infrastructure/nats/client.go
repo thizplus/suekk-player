@@ -12,12 +12,13 @@ import (
 
 // Client wraps NATS connection with JetStream context
 type Client struct {
-	conn           *nats.Conn
-	js             jetstream.JetStream
-	stream         jetstream.Stream  // Transcode jobs stream
-	subtitleStream jetstream.Stream  // Subtitle jobs stream
-	reelStream     jetstream.Stream  // Reel export jobs stream
-	galleryStream  jetstream.Stream  // Gallery generate jobs stream
+	conn            *nats.Conn
+	js              jetstream.JetStream
+	stream          jetstream.Stream // Transcode jobs stream
+	subtitleStream  jetstream.Stream // Subtitle jobs stream
+	reelStream      jetstream.Stream // Reel export jobs stream
+	galleryStream   jetstream.Stream // Gallery generate jobs stream
+	warmCacheStream jetstream.Stream // Warm cache jobs stream
 
 	// KV Buckets
 	workerKV jetstream.KeyValue // Worker status (from heartbeat)
@@ -152,6 +153,77 @@ func (c *Client) setupStream(ctx context.Context) error {
 	}
 	c.galleryStream = galleryStream
 	logger.Info("JetStream stream ready", "name", GalleryStreamName)
+
+	// Warm cache jobs stream (ตาม ___JOBS_TABLE_REFACTORING_PLAN.md)
+	warmCacheCfg := jetstream.StreamConfig{
+		Name:        WarmCacheStreamName,
+		Subjects:    []string{SubjectWarmCache},
+		Storage:     jetstream.FileStorage,
+		Retention:   jetstream.WorkQueuePolicy,
+		MaxAge:      24 * time.Hour,
+		Replicas:    1,
+		Description: "Warm cache job queue (CDN cache warming)",
+	}
+
+	warmCacheStream, err := c.js.CreateOrUpdateStream(ctx, warmCacheCfg)
+	if err != nil {
+		return fmt.Errorf("failed to create/update warm cache stream: %w", err)
+	}
+	c.warmCacheStream = warmCacheStream
+	logger.Info("JetStream stream ready", "name", WarmCacheStreamName)
+
+	// ═══════════════════════════════════════════════════════════════════════════════
+	// Create Consumers for Workers (ตาม ___WORKER_INTERFACE_STANDARD.md Section 7.3)
+	// Workers จะ GET existing consumers แทนการสร้างเอง
+	// ═══════════════════════════════════════════════════════════════════════════════
+
+	// Consumer configs ที่ใช้ร่วมกัน
+	consumerCfg := func(name, filterSubject string) jetstream.ConsumerConfig {
+		return jetstream.ConsumerConfig{
+			Durable:       name,
+			FilterSubject: filterSubject,
+			AckPolicy:     jetstream.AckExplicitPolicy,
+			AckWait:       5 * time.Minute,
+			MaxDeliver:    5,
+			MaxAckPending: 1000,
+		}
+	}
+
+	// Transcode consumer
+	if _, err := c.stream.CreateOrUpdateConsumer(ctx, consumerCfg("TRANSCODE_WORKER", SubjectJobs)); err != nil {
+		return fmt.Errorf("failed to create transcode consumer: %w", err)
+	}
+	logger.Info("JetStream consumer ready", "stream", StreamName, "consumer", "TRANSCODE_WORKER")
+
+	// Subtitle consumers (3 stages)
+	if _, err := c.subtitleStream.CreateOrUpdateConsumer(ctx, consumerCfg("SUBTITLE_DETECT_WORKER", SubjectSubtitleDetect)); err != nil {
+		return fmt.Errorf("failed to create subtitle detect consumer: %w", err)
+	}
+	if _, err := c.subtitleStream.CreateOrUpdateConsumer(ctx, consumerCfg("SUBTITLE_TRANSCRIBE_WORKER", SubjectSubtitleTranscribe)); err != nil {
+		return fmt.Errorf("failed to create subtitle transcribe consumer: %w", err)
+	}
+	if _, err := c.subtitleStream.CreateOrUpdateConsumer(ctx, consumerCfg("SUBTITLE_TRANSLATE_WORKER", SubjectSubtitleTranslate)); err != nil {
+		return fmt.Errorf("failed to create subtitle translate consumer: %w", err)
+	}
+	logger.Info("JetStream consumers ready", "stream", SubtitleStreamName, "consumers", []string{"SUBTITLE_DETECT_WORKER", "SUBTITLE_TRANSCRIBE_WORKER", "SUBTITLE_TRANSLATE_WORKER"})
+
+	// Reel consumer
+	if _, err := c.reelStream.CreateOrUpdateConsumer(ctx, consumerCfg("REEL_WORKER", SubjectReelExport)); err != nil {
+		return fmt.Errorf("failed to create reel consumer: %w", err)
+	}
+	logger.Info("JetStream consumer ready", "stream", ReelStreamName, "consumer", "REEL_WORKER")
+
+	// Gallery consumer
+	if _, err := c.galleryStream.CreateOrUpdateConsumer(ctx, consumerCfg("GALLERY_WORKER", SubjectGalleryGenerate)); err != nil {
+		return fmt.Errorf("failed to create gallery consumer: %w", err)
+	}
+	logger.Info("JetStream consumer ready", "stream", GalleryStreamName, "consumer", "GALLERY_WORKER")
+
+	// Warm cache consumer
+	if _, err := c.warmCacheStream.CreateOrUpdateConsumer(ctx, consumerCfg("WARM_CACHE_WORKER", SubjectWarmCache)); err != nil {
+		return fmt.Errorf("failed to create warm cache consumer: %w", err)
+	}
+	logger.Info("JetStream consumer ready", "stream", WarmCacheStreamName, "consumer", "WARM_CACHE_WORKER")
 
 	return nil
 }

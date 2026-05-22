@@ -201,13 +201,15 @@ func (s *QueueServiceImpl) GetTranscodeFailed(ctx context.Context, page, limit i
 
 	items := make([]dto.TranscodeQueueItem, len(videos))
 	for i, v := range videos {
+		// NOTE: LastError และ RetryCount ถูกย้ายไป WorkerJob table แล้ว
+		// ใช้ WorkerJob API แทน (GET /api/v1/worker-jobs)
 		items[i] = dto.TranscodeQueueItem{
 			ID:         v.ID,
 			Code:       v.Code,
 			Title:      v.Title,
 			Status:     string(v.Status),
-			Error:      v.LastError,
-			RetryCount: v.RetryCount,
+			Error:      "", // Moved to WorkerJob.LastError
+			RetryCount: 0,  // Moved to WorkerJob.RetryCount
 			CreatedAt:  v.CreatedAt,
 			UpdatedAt:  v.UpdatedAt,
 		}
@@ -736,6 +738,7 @@ func (s *QueueServiceImpl) GetGalleryProcessing(ctx context.Context, page, limit
 
 	items := make([]dto.GalleryQueueItem, len(videos))
 	for i, v := range videos {
+		// NOTE: LastError ถูกย้ายไป WorkerJob table แล้ว
 		items[i] = dto.GalleryQueueItem{
 			ID:            v.ID,
 			Code:          v.Code,
@@ -744,7 +747,7 @@ func (s *QueueServiceImpl) GetGalleryProcessing(ctx context.Context, page, limit
 			SourceCount:   v.GallerySourceCount,
 			SafeCount:     v.GallerySafeCount,
 			NsfwCount:     v.GalleryNsfwCount,
-			Error:         v.LastError,
+			Error:         "", // Moved to WorkerJob.LastError
 			CreatedAt:     v.CreatedAt,
 			UpdatedAt:     v.UpdatedAt,
 		}
@@ -762,6 +765,7 @@ func (s *QueueServiceImpl) GetGalleryFailed(ctx context.Context, page, limit int
 
 	items := make([]dto.GalleryQueueItem, len(videos))
 	for i, v := range videos {
+		// NOTE: LastError ถูกย้ายไป WorkerJob table แล้ว
 		items[i] = dto.GalleryQueueItem{
 			ID:            v.ID,
 			Code:          v.Code,
@@ -770,7 +774,7 @@ func (s *QueueServiceImpl) GetGalleryFailed(ctx context.Context, page, limit int
 			SourceCount:   v.GallerySourceCount,
 			SafeCount:     v.GallerySafeCount,
 			NsfwCount:     v.GalleryNsfwCount,
-			Error:         v.LastError,
+			Error:         "", // Moved to WorkerJob.LastError
 			CreatedAt:     v.CreatedAt,
 			UpdatedAt:     v.UpdatedAt,
 		}
@@ -822,7 +826,7 @@ func (s *QueueServiceImpl) RetryGalleryAll(ctx context.Context) (*dto.RetryRespo
 
 		// Update gallery status to processing
 		v.GalleryStatus = "processing"
-		v.LastError = ""
+		// NOTE: LastError ถูกย้ายไป WorkerJob table แล้ว
 		s.videoRepo.Update(ctx, v)
 
 		response.TotalRetried++

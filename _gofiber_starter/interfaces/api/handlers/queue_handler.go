@@ -6,17 +6,20 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
 	"gofiber-template/domain/services"
+	natspkg "gofiber-template/infrastructure/nats"
 	"gofiber-template/pkg/logger"
 	"gofiber-template/pkg/utils"
 )
 
 type QueueHandler struct {
-	queueService services.QueueService
+	queueService  services.QueueService
+	natsPublisher *natspkg.Publisher
 }
 
-func NewQueueHandler(queueService services.QueueService) *QueueHandler {
+func NewQueueHandler(queueService services.QueueService, natsPublisher *natspkg.Publisher) *QueueHandler {
 	return &QueueHandler{
-		queueService: queueService,
+		queueService:  queueService,
+		natsPublisher: natsPublisher,
 	}
 }
 
@@ -352,4 +355,94 @@ func (h *QueueHandler) RetryReelAll(c *fiber.Ctx) error {
 	}
 
 	return utils.SuccessResponse(c, result)
+}
+
+// === Online Workers ===
+
+// GetOnlineWorkers ดึงรายการ Workers ที่ online จาก NATS KV
+// GET /api/v1/admin/queues/workers/online
+func (h *QueueHandler) GetOnlineWorkers(c *fiber.Ctx) error {
+	ctx := c.UserContext()
+
+	if h.natsPublisher == nil {
+		return utils.SuccessResponse(c, fiber.Map{
+			"workers":      []interface{}{},
+			"total_online": 0,
+			"message":      "NATS not connected",
+		})
+	}
+
+	workers, err := h.natsPublisher.GetAllWorkers(ctx)
+	if err != nil {
+		logger.WarnContext(ctx, "Failed to get workers", "error", err)
+		return utils.SuccessResponse(c, fiber.Map{
+			"workers":      []interface{}{},
+			"total_online": 0,
+		})
+	}
+
+	// Calculate summary
+	var totalIdle, totalProcessing, totalStopping, totalPaused int
+	var totalJobs int
+	var transcodeCount, subtitleCount int
+	for _, w := range workers {
+		switch w.Status {
+		case "idle":
+			totalIdle++
+		case "processing":
+			totalProcessing++
+		case "stopping":
+			totalStopping++
+		case "paused":
+			totalPaused++
+		}
+		totalJobs += len(w.CurrentJobs)
+
+		// Count by worker type
+		switch w.WorkerType {
+		case "subtitle":
+			subtitleCount++
+		default:
+			transcodeCount++ // Default to transcode if not specified
+		}
+	}
+
+	return utils.SuccessResponse(c, fiber.Map{
+		"workers":      workers,
+		"total_online": len(workers),
+		"summary": fiber.Map{
+			"idle":       totalIdle,
+			"processing": totalProcessing,
+			"stopping":   totalStopping,
+			"paused":     totalPaused,
+			"total_jobs": totalJobs,
+			"by_type": fiber.Map{
+				"transcode": transcodeCount,
+				"subtitle":  subtitleCount,
+			},
+		},
+	})
+}
+
+// === Stream Management ===
+
+// PurgeTranscodeStream ลบ messages ทั้งหมดใน TRANSCODE_JOBS stream
+// DELETE /api/v1/admin/queues/transcode/purge
+func (h *QueueHandler) PurgeTranscodeStream(c *fiber.Ctx) error {
+	ctx := c.UserContext()
+
+	if h.natsPublisher == nil {
+		return utils.BadRequestResponse(c, "NATS not connected")
+	}
+
+	logger.InfoContext(ctx, "Purge transcode stream request")
+
+	if err := h.natsPublisher.PurgeStream(ctx); err != nil {
+		logger.ErrorContext(ctx, "Failed to purge transcode stream", "error", err)
+		return utils.InternalServerErrorResponse(c)
+	}
+
+	return utils.SuccessResponse(c, fiber.Map{
+		"message": "Transcode stream purged successfully",
+	})
 }

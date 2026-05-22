@@ -14,6 +14,7 @@ type WebSocketManager struct {
 	clients         map[*websocket.Conn]Client
 	userConnections map[uuid.UUID]*websocket.Conn // 1 user = 1 connection (prevent duplicates)
 	rooms           map[string]map[*websocket.Conn]bool
+	connMutexes     map[*websocket.Conn]*sync.Mutex // Per-connection write mutex
 	register        chan Client
 	unregister      chan *websocket.Conn
 	broadcast       chan BroadcastMessage
@@ -46,6 +47,7 @@ func init() {
 		clients:         make(map[*websocket.Conn]Client),
 		userConnections: make(map[uuid.UUID]*websocket.Conn),
 		rooms:           make(map[string]map[*websocket.Conn]bool),
+		connMutexes:     make(map[*websocket.Conn]*sync.Mutex), // Per-connection write mutex
 		register:        make(chan Client),
 		unregister:      make(chan *websocket.Conn),
 		broadcast:       make(chan BroadcastMessage),
@@ -72,12 +74,14 @@ func (m *WebSocketManager) run() {
 					}
 					delete(m.clients, oldConn)
 				}
+				delete(m.connMutexes, oldConn) // Clean up mutex for old connection
 				oldConn.Close()
 			}
 
 			// Register new connection
 			m.clients[client.Conn] = client
 			m.userConnections[client.UserID] = client.Conn
+			m.connMutexes[client.Conn] = &sync.Mutex{} // Create mutex for this connection
 
 			if client.RoomID != "" {
 				if m.rooms[client.RoomID] == nil {
@@ -106,6 +110,7 @@ func (m *WebSocketManager) run() {
 					}
 				}
 
+				delete(m.connMutexes, conn) // Clean up mutex
 				conn.Close()
 				log.Printf("[WebSocket] Client disconnected: UserID=%s, RoomID=%s", client.UserID, client.RoomID)
 			}
@@ -135,7 +140,41 @@ func (m *WebSocketManager) run() {
 }
 
 func (m *WebSocketManager) sendMessage(conn *websocket.Conn, message Message) {
-	if err := conn.WriteJSON(message); err != nil {
+	// Get per-connection mutex (already under RLock from caller)
+	connMutex, ok := m.connMutexes[conn]
+	if !ok {
+		log.Printf("[WebSocket] No mutex found for connection, skipping")
+		return
+	}
+
+	// Lock per-connection mutex to prevent concurrent writes
+	connMutex.Lock()
+	err := conn.WriteJSON(message)
+	connMutex.Unlock()
+
+	if err != nil {
+		log.Printf("[WebSocket] Error sending message: %v", err)
+		m.unregister <- conn
+	}
+}
+
+// safeWriteJSON writes to a connection with mutex protection
+// Use this for writes outside of the broadcast loop
+func (m *WebSocketManager) safeWriteJSON(conn *websocket.Conn, message Message) {
+	m.mutex.RLock()
+	connMutex, ok := m.connMutexes[conn]
+	m.mutex.RUnlock()
+
+	if !ok {
+		log.Printf("[WebSocket] No mutex found for connection, skipping write")
+		return
+	}
+
+	connMutex.Lock()
+	err := conn.WriteJSON(message)
+	connMutex.Unlock()
+
+	if err != nil {
 		log.Printf("[WebSocket] Error sending message: %v", err)
 		m.unregister <- conn
 	}
@@ -225,7 +264,7 @@ func HandleWebSocketMessage(conn *websocket.Conn, messageType int, data []byte) 
 			Type: "pong",
 			Data: "pong",
 		}
-		conn.WriteJSON(response)
+		Manager.safeWriteJSON(conn, response)
 
 	case "join_room":
 		if roomData, ok := message.Data.(map[string]interface{}); ok {
@@ -256,7 +295,7 @@ func HandleWebSocketMessage(conn *websocket.Conn, messageType int, data []byte) 
 						"message": fmt.Sprintf("Joined room %s", roomID),
 					},
 				}
-				conn.WriteJSON(response)
+				Manager.safeWriteJSON(conn, response)
 			}
 		}
 
@@ -279,7 +318,7 @@ func HandleWebSocketMessage(conn *websocket.Conn, messageType int, data []byte) 
 			Type: "room_left",
 			Data: "Left room successfully",
 		}
-		conn.WriteJSON(response)
+		Manager.safeWriteJSON(conn, response)
 
 	default:
 		log.Printf("[WebSocket] Unknown message type: %s", message.Type)

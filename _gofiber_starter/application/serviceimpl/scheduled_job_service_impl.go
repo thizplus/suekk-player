@@ -4,30 +4,30 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
+
+	"github.com/google/uuid"
 	"gofiber-template/domain/dto"
 	"gofiber-template/domain/models"
 	"gofiber-template/domain/repositories"
 	"gofiber-template/domain/services"
 	"gofiber-template/pkg/logger"
 	"gofiber-template/pkg/scheduler"
-	"time"
-
-	"github.com/google/uuid"
 )
 
-type JobServiceImpl struct {
-	jobRepo   repositories.JobRepository
+type ScheduledJobServiceImpl struct {
+	jobRepo   repositories.ScheduledJobRepository
 	scheduler scheduler.EventScheduler
 }
 
-func NewJobService(jobRepo repositories.JobRepository, scheduler scheduler.EventScheduler) services.JobService {
-	return &JobServiceImpl{
+func NewScheduledJobService(jobRepo repositories.ScheduledJobRepository, scheduler scheduler.EventScheduler) services.ScheduledJobService {
+	return &ScheduledJobServiceImpl{
 		jobRepo:   jobRepo,
 		scheduler: scheduler,
 	}
 }
 
-func (s *JobServiceImpl) CreateJob(ctx context.Context, req *dto.CreateJobRequest) (*models.Job, error) {
+func (s *ScheduledJobServiceImpl) CreateJob(ctx context.Context, req *dto.CreateScheduledJobRequest) (*models.ScheduledJob, error) {
 	if err := scheduler.ValidateCronExpression(req.CronExpr); err != nil {
 		logger.WarnContext(ctx, "Invalid cron expression", "cron_expr", req.CronExpr, "error", err)
 		return nil, fmt.Errorf("invalid cron expression: %v", err)
@@ -45,7 +45,7 @@ func (s *JobServiceImpl) CreateJob(ctx context.Context, req *dto.CreateJobReques
 		return nil, fmt.Errorf("failed to calculate next run time: %v", err)
 	}
 
-	job := &models.Job{
+	job := &models.ScheduledJob{
 		ID:        uuid.New(),
 		Name:      req.Name,
 		CronExpr:  req.CronExpr,
@@ -79,7 +79,7 @@ func (s *JobServiceImpl) CreateJob(ctx context.Context, req *dto.CreateJobReques
 	return job, nil
 }
 
-func (s *JobServiceImpl) GetJob(ctx context.Context, jobID uuid.UUID) (*models.Job, error) {
+func (s *ScheduledJobServiceImpl) GetJob(ctx context.Context, jobID uuid.UUID) (*models.ScheduledJob, error) {
 	job, err := s.jobRepo.GetByID(ctx, jobID)
 	if err != nil {
 		return nil, errors.New("job not found")
@@ -87,7 +87,7 @@ func (s *JobServiceImpl) GetJob(ctx context.Context, jobID uuid.UUID) (*models.J
 	return job, nil
 }
 
-func (s *JobServiceImpl) UpdateJob(ctx context.Context, jobID uuid.UUID, req *dto.UpdateJobRequest) (*models.Job, error) {
+func (s *ScheduledJobServiceImpl) UpdateJob(ctx context.Context, jobID uuid.UUID, req *dto.UpdateScheduledJobRequest) (*models.ScheduledJob, error) {
 	job, err := s.jobRepo.GetByID(ctx, jobID)
 	if err != nil {
 		logger.WarnContext(ctx, "Job not found for update", "job_id", jobID)
@@ -149,7 +149,7 @@ func (s *JobServiceImpl) UpdateJob(ctx context.Context, jobID uuid.UUID, req *dt
 	return job, nil
 }
 
-func (s *JobServiceImpl) DeleteJob(ctx context.Context, jobID uuid.UUID) error {
+func (s *ScheduledJobServiceImpl) DeleteJob(ctx context.Context, jobID uuid.UUID) error {
 	_, err := s.jobRepo.GetByID(ctx, jobID)
 	if err != nil {
 		logger.WarnContext(ctx, "Job not found for deletion", "job_id", jobID)
@@ -169,7 +169,7 @@ func (s *JobServiceImpl) DeleteJob(ctx context.Context, jobID uuid.UUID) error {
 	return nil
 }
 
-func (s *JobServiceImpl) ListJobs(ctx context.Context, offset, limit int) ([]*models.Job, int64, error) {
+func (s *ScheduledJobServiceImpl) ListJobs(ctx context.Context, offset, limit int) ([]*models.ScheduledJob, int64, error) {
 	jobs, err := s.jobRepo.List(ctx, offset, limit)
 	if err != nil {
 		logger.ErrorContext(ctx, "Failed to list jobs", "offset", offset, "limit", limit, "error", err)
@@ -185,7 +185,7 @@ func (s *JobServiceImpl) ListJobs(ctx context.Context, offset, limit int) ([]*mo
 	return jobs, count, nil
 }
 
-func (s *JobServiceImpl) StartJob(ctx context.Context, jobID uuid.UUID) error {
+func (s *ScheduledJobServiceImpl) StartJob(ctx context.Context, jobID uuid.UUID) error {
 	job, err := s.jobRepo.GetByID(ctx, jobID)
 	if err != nil {
 		logger.WarnContext(ctx, "Job not found for start", "job_id", jobID)
@@ -227,7 +227,7 @@ func (s *JobServiceImpl) StartJob(ctx context.Context, jobID uuid.UUID) error {
 	return nil
 }
 
-func (s *JobServiceImpl) StopJob(ctx context.Context, jobID uuid.UUID) error {
+func (s *ScheduledJobServiceImpl) StopJob(ctx context.Context, jobID uuid.UUID) error {
 	job, err := s.jobRepo.GetByID(ctx, jobID)
 	if err != nil {
 		logger.WarnContext(ctx, "Job not found for stop", "job_id", jobID)
@@ -255,7 +255,7 @@ func (s *JobServiceImpl) StopJob(ctx context.Context, jobID uuid.UUID) error {
 	return nil
 }
 
-func (s *JobServiceImpl) ExecuteJob(ctx context.Context, job *models.Job) error {
+func (s *ScheduledJobServiceImpl) ExecuteJob(ctx context.Context, job *models.ScheduledJob) error {
 	now := time.Now()
 
 	logger.InfoContext(ctx, "Executing job", "job_id", job.ID, "name", job.Name, "started_at", now.Format(time.RFC3339))

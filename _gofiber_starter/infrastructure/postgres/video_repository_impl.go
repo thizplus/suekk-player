@@ -358,7 +358,8 @@ func (r *VideoRepositoryImpl) CountByGalleryStatus(ctx context.Context, galleryS
 }
 
 // GetGalleryFailed ดึง videos ที่ gallery failed
-// เงื่อนไข: video status = ready, gallery_status = none, มี last_error ที่เกี่ยวกับ gallery
+// NOTE: last_error ถูกย้ายไป WorkerJob table แล้ว
+// ตอนนี้ใช้ gallery_status = 'failed' แทน
 func (r *VideoRepositoryImpl) GetGalleryFailed(ctx context.Context, offset, limit int) ([]*models.Video, int64, error) {
 	var videos []*models.Video
 	var total int64
@@ -366,8 +367,7 @@ func (r *VideoRepositoryImpl) GetGalleryFailed(ctx context.Context, offset, limi
 	query := r.db.WithContext(ctx).
 		Model(&models.Video{}).
 		Where("status = ?", models.VideoStatusReady).
-		Where("gallery_status = ?", "none").
-		Where("last_error LIKE ?", "%gallery%")
+		Where("gallery_status = ?", "failed")
 
 	// Count total
 	if err := query.Count(&total).Error; err != nil {

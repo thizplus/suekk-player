@@ -4,7 +4,9 @@ import (
 	"context"
 	"time"
 
+	"gofiber-template/domain/models"
 	"gofiber-template/domain/repositories"
+	"gofiber-template/domain/services"
 	"gofiber-template/pkg/logger"
 	"gofiber-template/pkg/scheduler"
 )
@@ -14,27 +16,29 @@ type SubtitleStuckDetectorConfig struct {
 	CheckInterval     time.Duration // ทุกกี่วินาทีจะตรวจสอบ (default: 30s)
 	ProcessingTimeout time.Duration // processing/translating นานกว่านี้ถือว่า stuck (default: 10m)
 	// ไม่มี QueuedTimeout - jobs รอใน queue ได้นานเท่าที่ต้องการ
-	// เหตุผล: ถ้ามี 100 subtitles และ transcribe ทำได้ตัวละ 5 นาที = 500 นาที (~8 ชั่วโมง)
-	// queued timeout จะทำให้ jobs หลังๆ fail โดยไม่จำเป็น
 }
 
 // SubtitleStuckDetectorService ตรวจจับและจัดการ stuck subtitle jobs
+// ใช้ WorkerJob table แทน Subtitle.ProcessingStartedAt
 type SubtitleStuckDetectorService struct {
-	config       SubtitleStuckDetectorConfig
-	subtitleRepo repositories.SubtitleRepository
-	scheduler    scheduler.EventScheduler
+	config           SubtitleStuckDetectorConfig
+	workerJobService services.WorkerJobService
+	subtitleRepo     repositories.SubtitleRepository
+	scheduler        scheduler.EventScheduler
 }
 
 // NewSubtitleStuckDetectorService สร้าง service ใหม่
 func NewSubtitleStuckDetectorService(
 	config SubtitleStuckDetectorConfig,
+	workerJobService services.WorkerJobService,
 	subtitleRepo repositories.SubtitleRepository,
 	eventScheduler scheduler.EventScheduler,
 ) *SubtitleStuckDetectorService {
 	service := &SubtitleStuckDetectorService{
-		config:       config,
-		subtitleRepo: subtitleRepo,
-		scheduler:    eventScheduler,
+		config:           config,
+		workerJobService: workerJobService,
+		subtitleRepo:     subtitleRepo,
+		scheduler:        eventScheduler,
 	}
 
 	// Set defaults
@@ -44,7 +48,6 @@ func NewSubtitleStuckDetectorService(
 	if service.config.ProcessingTimeout == 0 {
 		service.config.ProcessingTimeout = 10 * time.Minute // ถ้า worker ไม่ respond 10 นาที = crash
 	}
-	// ไม่มี queued timeout - รอใน queue ได้ไม่จำกัด
 
 	return service
 }
@@ -59,8 +62,8 @@ func (s *SubtitleStuckDetectorService) RegisterDetectorJob() error {
 
 // RunDetection ตรวจสอบ stuck subtitle jobs
 func (s *SubtitleStuckDetectorService) RunDetection(ctx context.Context) {
-	// ตรวจสอบเฉพาะ processing/translating/detecting ที่ค้าง (worker crash)
-	// ไม่ตรวจสอบ queued - รอใน queue ได้นานเท่าที่ต้องการ
+	// ตรวจสอบเฉพาะ processing jobs ที่ค้าง (worker crash)
+	// ใช้ WorkerJob.StartedAt
 	processingStuck := s.detectStuckProcessing(ctx)
 
 	// Log สรุปเฉพาะเมื่อมี stuck jobs
@@ -71,37 +74,54 @@ func (s *SubtitleStuckDetectorService) RunDetection(ctx context.Context) {
 	}
 }
 
-// detectStuckProcessing ตรวจสอบ subtitles ที่ processing/translating/detecting นานเกินไป (worker crash)
+// detectStuckProcessing ตรวจสอบ WorkerJob ที่ subtitle processing นานเกินไป
 func (s *SubtitleStuckDetectorService) detectStuckProcessing(ctx context.Context) int {
-	threshold := time.Now().Add(-s.config.ProcessingTimeout)
-
-	stuckSubtitles, err := s.subtitleRepo.GetStuckProcessing(ctx, threshold)
+	// Get stuck jobs from WorkerJob table
+	stuckJobs, err := s.workerJobService.GetStuckJobs(ctx, s.config.ProcessingTimeout)
 	if err != nil {
-		logger.ErrorContext(ctx, "Failed to get stuck processing subtitles", "error", err)
+		logger.ErrorContext(ctx, "Failed to get stuck processing jobs", "error", err)
 		return 0
 	}
 
 	count := 0
-	for _, subtitle := range stuckSubtitles {
-		logger.WarnContext(ctx, "Detected stuck processing subtitle",
-			"subtitle_id", subtitle.ID,
-			"video_id", subtitle.VideoID,
-			"language", subtitle.Language,
-			"status", subtitle.Status,
-			"processing_started_at", subtitle.ProcessingStartedAt,
-			"timeout", s.config.ProcessingTimeout,
-		)
-
-		// Mark as failed
-		errorMsg := "Processing timeout: worker not responding for more than 10 minutes"
-		if err := s.subtitleRepo.MarkSubtitleFailed(ctx, subtitle.ID, errorMsg); err != nil {
-			logger.ErrorContext(ctx, "Failed to mark subtitle as failed", "subtitle_id", subtitle.ID, "error", err)
+	for _, job := range stuckJobs {
+		// Only handle subtitle-related job types
+		switch job.JobType {
+		case models.WorkerJobTypeSubtitleDetect, models.WorkerJobTypeSubtitleTranscribe, models.WorkerJobTypeSubtitleTranslate:
+			// These are subtitle jobs - handle them
+		default:
 			continue
 		}
 
-		logger.InfoContext(ctx, "Marked stuck processing subtitle as failed",
-			"subtitle_id", subtitle.ID,
-			"video_id", subtitle.VideoID,
+		logger.WarnContext(ctx, "Detected stuck subtitle job",
+			"job_id", job.ID,
+			"job_type", job.JobType,
+			"entity_type", job.EntityType,
+			"entity_id", job.EntityID,
+			"entity_code", job.EntityCode,
+			"started_at", job.StartedAt,
+			"timeout", s.config.ProcessingTimeout,
+		)
+
+		// Mark WorkerJob as failed
+		errorMsg := "Processing timeout: worker not responding for more than 10 minutes"
+		if err := s.workerJobService.MarkAsFailed(ctx, job.ID, errorMsg, "WORKER_TIMEOUT", "processing", false); err != nil {
+			logger.ErrorContext(ctx, "Failed to mark job as failed", "job_id", job.ID, "error", err)
+			continue
+		}
+
+		// Also mark the Subtitle as failed (for backward compat)
+		// Only for transcribe/translate jobs where entity is subtitle
+		if job.EntityType == models.WorkerEntityTypeSubtitle {
+			if err := s.subtitleRepo.MarkSubtitleFailed(ctx, job.EntityID, errorMsg); err != nil {
+				logger.ErrorContext(ctx, "Failed to mark subtitle as failed", "subtitle_id", job.EntityID, "error", err)
+			}
+		}
+
+		logger.InfoContext(ctx, "Marked stuck subtitle job as failed",
+			"job_id", job.ID,
+			"job_type", job.JobType,
+			"entity_code", job.EntityCode,
 		)
 		count++
 	}

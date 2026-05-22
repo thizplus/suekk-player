@@ -2,27 +2,32 @@ package websocket
 
 import (
 	"context"
+	"encoding/json"
 	"sync"
 
 	"github.com/google/uuid"
+	"gorm.io/datatypes"
 
+	"gofiber-template/domain/models"
 	"gofiber-template/domain/ports"
 	"gofiber-template/domain/repositories"
+	"gofiber-template/domain/services"
 	"gofiber-template/pkg/logger"
 )
 
 // ProgressBroadcaster รับ progress จาก messaging และ broadcast ไปยัง WebSocket clients
 // ใช้ ports.ProgressSubscriberPort เพื่อ decouple จาก NATS implementation
 type ProgressBroadcaster struct {
-	progressSub ports.ProgressSubscriberPort
-	manager     *WebSocketManager
-	videoRepo   repositories.VideoRepository
-	notifier    ports.NotifierPort // สำหรับส่ง notification เมื่อ completed/failed
-	titleCache  map[string]string  // cache video title เพื่อไม่ต้อง query ทุกครั้ง
-	cacheMu     sync.RWMutex
-	running     bool
-	runningMu   sync.Mutex
-	cancelCtx   context.CancelFunc
+	progressSub      ports.ProgressSubscriberPort
+	manager          *WebSocketManager
+	videoRepo        repositories.VideoRepository
+	workerJobService services.WorkerJobService // For Dual Write - track jobs in DB
+	notifier         ports.NotifierPort        // สำหรับส่ง notification เมื่อ completed/failed
+	titleCache       map[string]string         // cache video title เพื่อไม่ต้อง query ทุกครั้ง
+	cacheMu          sync.RWMutex
+	running          bool
+	runningMu        sync.Mutex
+	cancelCtx        context.CancelFunc
 }
 
 // NewProgressBroadcaster สร้าง ProgressBroadcaster ใหม่
@@ -38,6 +43,12 @@ func NewProgressBroadcaster(progressSub ports.ProgressSubscriberPort, videoRepo 
 // SetNotifier ตั้งค่า notifier สำหรับส่ง notification เมื่อ transcode completed/failed
 func (pb *ProgressBroadcaster) SetNotifier(notifier ports.NotifierPort) {
 	pb.notifier = notifier
+}
+
+// SetWorkerJobService ตั้งค่า WorkerJobService สำหรับ Dual Write
+func (pb *ProgressBroadcaster) SetWorkerJobService(svc services.WorkerJobService) {
+	pb.workerJobService = svc
+	logger.Info("WorkerJobService injected into ProgressBroadcaster (Dual Write enabled)")
 }
 
 // Start เริ่ม broadcaster
@@ -80,14 +91,20 @@ func (pb *ProgressBroadcaster) handleProgressUpdate(update *ports.ProgressData) 
 	}
 
 	// ตรวจสอบว่าเป็น subtitle progress หรือ transcode progress หรือ gallery progress หรือ warmcache
-	isSubtitleProgress := update.SubtitleID != "" || update.Stage != ""
+	// NOTE: ต้องเช็ค gallery/warmcache ก่อนเพราะใช้ Quality field
 	isGalleryProgress := update.Quality == "gallery"
 	isWarmCacheProgress := update.Quality == "warmcache"
 
-	if isSubtitleProgress {
-		pb.handleSubtitleProgress(update)
-		return
-	}
+	// Subtitle progress: ต้องมี SubtitleID หรือ Stage เป็น subtitle-specific
+	// ไม่ใช้แค่ Stage != "" เพราะ transcode ก็มี Stage
+	isSubtitleProgress := update.SubtitleID != "" ||
+		update.Stage == "detecting" ||
+		update.Stage == "transcribing" ||
+		update.Stage == "translating" ||
+		update.Stage == "vad" ||
+		update.Stage == "fixing" ||
+		update.Stage == "refining" ||
+		update.Stage == "generating"
 
 	if isGalleryProgress {
 		pb.handleGalleryProgress(update)
@@ -96,6 +113,11 @@ func (pb *ProgressBroadcaster) handleProgressUpdate(update *ports.ProgressData) 
 
 	if isWarmCacheProgress {
 		pb.handleWarmCacheProgress(update)
+		return
+	}
+
+	if isSubtitleProgress {
+		pb.handleSubtitleProgress(update)
 		return
 	}
 
@@ -166,6 +188,11 @@ func (pb *ProgressBroadcaster) handleProgressUpdate(update *ports.ProgressData) 
 	// อัพเดท Database เมื่อ status เปลี่ยน (processing, completed, failed)
 	if update.Status == "processing" || update.Status == "completed" || update.Status == "failed" {
 		pb.updateVideoStatus(update)
+
+		// Dual Write: Update WorkerJob
+		if videoID, err := uuid.Parse(update.VideoID); err == nil {
+			pb.updateWorkerJob(models.WorkerEntityTypeVideo, videoID, models.WorkerJobTypeTranscode, update)
+		}
 	}
 
 	// ถ้า completed หรือ failed ให้ส่ง notification พิเศษ
@@ -380,6 +407,37 @@ func (pb *ProgressBroadcaster) handleSubtitleProgress(update *ports.ProgressData
 		"language", update.CurrentLanguage,
 		"clients_count", pb.manager.GetTotalClients(),
 	)
+
+	// Dual Write: Update WorkerJob
+	// Determine job type based on stage
+	var jobType models.WorkerJobType
+	var entityType models.WorkerEntityType
+	var entityID uuid.UUID
+
+	switch update.Stage {
+	case "detecting":
+		jobType = models.WorkerJobTypeSubtitleDetect
+		entityType = models.WorkerEntityTypeVideo
+		entityID, _ = uuid.Parse(update.VideoID)
+	case "translating":
+		jobType = models.WorkerJobTypeSubtitleTranslate
+		entityType = models.WorkerEntityTypeVideo
+		entityID, _ = uuid.Parse(update.VideoID)
+	default:
+		// transcribing, vad, fixing, refining, generating, uploading
+		jobType = models.WorkerJobTypeSubtitleTranscribe
+		if update.SubtitleID != "" {
+			entityType = models.WorkerEntityTypeSubtitle
+			entityID, _ = uuid.Parse(update.SubtitleID)
+		} else {
+			entityType = models.WorkerEntityTypeVideo
+			entityID, _ = uuid.Parse(update.VideoID)
+		}
+	}
+
+	if entityID != uuid.Nil {
+		pb.updateWorkerJob(entityType, entityID, jobType, update)
+	}
 }
 
 // handleGalleryProgress จัดการ gallery progress update
@@ -416,6 +474,11 @@ func (pb *ProgressBroadcaster) handleGalleryProgress(update *ports.ProgressData)
 		"worker_id", update.WorkerID,
 		"clients_count", pb.manager.GetTotalClients(),
 	)
+
+	// Dual Write: Update WorkerJob
+	if videoID, err := uuid.Parse(update.VideoID); err == nil {
+		pb.updateWorkerJob(models.WorkerEntityTypeVideo, videoID, models.WorkerJobTypeGallery, update)
+	}
 }
 
 // handleWarmCacheProgress จัดการ warm cache progress update
@@ -452,6 +515,11 @@ func (pb *ProgressBroadcaster) handleWarmCacheProgress(update *ports.ProgressDat
 		"worker_id", update.WorkerID,
 		"clients_count", pb.manager.GetTotalClients(),
 	)
+
+	// Dual Write: Update WorkerJob
+	if videoID, err := uuid.Parse(update.VideoID); err == nil {
+		pb.updateWorkerJob(models.WorkerEntityTypeVideo, videoID, models.WorkerJobTypeWarmCache, update)
+	}
 }
 
 // handleReelProgress จัดการ reel progress update
@@ -487,6 +555,93 @@ func (pb *ProgressBroadcaster) handleReelProgress(update *ports.ProgressData) {
 		"worker_id", update.WorkerID,
 		"clients_count", pb.manager.GetTotalClients(),
 	)
+
+	// Dual Write: Update WorkerJob
+	if reelID, err := uuid.Parse(update.ReelID); err == nil {
+		pb.updateWorkerJob(models.WorkerEntityTypeReel, reelID, models.WorkerJobTypeReel, update)
+	}
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Dual Write Helper - Update WorkerJob in DB
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// updateWorkerJob updates the WorkerJob record based on progress data (Dual Write)
+func (pb *ProgressBroadcaster) updateWorkerJob(entityType models.WorkerEntityType, entityID uuid.UUID, jobType models.WorkerJobType, update *ports.ProgressData) {
+	if pb.workerJobService == nil {
+		return // Dual Write not enabled
+	}
+
+	ctx := context.Background()
+
+	// Get the latest job for this entity
+	job, err := pb.workerJobService.GetLatestJobByEntity(ctx, entityType, entityID, jobType)
+	if err != nil {
+		// Job might not exist yet (race condition) - this is OK
+		logger.Debug("WorkerJob not found for update (may be race condition)",
+			"entity_type", entityType,
+			"entity_id", entityID,
+			"job_type", jobType,
+		)
+		return
+	}
+
+	// Skip terminal state EXCEPT for "completed" status
+	// Because actual completion from worker should override stuck_detector's "failed" status
+	if job.Status.IsTerminal() && update.Status != "completed" {
+		return
+	}
+
+	// Update based on status
+	switch update.Status {
+	case "processing":
+		// If job is queued, mark as started
+		if job.Status == models.WorkerJobStatusQueued {
+			if err := pb.workerJobService.MarkAsStarted(ctx, job.ID, update.WorkerID); err != nil {
+				logger.Warn("Failed to mark WorkerJob as started", "job_id", job.ID, "error", err)
+			}
+		}
+		// Always update progress
+		if err := pb.workerJobService.UpdateProgress(ctx, job.ID, update.Progress, update.Stage, update.Message); err != nil {
+			logger.Warn("Failed to update WorkerJob progress", "job_id", job.ID, "error", err)
+		}
+
+	case "completed":
+		// Log if we're overriding a previous failed status (from stuck_detector)
+		if job.Status == models.WorkerJobStatusFailed {
+			logger.Info("Overriding failed status with actual completion from worker",
+				"job_id", job.ID,
+				"entity_id", entityID,
+				"job_type", jobType,
+				"previous_error", job.LastError,
+			)
+		}
+
+		// Build output data
+		outputData := map[string]interface{}{}
+		if update.OutputPath != "" {
+			outputData["output_path"] = update.OutputPath
+		}
+		if update.AudioPath != "" {
+			outputData["audio_path"] = update.AudioPath
+		}
+		if update.FileSize > 0 {
+			outputData["file_size"] = update.FileSize
+		}
+
+		outputJSON, _ := json.Marshal(outputData)
+		if err := pb.workerJobService.MarkAsCompleted(ctx, job.ID, datatypes.JSON(outputJSON)); err != nil {
+			logger.Warn("Failed to mark WorkerJob as completed", "job_id", job.ID, "error", err)
+		} else {
+			logger.Info("WorkerJob marked as completed", "job_id", job.ID, "entity_type", entityType, "entity_id", entityID)
+		}
+
+	case "failed":
+		errCode := "WORKER_ERROR"
+		if err := pb.workerJobService.MarkAsFailed(ctx, job.ID, update.Error, errCode, update.Stage, true); err != nil {
+			logger.Warn("Failed to mark WorkerJob as failed", "job_id", job.ID, "error", err)
+		}
+	}
 }
 
 // getVideoTitle ดึง video title จาก cache หรือ database

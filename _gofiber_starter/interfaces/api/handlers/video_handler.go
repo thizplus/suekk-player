@@ -117,17 +117,20 @@ func (h *VideoHandler) Upload(c *fiber.Ctx) error {
 	}
 
 	// ตรวจสอบ disk space ก่อน upload (ต้องการพื้นที่ประมาณ 3x ของไฟล์สำหรับ transcoding)
-	requiredSpace := file.Size * 3
-	hasSpace, diskInfo, err := utils.CheckDiskSpace(h.storagePath, requiredSpace, 10.0)
-	if err != nil {
-		logger.WarnContext(ctx, "Failed to check disk space", "error", err)
-		// ไม่ block upload ถ้าตรวจสอบไม่ได้
-	} else if !hasSpace {
-		logger.WarnContext(ctx, "Insufficient disk space",
-			"required", utils.FormatBytes(uint64(requiredSpace)),
-			"available", utils.FormatBytes(diskInfo.Free),
-		)
-		return utils.BadRequestResponse(c, "Insufficient disk space for video processing")
+	// Skip ถ้า storagePath ว่างหรือเป็น S3 (ไม่ต้องเช็ค local disk)
+	if h.storagePath != "" && h.storageType != "s3" {
+		requiredSpace := file.Size * 3
+		hasSpace, diskInfo, err := utils.CheckDiskSpace(h.storagePath, requiredSpace, 5.0)
+		if err != nil {
+			logger.WarnContext(ctx, "Failed to check disk space", "error", err, "storagePath", h.storagePath)
+			// ไม่ block upload ถ้าตรวจสอบไม่ได้
+		} else if !hasSpace {
+			logger.WarnContext(ctx, "Insufficient disk space",
+				"required", utils.FormatBytes(uint64(requiredSpace)),
+				"available", utils.FormatBytes(diskInfo.Free),
+			)
+			return utils.BadRequestResponse(c, "Insufficient disk space for video processing")
+		}
 	}
 
 	// Parse request
@@ -487,28 +490,18 @@ func (h *VideoHandler) ListDLQ(c *fiber.Ctx) error {
 		return utils.InternalServerErrorResponse(c)
 	}
 
-	// Convert to DLQ response with error details
+	// Convert to DLQ response
+	// NOTE: ErrorHistory, RetryCount, LastError ถูกย้ายไป WorkerJob table แล้ว
+	// ใช้ WorkerJob API (GET /api/v1/worker-jobs) เพื่อดูรายละเอียด error
 	dlqResponses := make([]dto.DLQVideoResponse, 0, len(videos))
 	for _, v := range videos {
-		// Convert error history
-		errorHistory := make([]dto.ErrorRecordResponse, 0, len(v.ErrorHistory))
-		for _, record := range v.ErrorHistory {
-			errorHistory = append(errorHistory, dto.ErrorRecordResponse{
-				Attempt:   record.Attempt,
-				Error:     record.Error,
-				WorkerID:  record.WorkerID,
-				Stage:     record.Stage,
-				Timestamp: record.Timestamp,
-			})
-		}
-
 		dlqResponses = append(dlqResponses, dto.DLQVideoResponse{
 			ID:           v.ID,
 			Code:         v.Code,
 			Title:        v.Title,
-			RetryCount:   v.RetryCount,
-			LastError:    v.LastError,
-			ErrorHistory: errorHistory,
+			RetryCount:   0,                            // Moved to WorkerJob.RetryCount
+			LastError:    "",                           // Moved to WorkerJob.LastError
+			ErrorHistory: []dto.ErrorRecordResponse{},  // Moved to WorkerJob.ErrorHistory
 			CreatedAt:    v.CreatedAt,
 			UpdatedAt:    v.UpdatedAt,
 			UserID:       v.UserID,
@@ -565,7 +558,6 @@ func (h *VideoHandler) RetryDLQ(c *fiber.Ctx) error {
 			"video_id", id,
 			"video_code", video.Code,
 			"previous_status", video.Status,
-			"previous_retry_count", video.RetryCount,
 		)
 	}
 
@@ -1096,5 +1088,166 @@ func (h *VideoHandler) UpdateGallery(c *fiber.Ctx) error {
 		"gallery_count": galleryCount,
 		"safe_count":    req.GallerySafeCount,
 		"nsfw_count":    req.GalleryNsfwCount,
+	})
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Trigger Actions - Queue Jobs (Standard Routes)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// Transcode ส่งวิดีโอเข้า transcoding queue
+// POST /api/v1/videos/:id/transcode
+func (h *VideoHandler) Transcode(c *fiber.Ctx) error {
+	ctx := c.UserContext()
+
+	// ตรวจสอบว่า NATS publisher พร้อมใช้งาน
+	if h.natsPublisher == nil {
+		logger.WarnContext(ctx, "NATS publisher not available")
+		return utils.BadRequestResponse(c, "Transcoding service is not available")
+	}
+
+	idParam := c.Params("id")
+	videoID, err := uuid.Parse(idParam)
+	if err != nil {
+		return utils.BadRequestResponse(c, "Invalid video ID")
+	}
+
+	// ดึงข้อมูล video
+	video, err := h.videoService.GetByID(ctx, videoID)
+	if err != nil {
+		logger.WarnContext(ctx, "Video not found", "video_id", videoID)
+		return utils.NotFoundResponse(c, "Video not found")
+	}
+
+	// ตรวจสอบว่า video ยังไม่ได้ transcode หรือ failed
+	if video.Status == models.VideoStatusReady {
+		return utils.BadRequestResponse(c, "Video is already transcoded")
+	}
+	if video.Status == models.VideoStatusProcessing {
+		return utils.BadRequestResponse(c, "Video is currently being transcoded")
+	}
+	if video.Status == models.VideoStatusQueued {
+		return utils.BadRequestResponse(c, "Video is already in queue")
+	}
+
+	// ใช้ OriginalPath จาก database
+	inputPath := video.OriginalPath
+	outputPath := "hls/" + video.Code + "/"
+	qualities := h.getDefaultQualities(ctx)
+
+	logger.InfoContext(ctx, "Queueing video for transcoding",
+		"video_id", videoID,
+		"video_code", video.Code,
+		"qualities", qualities,
+	)
+
+	if err := h.natsPublisher.EnqueueTranscode(ctx, video.ID.String(), video.Code, inputPath, outputPath, "h264", qualities, false); err != nil {
+		logger.ErrorContext(ctx, "Failed to queue video for transcoding", "video_id", videoID, "error", err)
+		return utils.InternalServerErrorResponse(c)
+	}
+
+	// Update status to queued
+	oldStatus := video.Status
+	if updateErr := h.videoService.UpdateVideoStatus(ctx, video.ID, models.VideoStatusQueued); updateErr != nil {
+		logger.WarnContext(ctx, "Failed to update video status to queued",
+			"video_id", videoID,
+			"video_code", video.Code,
+			"error", updateErr,
+		)
+	}
+
+	logger.InfoContext(ctx, "Video queued for transcoding",
+		"video_id", videoID,
+		"video_code", video.Code,
+		"old_status", oldStatus,
+		"new_status", "queued",
+	)
+
+	return utils.SuccessResponse(c, fiber.Map{
+		"message":    "Video queued for transcoding",
+		"video_id":   video.ID,
+		"video_code": video.Code,
+	})
+}
+
+// WarmCache ส่ง video เข้า warm cache queue
+// POST /api/v1/videos/:id/warm-cache
+func (h *VideoHandler) WarmCache(c *fiber.Ctx) error {
+	ctx := c.UserContext()
+
+	// ตรวจสอบว่า NATS publisher พร้อมใช้งาน
+	if h.natsPublisher == nil {
+		logger.WarnContext(ctx, "NATS publisher not available")
+		return utils.BadRequestResponse(c, "Warm cache service is not available")
+	}
+
+	idParam := c.Params("id")
+	videoID, err := uuid.Parse(idParam)
+	if err != nil {
+		return utils.BadRequestResponse(c, "Invalid video ID")
+	}
+
+	// ดึงข้อมูล video
+	video, err := h.videoService.GetByID(ctx, videoID)
+	if err != nil {
+		logger.WarnContext(ctx, "Video not found", "video_id", videoID)
+		return utils.NotFoundResponse(c, "Video not found")
+	}
+
+	// ตรวจสอบว่า video ready แล้ว
+	if video.Status != models.VideoStatusReady {
+		return utils.BadRequestResponse(c, "Video must be ready before warming cache")
+	}
+
+	// ตรวจสอบว่ามี HLS path
+	if video.HLSPath == "" {
+		return utils.BadRequestResponse(c, "Video has no HLS content")
+	}
+
+	// ตรวจสอบว่ากำลัง warm อยู่หรือไม่
+	if video.CacheStatus == string(models.CacheStatusWarming) {
+		return utils.BadRequestResponse(c, "Video is currently being warmed")
+	}
+
+	// ดึง segment counts จาก QualitySizes
+	segmentCounts := make(map[string]int)
+	if video.QualitySizes != nil {
+		for quality := range video.QualitySizes {
+			// Estimate segments from duration (assume 4 second segments)
+			segmentCounts[quality] = int(video.Duration/4) + 1
+		}
+	}
+
+	hlsPath := "hls/" + video.Code
+
+	logger.InfoContext(ctx, "Queueing video for warm cache",
+		"video_id", videoID,
+		"video_code", video.Code,
+		"hls_path", hlsPath,
+	)
+
+	// สร้าง WarmCacheJob
+	job := natspkg.NewWarmCacheJob(
+		video.ID.String(),
+		video.Code,
+		hlsPath,
+		segmentCounts,
+		1, // priority: 1=new video
+	)
+
+	if err := h.natsPublisher.PublishWarmCacheJob(ctx, job); err != nil {
+		logger.ErrorContext(ctx, "Failed to queue warm cache job", "video_id", videoID, "error", err)
+		return utils.InternalServerErrorResponse(c)
+	}
+
+	logger.InfoContext(ctx, "Video queued for warm cache",
+		"video_id", videoID,
+		"video_code", video.Code,
+	)
+
+	return utils.SuccessResponse(c, fiber.Map{
+		"message":    "Warm cache job queued",
+		"video_id":   video.ID,
+		"video_code": video.Code,
 	})
 }

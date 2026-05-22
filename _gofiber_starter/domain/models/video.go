@@ -116,11 +116,8 @@ type Video struct {
 	QualitySizes     QualitySizes `gorm:"type:jsonb;default:'{}'"` // ขนาดแยกตาม quality {"1080p": bytes, "720p": bytes}
 	NeedsRetranscode bool         `gorm:"default:false"`           // ต้อง re-transcode หรือไม่
 
-	// Retry tracking for failure handling
-	RetryCount          int          `gorm:"default:0"`                      // จำนวนครั้งที่ retry
-	LastError           string       `gorm:"type:text"`                      // error message ล่าสุด
-	ErrorHistory        ErrorHistory `gorm:"type:jsonb;default:'[]'"`        // ประวัติ errors ทั้งหมด
-	ProcessingStartedAt *time.Time   `gorm:"type:timestamptz"`               // เวลาเริ่ม processing (สำหรับ stuck detection)
+	// NOTE: Retry tracking fields (RetryCount, LastError, ErrorHistory, ProcessingStartedAt)
+	// ถูกย้ายไป WorkerJob table แล้ว - ดูที่ domain/models/worker_job.go
 
 	// Audio fields (สำหรับ subtitle worker - extracted during transcode)
 	AudioPath        string `gorm:"type:text"` // S3 path to extracted audio (WAV)
@@ -187,25 +184,8 @@ func (v *Video) IsDeadLetter() bool {
 	return v.Status == VideoStatusDeadLetter
 }
 
-// CanRetry ตรวจสอบว่า video สามารถ retry ได้หรือไม่ (retry < 3)
-func (v *Video) CanRetry() bool {
-	return v.RetryCount < 3
-}
-
-// IncrementRetry เพิ่ม retry count และบันทึก error
-func (v *Video) IncrementRetry(errMsg string) {
-	v.RetryCount++
-	v.LastError = errMsg
-}
-
-// AppendErrorHistory เพิ่ม error record ลงในประวัติ
-func (v *Video) AppendErrorHistory(record ErrorRecord) {
-	if v.ErrorHistory == nil {
-		v.ErrorHistory = ErrorHistory{}
-	}
-	v.ErrorHistory = append(v.ErrorHistory, record)
-	v.LastError = record.Error
-}
+// NOTE: CanRetry, IncrementRetry, AppendErrorHistory ถูกย้ายไป WorkerJob
+// ดูที่ domain/models/worker_job.go และ domain/services/worker_job_service.go
 
 // GetDiskUsageMB แปลง disk usage เป็น MB
 func (v *Video) GetDiskUsageMB() float64 {

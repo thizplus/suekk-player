@@ -35,14 +35,15 @@ const (
 )
 
 type VideoServiceImpl struct {
-	videoRepo    repositories.VideoRepository
-	categoryRepo repositories.CategoryRepository
-	userRepo     repositories.UserRepository
-	subtitleRepo repositories.SubtitleRepository
-	reelRepo     repositories.ReelRepository // สำหรับนับ reel count
-	storage      ports.StoragePort
-	redisClient  *redis.Client  // optional - ถ้าไม่มีจะ query DB ตลอด
-	config       *config.Config // for storage quota
+	videoRepo     repositories.VideoRepository
+	categoryRepo  repositories.CategoryRepository
+	userRepo      repositories.UserRepository
+	subtitleRepo  repositories.SubtitleRepository
+	reelRepo      repositories.ReelRepository      // สำหรับนับ reel count
+	workerJobRepo repositories.WorkerJobRepository // สำหรับ cascade delete
+	storage       ports.StoragePort
+	redisClient   *redis.Client  // optional - ถ้าไม่มีจะ query DB ตลอด
+	config        *config.Config // for storage quota
 }
 
 func NewVideoService(
@@ -51,18 +52,20 @@ func NewVideoService(
 	userRepo repositories.UserRepository,
 	subtitleRepo repositories.SubtitleRepository,
 	reelRepo repositories.ReelRepository,
+	workerJobRepo repositories.WorkerJobRepository,
 	storage ports.StoragePort,
 	cfg *config.Config,
 ) services.VideoService {
 	return &VideoServiceImpl{
-		videoRepo:    videoRepo,
-		categoryRepo: categoryRepo,
-		userRepo:     userRepo,
-		subtitleRepo: subtitleRepo,
-		reelRepo:     reelRepo,
-		storage:      storage,
-		config:       cfg,
-		redisClient:  nil,
+		videoRepo:     videoRepo,
+		categoryRepo:  categoryRepo,
+		userRepo:      userRepo,
+		subtitleRepo:  subtitleRepo,
+		reelRepo:      reelRepo,
+		workerJobRepo: workerJobRepo,
+		storage:       storage,
+		config:        cfg,
+		redisClient:   nil,
 	}
 }
 
@@ -73,19 +76,21 @@ func NewVideoServiceWithCache(
 	userRepo repositories.UserRepository,
 	subtitleRepo repositories.SubtitleRepository,
 	reelRepo repositories.ReelRepository,
+	workerJobRepo repositories.WorkerJobRepository,
 	storage ports.StoragePort,
 	redisClient *redis.Client,
 	cfg *config.Config,
 ) services.VideoService {
 	return &VideoServiceImpl{
-		videoRepo:    videoRepo,
-		categoryRepo: categoryRepo,
-		userRepo:     userRepo,
-		subtitleRepo: subtitleRepo,
-		reelRepo:     reelRepo,
-		storage:      storage,
-		redisClient:  redisClient,
-		config:       cfg,
+		videoRepo:     videoRepo,
+		categoryRepo:  categoryRepo,
+		userRepo:      userRepo,
+		subtitleRepo:  subtitleRepo,
+		reelRepo:      reelRepo,
+		workerJobRepo: workerJobRepo,
+		storage:       storage,
+		redisClient:   redisClient,
+		config:        cfg,
 	}
 }
 
@@ -444,6 +449,16 @@ func (s *VideoServiceImpl) Delete(ctx context.Context, id uuid.UUID) error {
 		}
 	}
 
+	// ลบ worker jobs ที่เกี่ยวข้อง (cascade delete)
+	if s.workerJobRepo != nil {
+		if err := s.workerJobRepo.DeleteByEntityID(ctx, models.WorkerEntityTypeVideo, id); err != nil {
+			logger.WarnContext(ctx, "Failed to delete worker jobs", "video_id", id, "error", err)
+			// ไม่ return error - ยังคงลบ video ต่อไป
+		} else {
+			logger.InfoContext(ctx, "Worker jobs deleted", "video_id", id)
+		}
+	}
+
 	// ลบ video record จาก database (เร็ว) - ให้ UI อัปเดตทันที
 	if err := s.videoRepo.Delete(ctx, id); err != nil {
 		logger.ErrorContext(ctx, "Failed to delete video record", "video_id", id, "error", err)
@@ -656,7 +671,6 @@ func (s *VideoServiceImpl) ResetVideoForRetry(ctx context.Context, id uuid.UUID)
 
 	// บันทึก previous state สำหรับ logging
 	previousStatus := video.Status
-	previousRetryCount := video.RetryCount
 
 	if err := s.videoRepo.ResetForRetry(ctx, id); err != nil {
 		logger.ErrorContext(ctx, "Failed to reset video for retry", "video_id", id, "error", err)
@@ -667,7 +681,6 @@ func (s *VideoServiceImpl) ResetVideoForRetry(ctx context.Context, id uuid.UUID)
 		"video_id", id,
 		"video_code", video.Code,
 		"previous_status", previousStatus,
-		"previous_retry_count", previousRetryCount,
 	)
 	return nil
 }

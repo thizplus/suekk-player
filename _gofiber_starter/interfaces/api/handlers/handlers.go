@@ -11,11 +11,11 @@ import (
 
 // Services contains all the services needed for handlers
 type Services struct {
-	UserService        services.UserService
-	TaskService        services.TaskService
-	FileService        services.FileService
-	JobService         services.JobService
-	VideoService       services.VideoService
+	UserService         services.UserService
+	TaskService         services.TaskService
+	FileService         services.FileService
+	ScheduledJobService services.ScheduledJobService
+	VideoService        services.VideoService
 	CategoryService    services.CategoryService
 	TranscodingService services.TranscodingService
 	StorageService     services.StorageService
@@ -25,6 +25,7 @@ type Services struct {
 	SubtitleService    services.SubtitleService  // Subtitle management
 	QueueService       services.QueueService     // Queue management (transcode/subtitle/warmcache)
 	ReelService        services.ReelService      // Reel Generator
+	WorkerJobService   services.WorkerJobService // Worker job tracking
 	VideoRepository    repositories.VideoRepository // สำหรับ SubtitleHandler
 	StreamCookieService     *serviceimpl.StreamCookieService         // Signed cookie สำหรับ CDN access
 	NATSPublisher           *natspkg.Publisher                       // NATS JetStream publisher (แทน AsynqClient)
@@ -41,11 +42,10 @@ type Handlers struct {
 	UserHandler          *UserHandler
 	TaskHandler          *TaskHandler
 	FileHandler          *FileHandler
-	JobHandler           *JobHandler
+	ScheduledJobHandler  *ScheduledJobHandler
 	VideoHandler         *VideoHandler
 	CategoryHandler      *CategoryHandler
 	AuthHandler          *AuthHandler
-	TranscodingHandler   *TranscodingHandler
 	HLSHandler           *HLSHandler
 	StorageHandler       *StorageHandler
 	ProgressHandler      *ProgressHandler
@@ -58,6 +58,7 @@ type Handlers struct {
 	DirectUploadHandler  *DirectUploadHandler             // Direct Upload via Presigned URL
 	ReelHandler          *ReelHandler                     // Reel Generator
 	GalleryAdminHandler  *GalleryAdminHandler             // Gallery Manual Selection (Admin)
+	WorkerJobHandler     *WorkerJobHandler                // Worker job tracking
 	StreamCookieService  *serviceimpl.StreamCookieService // Signed cookie สำหรับ CDN access
 }
 
@@ -67,11 +68,10 @@ func NewHandlers(services *Services) *Handlers {
 		UserHandler:          NewUserHandler(services.UserService),
 		TaskHandler:          NewTaskHandler(services.TaskService),
 		FileHandler:          NewFileHandler(services.FileService),
-		JobHandler:           NewJobHandler(services.JobService),
+		ScheduledJobHandler:  NewScheduledJobHandler(services.ScheduledJobService),
 		VideoHandler:         NewVideoHandler(services.VideoService, services.TranscodingService, services.SettingService, services.NATSPublisher, services.StoragePort, services.StorageBasePath, services.StorageType),
 		CategoryHandler:      NewCategoryHandler(services.CategoryService),
 		AuthHandler:          NewAuthHandler(services.UserService, services.GoogleConfig),
-		TranscodingHandler:   NewTranscodingHandler(services.VideoService, services.SettingService, services.NATSPublisher),
 		HLSHandler:           NewHLSHandler(services.VideoService, services.StoragePort, services.CDNBaseURL, services.JWTSecret),
 		StorageHandler:       NewStorageHandler(services.StorageService, services.VideoService),
 		ProgressHandler:      NewProgressHandler(),
@@ -80,10 +80,11 @@ func NewHandlers(services *Services) *Handlers {
 		WhitelistHandler:     NewWhitelistHandler(services.WhitelistService, services.StreamCookieService, services.CDNBaseURL+"/hls"),
 		SettingHandler:       NewSettingHandler(services.SettingService),
 		SubtitleHandler:      NewSubtitleHandler(services.SubtitleService, services.VideoRepository),
-		QueueHandler:         NewQueueHandler(services.QueueService),
+		QueueHandler:         NewQueueHandler(services.QueueService, services.NATSPublisher),
 		DirectUploadHandler:  NewDirectUploadHandler(services.StoragePort, services.VideoService, services.SettingService, services.CategoryService, services.NATSPublisher),
 		ReelHandler:          NewReelHandler(services.ReelService),
 		GalleryAdminHandler:  NewGalleryAdminHandler(services.VideoService, services.StoragePort),
+		WorkerJobHandler:     NewWorkerJobHandler(services.WorkerJobService),
 		StreamCookieService:  services.StreamCookieService,
 	}
 }

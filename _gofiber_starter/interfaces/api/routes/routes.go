@@ -17,10 +17,9 @@ func SetupRoutes(app *fiber.App, h *handlers.Handlers) {
 	SetupUserRoutes(api, h)
 	SetupTaskRoutes(api, h)
 	SetupFileRoutes(api, h)
-	SetupJobRoutes(api, h)
+	SetupScheduledJobRoutes(api, h)
 	SetupVideoRoutes(api, h)
 	SetupCategoryRoutes(api, h)
-	SetupTranscodingRoutes(api, h)
 	SetupStorageRoutes(api, h)
 	SetupProgressRoutes(api, h)
 	SetupWhitelistRoutes(api, h)      // Phase 6: Domain Whitelist & Ad Management
@@ -30,6 +29,7 @@ func SetupRoutes(app *fiber.App, h *handlers.Handlers) {
 	SetupDirectUploadRoutes(api, h)   // Direct Upload via Presigned URL
 	SetupReelRoutes(api, h)           // Reel Generator
 	SetupGalleryAdminRoutes(api, h)   // Gallery Manual Selection (Admin)
+	SetupWorkerJobRoutes(api, h)      // Worker Job Tracking (Queue Jobs)
 
 	// Setup Monitoring routes (needs app for /api/v1/monitoring)
 	SetupMonitoringRoutes(app, h)

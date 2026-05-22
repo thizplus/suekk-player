@@ -66,6 +66,15 @@ func (s *Subscriber) handleMessage(msg *nats.Msg) {
 		return
 	}
 
+	// Normalize: map entity_id/entity_code to video_id/video_code
+	// เพื่อให้ handlers เดิมทำงานได้โดยไม่ต้องแก้ไข
+	if update.EntityID != "" && update.VideoID == "" {
+		update.VideoID = update.EntityID
+	}
+	if update.EntityCode != "" && update.VideoCode == "" {
+		update.VideoCode = update.EntityCode
+	}
+
 	// Call handlers
 	s.handlersMu.RLock()
 	handlers := s.handlers
@@ -85,7 +94,8 @@ func (s *Subscriber) handleMessage(msg *nats.Msg) {
 	}
 
 	logger.Info("Progress update received from NATS",
-		"video_id", update.VideoID,
+		"video_id", update.GetVideoID(),
+		"entity_type", update.EntityType,
 		"status", update.Status,
 		"progress", update.Progress,
 		"handlers_count", len(handlers),

@@ -11,20 +11,20 @@ import (
 	"gofiber-template/pkg/utils"
 )
 
-type JobHandler struct {
-	jobService services.JobService
+type ScheduledJobHandler struct {
+	jobService services.ScheduledJobService
 }
 
-func NewJobHandler(jobService services.JobService) *JobHandler {
-	return &JobHandler{
+func NewScheduledJobHandler(jobService services.ScheduledJobService) *ScheduledJobHandler {
+	return &ScheduledJobHandler{
 		jobService: jobService,
 	}
 }
 
-func (h *JobHandler) CreateJob(c *fiber.Ctx) error {
+func (h *ScheduledJobHandler) CreateJob(c *fiber.Ctx) error {
 	ctx := c.UserContext()
 
-	var req dto.CreateJobRequest
+	var req dto.CreateScheduledJobRequest
 	if err := c.BodyParser(&req); err != nil {
 		logger.WarnContext(ctx, "Invalid request body", "error", err)
 		return utils.BadRequestResponse(c, "Invalid request body")
@@ -46,11 +46,11 @@ func (h *JobHandler) CreateJob(c *fiber.Ctx) error {
 
 	logger.InfoContext(ctx, "Job created", "job_id", job.ID, "name", job.Name)
 
-	jobResponse := dto.JobToJobResponse(job)
+	jobResponse := dto.ScheduledJobToResponse(job)
 	return utils.CreatedResponse(c, jobResponse)
 }
 
-func (h *JobHandler) GetJob(c *fiber.Ctx) error {
+func (h *ScheduledJobHandler) GetJob(c *fiber.Ctx) error {
 	ctx := c.UserContext()
 
 	jobIDStr := c.Params("id")
@@ -66,11 +66,11 @@ func (h *JobHandler) GetJob(c *fiber.Ctx) error {
 		return utils.NotFoundResponse(c, "Job not found")
 	}
 
-	jobResponse := dto.JobToJobResponse(job)
+	jobResponse := dto.ScheduledJobToResponse(job)
 	return utils.SuccessResponse(c, jobResponse)
 }
 
-func (h *JobHandler) UpdateJob(c *fiber.Ctx) error {
+func (h *ScheduledJobHandler) UpdateJob(c *fiber.Ctx) error {
 	ctx := c.UserContext()
 
 	jobIDStr := c.Params("id")
@@ -80,7 +80,7 @@ func (h *JobHandler) UpdateJob(c *fiber.Ctx) error {
 		return utils.BadRequestResponse(c, "Invalid job ID")
 	}
 
-	var req dto.UpdateJobRequest
+	var req dto.UpdateScheduledJobRequest
 	if err := c.BodyParser(&req); err != nil {
 		logger.WarnContext(ctx, "Invalid request body", "error", err)
 		return utils.BadRequestResponse(c, "Invalid request body")
@@ -96,11 +96,11 @@ func (h *JobHandler) UpdateJob(c *fiber.Ctx) error {
 
 	logger.InfoContext(ctx, "Job updated", "job_id", jobID)
 
-	jobResponse := dto.JobToJobResponse(job)
+	jobResponse := dto.ScheduledJobToResponse(job)
 	return utils.SuccessResponse(c, jobResponse)
 }
 
-func (h *JobHandler) DeleteJob(c *fiber.Ctx) error {
+func (h *ScheduledJobHandler) DeleteJob(c *fiber.Ctx) error {
 	ctx := c.UserContext()
 
 	jobIDStr := c.Params("id")
@@ -123,7 +123,7 @@ func (h *JobHandler) DeleteJob(c *fiber.Ctx) error {
 	return utils.NoContentResponse(c)
 }
 
-func (h *JobHandler) StartJob(c *fiber.Ctx) error {
+func (h *ScheduledJobHandler) StartJob(c *fiber.Ctx) error {
 	ctx := c.UserContext()
 
 	jobIDStr := c.Params("id")
@@ -146,7 +146,7 @@ func (h *JobHandler) StartJob(c *fiber.Ctx) error {
 	return utils.SuccessResponse(c, nil)
 }
 
-func (h *JobHandler) StopJob(c *fiber.Ctx) error {
+func (h *ScheduledJobHandler) StopJob(c *fiber.Ctx) error {
 	ctx := c.UserContext()
 
 	jobIDStr := c.Params("id")
@@ -169,7 +169,7 @@ func (h *JobHandler) StopJob(c *fiber.Ctx) error {
 	return utils.SuccessResponse(c, nil)
 }
 
-func (h *JobHandler) ListJobs(c *fiber.Ctx) error {
+func (h *ScheduledJobHandler) ListJobs(c *fiber.Ctx) error {
 	ctx := c.UserContext()
 
 	pageStr := c.Query("page", "1")
@@ -194,9 +194,9 @@ func (h *JobHandler) ListJobs(c *fiber.Ctx) error {
 		return utils.InternalServerErrorResponse(c)
 	}
 
-	jobResponses := make([]dto.JobResponse, len(jobs))
+	jobResponses := make([]dto.ScheduledJobResponse, len(jobs))
 	for i, job := range jobs {
-		jobResponses[i] = *dto.JobToJobResponse(job)
+		jobResponses[i] = *dto.ScheduledJobToResponse(job)
 	}
 
 	return utils.PaginatedSuccessResponse(c, jobResponses, total, page, limit)

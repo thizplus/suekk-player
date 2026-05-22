@@ -14,11 +14,15 @@ func SetupQueueRoutes(api fiber.Router, h *handlers.Handlers) {
 	// Queue stats
 	admin.Get("/stats", h.QueueHandler.GetQueueStats)
 
+	// Online workers (from NATS KV)
+	admin.Get("/workers/online", h.QueueHandler.GetOnlineWorkers)
+
 	// Transcode queue
 	transcode := admin.Group("/transcode")
 	transcode.Get("/failed", h.QueueHandler.GetTranscodeFailed)
 	transcode.Post("/retry-all", h.QueueHandler.RetryTranscodeFailed)
 	transcode.Post("/:id/retry", h.QueueHandler.RetryTranscodeOne)
+	transcode.Delete("/purge", h.QueueHandler.PurgeTranscodeStream)
 
 	// Subtitle queue
 	subtitle := admin.Group("/subtitle")

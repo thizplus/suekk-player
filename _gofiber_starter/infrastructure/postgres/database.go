@@ -20,14 +20,16 @@ type DatabaseConfig struct {
 }
 
 func NewDatabase(config DatabaseConfig) (*gorm.DB, error) {
-	dsn := fmt.Sprintf("host=%s user=%s password=%s dbname=%s port=%s sslmode=%s TimeZone=UTC",
-		config.Host, config.User, config.Password, config.DBName, config.Port, config.SSLMode)
+	// Standard keyword-value DSN
+	dsn := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=%s",
+		config.Host, config.Port, config.User, config.Password, config.DBName, config.SSLMode)
+	fmt.Printf("[DEBUG] DSN: host=%s port=%s user=%s password=*** dbname=%s sslmode=%s\n",
+		config.Host, config.Port, config.User, config.DBName, config.SSLMode)
 
 	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{
-		Logger: logger.Default.LogMode(logger.Info),
-		// IMPORTANT: Disable PrepareStmt for PgBouncer transaction pooling mode
-		// Without this, you'll get "prepared statement S_1 does not exist" errors
-		PrepareStmt: false,
+		Logger:                 logger.Default.LogMode(logger.Info),
+		PrepareStmt:            false,
+		SkipDefaultTransaction: true, // Might help with connection issues
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to database: %v", err)
@@ -53,34 +55,48 @@ func NewDatabase(config DatabaseConfig) (*gorm.DB, error) {
 	// SetConnMaxIdleTime: Close idle connections after 5 minutes
 	sqlDB.SetConnMaxIdleTime(time.Minute * 5)
 
+	// Test raw SQL query
+	var result int
+	if err := db.Raw("SELECT 1").Scan(&result).Error; err != nil {
+		fmt.Printf("[DEBUG] Raw SQL test FAILED: %v\n", err)
+		return nil, fmt.Errorf("database connection test failed: %v", err)
+	}
+	fmt.Printf("[DEBUG] Raw SQL test OK: result=%d\n", result)
+
 	return db, nil
 }
 
 func Migrate(db *gorm.DB) error {
-	err := db.AutoMigrate(
+	fmt.Println("[DEBUG] Starting migration...")
+
+	// Migrate one by one to find the problematic model
+	models := []interface{}{
 		&models.User{},
 		&models.Task{},
 		&models.File{},
-		&models.Job{},
+		&models.ScheduledJob{},
 		&models.Category{},
 		&models.Video{},
-		// Phase 6: Advanced Domain Whitelist & Ad Management
 		&models.WhitelistProfile{},
 		&models.ProfileDomain{},
 		&models.PrerollAd{},
 		&models.AdImpression{},
-		// Admin Settings
 		&models.SystemSetting{},
 		&models.SettingAuditLog{},
-		// Subtitles (separate table)
 		&models.Subtitle{},
-		// Reel Generator
 		&models.Reel{},
 		&models.ReelTemplate{},
-	)
-	if err != nil {
-		return err
+		&models.WorkerJob{},
 	}
+
+	for i, model := range models {
+		fmt.Printf("[DEBUG] Migrating model %d: %T\n", i+1, model)
+		if err := db.AutoMigrate(model); err != nil {
+			fmt.Printf("[DEBUG] Migration FAILED at model %d: %v\n", i+1, err)
+			return err
+		}
+	}
+	fmt.Println("[DEBUG] All migrations complete!")
 
 	// Seed default reel templates
 	return SeedReelTemplates(db)

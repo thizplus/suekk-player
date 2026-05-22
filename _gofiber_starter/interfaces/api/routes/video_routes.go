@@ -38,6 +38,10 @@ func SetupVideoRoutes(api fiber.Router, h *handlers.Handlers) {
 	protected.Get("/:id", h.VideoHandler.GetByID)             // ดึง video ตาม ID
 	protected.Put("/:id", h.VideoHandler.Update)              // อัปเดต video
 	protected.Delete("/:id", h.VideoHandler.Delete)           // ลบ video
-	protected.Post("/:id/generate-gallery", h.VideoHandler.GenerateGallery)     // สร้าง gallery จาก HLS
-	protected.Post("/:id/regenerate-gallery", h.VideoHandler.RegenerateGallery) // สร้าง gallery ใหม่ (ลบเก่าแล้วสร้างใหม่)
+
+	// === Trigger Actions (Standard Routes) ===
+	protected.Post("/:id/transcode", h.VideoHandler.Transcode)               // Queue transcode job
+	protected.Post("/:id/warm-cache", h.VideoHandler.WarmCache)              // Queue warm cache job
+	protected.Post("/:id/generate-gallery", h.VideoHandler.GenerateGallery)  // Queue gallery job
+	protected.Post("/:id/regenerate-gallery", h.VideoHandler.RegenerateGallery) // Queue gallery job (replace)
 }
