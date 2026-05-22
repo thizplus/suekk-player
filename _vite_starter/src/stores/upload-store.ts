@@ -42,8 +42,8 @@ interface UploadStore {
   setUseDirectUpload: (use: boolean) => void
 }
 
-// Threshold สำหรับใช้ Direct Upload (ไฟล์ใหญ่กว่า 100MB จะใช้ Direct Upload อัตโนมัติ)
-const DIRECT_UPLOAD_THRESHOLD = 100 * 1024 * 1024 // 100MB
+// Threshold สำหรับใช้ Direct Upload (ไฟล์ใหญ่กว่า 20MB จะใช้ Direct Upload อัตโนมัติ)
+const DIRECT_UPLOAD_THRESHOLD = 20 * 1024 * 1024 // 20MB
 
 export const useUploadStore = create<UploadStore>((set, get) => ({
   uploads: [],

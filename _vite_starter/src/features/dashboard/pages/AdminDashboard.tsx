@@ -122,11 +122,11 @@ export function AdminDashboard() {
           </button>
           <Separator orientation="vertical" />
           <button
-            onClick={() => navigate('/transcoding')}
+            onClick={() => navigate('/queues')}
             className="flex items-center gap-2 text-sm hover:text-foreground text-muted-foreground transition-colors"
           >
             <Activity className="h-4 w-4" />
-            ประมวลผล
+            คิว
             {(stats?.pending ?? 0) > 0 && (
               <Badge variant="secondary" className="ml-1">{stats?.pending}</Badge>
             )}

@@ -31,7 +31,9 @@ export const VIDEO_ROUTES = {
   UPLOAD: '/api/v1/videos/upload',
   BATCH_UPLOAD: '/api/v1/videos/batch',
   UPDATE_STATUS: (id: string) => `/api/v1/videos/${id}/status`,
-  // Gallery Generation
+  // === Trigger Actions (Standard Routes) ===
+  TRANSCODE: (id: string) => `/api/v1/videos/${id}/transcode`,
+  WARM_CACHE: (id: string) => `/api/v1/videos/${id}/warm-cache`,
   GENERATE_GALLERY: (id: string) => `/api/v1/videos/${id}/generate-gallery`,
   REGENERATE_GALLERY: (id: string) => `/api/v1/videos/${id}/regenerate-gallery`,
   // Dead Letter Queue (DLQ) Management
@@ -47,13 +49,10 @@ export const CATEGORY_ROUTES = {
   REORDER: '/api/v1/categories/reorder',
 }
 
-export const TRANSCODING_ROUTES = {
-  QUEUE: '/api/v1/transcoding/queue',
-  QUEUE_VIDEO: (videoId: string) => `/api/v1/transcoding/queue/${videoId}`,
-  STATUS: (videoId: string) => `/api/v1/transcoding/status/${videoId}`,
-  STATS: '/api/v1/transcoding/stats',
-  WORKERS: '/api/v1/transcoding/workers',
-}
+// Legacy TRANSCODING_ROUTES - use VIDEO_ROUTES.TRANSCODE instead
+// REMOVED: QUEUE_VIDEO moved to VIDEO_ROUTES.TRANSCODE
+// REMOVED: STATS moved to QUEUE_ROUTES.STATS or WORKER_JOB_ROUTES.STATS
+// REMOVED: WORKERS moved to QUEUE_ROUTES.WORKERS_ONLINE
 
 // Phase 6: Domain Whitelist & Ad Management
 export const WHITELIST_ROUTES = {
@@ -133,33 +132,42 @@ export const STORAGE_ROUTES = {
   STATS: '/api/v1/storage/stats',
 }
 
-// Queue Management - จัดการ queue ทั้งหมด (transcode/subtitle/warmcache)
+// Worker Jobs - Unified queue management
+export const WORKER_JOB_ROUTES = {
+  // Stats
+  STATS: '/api/v1/worker-jobs/stats',
+  STATS_ALL: '/api/v1/worker-jobs/stats/all',
+  // List/Query
+  LIST: '/api/v1/worker-jobs',
+  BY_ID: (id: string) => `/api/v1/worker-jobs/${id}`,
+  BY_ENTITY: (type: string, id: string) => `/api/v1/worker-jobs/entity/${type}/${id}`,
+  // Actions
+  CANCEL: (id: string) => `/api/v1/worker-jobs/${id}/cancel`,
+  RETRY: (id: string) => `/api/v1/worker-jobs/${id}/retry`,
+  // Cleanup
+  DELETE: (id: string) => `/api/v1/worker-jobs/${id}`,
+  DELETE_ORPHANED: '/api/v1/worker-jobs/orphaned',
+  DELETE_COMPLETED: '/api/v1/worker-jobs/completed', // ?days=7 (default)
+  DELETE_FAILED: '/api/v1/worker-jobs/failed',
+}
+
+// Queue Management - Admin queue operations
 export const QUEUE_ROUTES = {
-  // Stats รวมทุก queue
+  // Stats
   STATS: '/api/v1/admin/queues/stats',
+  // Online Workers (from NATS KV)
+  WORKERS_ONLINE: '/api/v1/admin/queues/workers/online',
   // Transcode Queue
-  TRANSCODE_FAILED: '/api/v1/admin/queues/transcode/failed',
-  TRANSCODE_RETRY_ALL: '/api/v1/admin/queues/transcode/retry-all',
-  TRANSCODE_RETRY_ONE: (id: string) => `/api/v1/admin/queues/transcode/${id}/retry`,
-  // Subtitle Queue
-  SUBTITLE_STUCK: '/api/v1/admin/queues/subtitle/stuck',
-  SUBTITLE_FAILED: '/api/v1/admin/queues/subtitle/failed',
+  TRANSCODE_PURGE: '/api/v1/admin/queues/transcode/purge',
+  // Subtitle Queue (special operations)
   SUBTITLE_RETRY_ALL: '/api/v1/admin/queues/subtitle/retry-all',
   SUBTITLE_CLEAR_ALL: '/api/v1/admin/queues/subtitle/clear-all',
   SUBTITLE_QUEUE_MISSING: '/api/v1/admin/queues/subtitle/queue-missing',
-  // Warm Cache Queue
+  // Warm Cache Queue (uses Video.CacheStatus, not WorkerJob)
   WARM_CACHE_PENDING: '/api/v1/admin/queues/warm-cache/pending',
   WARM_CACHE_FAILED: '/api/v1/admin/queues/warm-cache/failed',
   WARM_CACHE_ONE: (id: string) => `/api/v1/admin/queues/warm-cache/${id}/warm`,
   WARM_CACHE_ALL: '/api/v1/admin/queues/warm-cache/warm-all',
-  // Gallery Queue
-  GALLERY_PROCESSING: '/api/v1/admin/queues/gallery/processing',
-  GALLERY_FAILED: '/api/v1/admin/queues/gallery/failed',
-  GALLERY_RETRY_ALL: '/api/v1/admin/queues/gallery/retry-all',
-  // Reel Queue
-  REEL_EXPORTING: '/api/v1/admin/queues/reel/exporting',
-  REEL_FAILED: '/api/v1/admin/queues/reel/failed',
-  REEL_RETRY_ALL: '/api/v1/admin/queues/reel/retry-all',
 }
 
 // Reel Generator - สร้าง reels สำหรับ social media

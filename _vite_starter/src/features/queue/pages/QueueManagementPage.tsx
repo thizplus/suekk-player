@@ -1,29 +1,29 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
-  ListChecks,
   RefreshCw,
-  Monitor,
-  Languages,
-  Database,
-  Clock,
-  CheckCircle,
-  XCircle,
   RotateCcw,
   Flame,
   ExternalLink,
-  HelpCircle,
-  AlertTriangle,
   Trash2,
   Plus,
+  CheckCircle,
+  XCircle,
+  AlertTriangle,
+  Monitor,
+  Languages,
+  Database,
   Images,
   Film,
+  Wifi,
+  WifiOff,
 } from 'lucide-react'
+import { Progress } from '@/components/ui/progress'
+import { useWebSocketConnection, useVideoProgress, type VideoProgress } from '@/lib/websocket-provider'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import {
   Table,
   TableBody,
@@ -39,16 +39,10 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip'
 import {
-  Alert,
-  AlertDescription,
-} from '@/components/ui/alert'
-import {
-  useQueueStats,
-  useTranscodeFailed,
-  useRetryTranscodeAll,
-  useRetryTranscodeOne,
-  useSubtitleStuck,
-  useSubtitleFailed,
+  useLegacyStats,
+  useFailedJobs,
+  useProcessingJobs,
+  useRetryJob,
   useRetrySubtitleAll,
   useClearSubtitleAll,
   useQueueMissingSubtitles,
@@ -56,18 +50,42 @@ import {
   useWarmCacheFailed,
   useWarmCacheOne,
   useWarmCacheAll,
-  useGalleryProcessing,
-  useGalleryFailed,
-  useRetryGalleryAll,
-  useReelExporting,
-  useReelFailed,
-  useRetryReelAll,
+  useDeleteOrphanedJobs,
+  useDeleteCompletedJobs,
+  useDeleteFailedJobs,
+  usePurgeTranscodeStream,
 } from '../hooks'
-import type { TranscodeQueueItem, SubtitleQueueItem, WarmCacheQueueItem, GalleryQueueItem, ReelQueueItem } from '../types'
+import type { WorkerJob, WarmCacheQueueItem } from '../types'
 
 export function QueueManagementPage() {
-  const { data: stats, isLoading: statsLoading, refetch: refetchStats } = useQueueStats()
-  const [activeTab, setActiveTab] = useState('transcode')
+  const { data: stats, isLoading: statsLoading, refetch: refetchStats } = useLegacyStats()
+  const { isConnected, reconnect } = useWebSocketConnection()
+  const activeProgress = useVideoProgress()
+
+  // Cleanup mutations
+  const deleteOrphaned = useDeleteOrphanedJobs()
+  const deleteCompleted = useDeleteCompletedJobs()
+  const deleteFailed = useDeleteFailedJobs()
+
+  // Calculate totals for header
+  const totalPending =
+    (stats?.transcode?.pending || 0) +
+    (stats?.transcode?.queued || 0) +
+    (stats?.subtitle?.queued || 0) +
+    (stats?.warmCache?.notCached || 0)
+  const totalProcessing =
+    (stats?.transcode?.processing || 0) +
+    (stats?.subtitle?.processing || 0) +
+    (stats?.warmCache?.warming || 0) +
+    (stats?.gallery?.processing || 0) +
+    (stats?.reel?.exporting || 0)
+  const totalFailed =
+    (stats?.transcode?.failed || 0) +
+    (stats?.transcode?.deadLetter || 0) +
+    (stats?.subtitle?.failed || 0) +
+    (stats?.warmCache?.failed || 0) +
+    (stats?.gallery?.failed || 0) +
+    (stats?.reel?.failed || 0)
 
   return (
     <TooltipProvider>
@@ -75,352 +93,189 @@ export function QueueManagementPage() {
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-semibold flex items-center gap-2">
-              <ListChecks className="h-6 w-6" />
-              จัดการคิว
-            </h1>
-            <p className="text-muted-foreground">
-              ดูสถานะและแก้ไขปัญหางานที่ค้างหรือล้มเหลว
+            <div className="flex items-center gap-3">
+              <h1 className="text-2xl font-semibold">Queue Dashboard</h1>
+              {totalProcessing > 0 && (
+                <Badge className="bg-blue-500 text-white animate-pulse">
+                  {totalProcessing} กำลังทำงาน
+                </Badge>
+              )}
+              {/* WebSocket Status */}
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className={`gap-1 ${isConnected ? 'text-green-500' : 'text-red-500'}`}
+                    onClick={() => !isConnected && reconnect()}
+                  >
+                    {isConnected ? <Wifi className="h-4 w-4" /> : <WifiOff className="h-4 w-4" />}
+                    <span className="text-xs">{isConnected ? 'Live' : 'Offline'}</span>
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  {isConnected ? 'WebSocket เชื่อมต่อแล้ว - รับ progress แบบ real-time' : 'คลิกเพื่อเชื่อมต่อใหม่'}
+                </TooltipContent>
+              </Tooltip>
+            </div>
+            <p className="text-sm text-muted-foreground mt-1">
+              จัดการและดูสถานะคิวงานทั้งหมด
             </p>
           </div>
+          <div className="flex gap-2">
+            {/* Cleanup Buttons */}
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => deleteOrphaned.mutate()}
+                  disabled={deleteOrphaned.isPending}
+                >
+                  <Trash2 className={`h-4 w-4 mr-2 ${deleteOrphaned.isPending ? 'animate-pulse' : ''}`} />
+                  ลบ Orphaned
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>ลบ jobs ที่ video/subtitle ถูกลบไปแล้ว</TooltipContent>
+            </Tooltip>
 
-          <Button
-            variant="outline"
-            size="icon"
-            onClick={() => refetchStats()}
-            disabled={statsLoading}
-          >
-            <RefreshCw className={`h-4 w-4 ${statsLoading ? 'animate-spin' : ''}`} />
-          </Button>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => deleteCompleted.mutate(7)}
+                  disabled={deleteCompleted.isPending}
+                >
+                  <Trash2 className={`h-4 w-4 mr-2 ${deleteCompleted.isPending ? 'animate-pulse' : ''}`} />
+                  ลบ Completed
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>ลบ jobs ที่สำเร็จแล้ว (เก่ากว่า 7 วัน)</TooltipContent>
+            </Tooltip>
+
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  onClick={() => deleteFailed.mutate()}
+                  disabled={deleteFailed.isPending}
+                >
+                  <Trash2 className={`h-4 w-4 mr-2 ${deleteFailed.isPending ? 'animate-pulse' : ''}`} />
+                  ลบ Failed
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>ลบ jobs ที่ล้มเหลวทั้งหมด</TooltipContent>
+            </Tooltip>
+
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => refetchStats()}
+              disabled={statsLoading}
+            >
+              <RefreshCw className={`h-4 w-4 mr-2 ${statsLoading ? 'animate-spin' : ''}`} />
+              รีเฟรช
+            </Button>
+          </div>
         </div>
+
+        {/* Active Progress - Real-time via WebSocket */}
+        {activeProgress.size > 0 && (
+          <ActiveProgressSection activeProgress={activeProgress} />
+        )}
 
         {/* Stats Overview */}
         {statsLoading ? (
-          <div className="grid grid-cols-3 gap-4">
-            <Skeleton className="h-24" />
-            <Skeleton className="h-24" />
-            <Skeleton className="h-24" />
+          <div className="grid grid-cols-5 gap-4">
+            {[...Array(5)].map((_, i) => (
+              <Skeleton key={i} className="h-20" />
+            ))}
           </div>
         ) : stats ? (
-          <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4">
-            {/* Transcode Stats */}
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium flex items-center gap-2">
-                  <Monitor className="h-4 w-4" />
-                  แปลงวิดีโอ
-                  <Tooltip>
-                    <TooltipTrigger>
-                      <HelpCircle className="h-3 w-3 text-muted-foreground" />
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      <p>แปลงไฟล์วิดีโอเป็น HLS สำหรับสตรีม</p>
-                    </TooltipContent>
-                  </Tooltip>
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="flex flex-wrap gap-2 text-xs">
-                  {stats.transcode.pending > 0 && (
-                    <Badge variant="outline" className="gap-1">
-                      <Clock className="h-3 w-3" />
-                      รอคิว: {stats.transcode.pending}
-                    </Badge>
-                  )}
-                  {stats.transcode.queued > 0 && (
-                    <Badge variant="secondary" className="gap-1">
-                      อยู่ในคิว: {stats.transcode.queued}
-                    </Badge>
-                  )}
-                  {stats.transcode.processing > 0 && (
-                    <Badge className="gap-1 status-processing">
-                      กำลังทำ: {stats.transcode.processing}
-                    </Badge>
-                  )}
-                  {stats.transcode.failed > 0 && (
-                    <Badge variant="destructive" className="gap-1">
-                      <XCircle className="h-3 w-3" />
-                      ล้มเหลว: {stats.transcode.failed}
-                    </Badge>
-                  )}
-                  {stats.transcode.deadLetter > 0 && (
-                    <Badge variant="destructive" className="gap-1">
-                      ล้มเหลวถาวร: {stats.transcode.deadLetter}
-                    </Badge>
-                  )}
-                  {stats.transcode.pending === 0 &&
-                    stats.transcode.queued === 0 &&
-                    stats.transcode.processing === 0 &&
-                    stats.transcode.failed === 0 && (
-                      <Badge variant="outline" className="gap-1 text-muted-foreground">
-                        <CheckCircle className="h-3 w-3" />
-                        ไม่มีปัญหา
-                      </Badge>
-                    )}
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Subtitle Stats */}
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium flex items-center gap-2">
-                  <Languages className="h-4 w-4" />
-                  ซับไตเติ้ล
-                  <Tooltip>
-                    <TooltipTrigger>
-                      <HelpCircle className="h-3 w-3 text-muted-foreground" />
-                    </TooltipTrigger>
-                    <TooltipContent className="max-w-xs">
-                      <p>สร้างและแปลซับไตเติ้ลอัตโนมัติด้วย AI</p>
-                    </TooltipContent>
-                  </Tooltip>
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="flex flex-wrap gap-2 text-xs">
-                  {stats.subtitle.queued > 0 && (
-                    <Badge variant="secondary" className="gap-1">
-                      <AlertTriangle className="h-3 w-3" />
-                      ค้าง: {stats.subtitle.queued}
-                    </Badge>
-                  )}
-                  {stats.subtitle.processing > 0 && (
-                    <Badge className="gap-1 status-processing">
-                      กำลังทำ: {stats.subtitle.processing}
-                    </Badge>
-                  )}
-                  {stats.subtitle.failed > 0 && (
-                    <Badge variant="destructive" className="gap-1">
-                      <XCircle className="h-3 w-3" />
-                      ล้มเหลว: {stats.subtitle.failed}
-                    </Badge>
-                  )}
-                  {stats.subtitle.queued === 0 &&
-                    stats.subtitle.processing === 0 &&
-                    stats.subtitle.failed === 0 && (
-                      <Badge variant="outline" className="gap-1 text-muted-foreground">
-                        <CheckCircle className="h-3 w-3" />
-                        ไม่มีปัญหา
-                      </Badge>
-                    )}
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Warm Cache Stats */}
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium flex items-center gap-2">
-                  <Database className="h-4 w-4" />
-                  แคช CDN
-                  <Tooltip>
-                    <TooltipTrigger>
-                      <HelpCircle className="h-3 w-3 text-muted-foreground" />
-                    </TooltipTrigger>
-                    <TooltipContent className="max-w-xs">
-                      <p>โหลดวิดีโอไปเก็บที่ CDN ล่วงหน้า เพื่อให้ผู้ชมโหลดเร็วขึ้น</p>
-                    </TooltipContent>
-                  </Tooltip>
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="flex flex-wrap gap-2 text-xs">
-                  {stats.warmCache.notCached > 0 && (
-                    <Badge variant="outline" className="gap-1">
-                      <Clock className="h-3 w-3" />
-                      รอแคช: {stats.warmCache.notCached}
-                    </Badge>
-                  )}
-                  {stats.warmCache.warming > 0 && (
-                    <Badge className="gap-1 status-processing">
-                      <Flame className="h-3 w-3" />
-                      กำลังแคช: {stats.warmCache.warming}
-                    </Badge>
-                  )}
-                  {stats.warmCache.cached > 0 && (
-                    <Badge variant="outline" className="gap-1 text-status-success border-status-success">
-                      <CheckCircle className="h-3 w-3" />
-                      แคชแล้ว: {stats.warmCache.cached}
-                    </Badge>
-                  )}
-                  {stats.warmCache.failed > 0 && (
-                    <Badge variant="destructive" className="gap-1">
-                      <XCircle className="h-3 w-3" />
-                      ล้มเหลว: {stats.warmCache.failed}
-                    </Badge>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Gallery Stats */}
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium flex items-center gap-2">
-                  <Images className="h-4 w-4" />
-                  Gallery
-                  <Tooltip>
-                    <TooltipTrigger>
-                      <HelpCircle className="h-3 w-3 text-muted-foreground" />
-                    </TooltipTrigger>
-                    <TooltipContent className="max-w-xs">
-                      <p>สร้างภาพ gallery จากวิดีโอ 100 ภาพ</p>
-                    </TooltipContent>
-                  </Tooltip>
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="flex flex-wrap gap-2 text-xs">
-                  {stats.gallery?.processing > 0 && (
-                    <Badge className="gap-1 status-processing">
-                      กำลังสร้าง: {stats.gallery.processing}
-                    </Badge>
-                  )}
-                  {stats.gallery?.pendingReview > 0 && (
-                    <Badge variant="secondary" className="gap-1">
-                      <Clock className="h-3 w-3" />
-                      รอตรวจ: {stats.gallery.pendingReview}
-                    </Badge>
-                  )}
-                  {stats.gallery?.ready > 0 && (
-                    <Badge variant="outline" className="gap-1 text-status-success border-status-success">
-                      <CheckCircle className="h-3 w-3" />
-                      พร้อม: {stats.gallery.ready}
-                    </Badge>
-                  )}
-                  {stats.gallery?.failed > 0 && (
-                    <Badge variant="destructive" className="gap-1">
-                      <XCircle className="h-3 w-3" />
-                      ล้มเหลว: {stats.gallery.failed}
-                    </Badge>
-                  )}
-                  {!stats.gallery?.processing &&
-                    !stats.gallery?.pendingReview &&
-                    !stats.gallery?.failed && (
-                      <Badge variant="outline" className="gap-1 text-muted-foreground">
-                        <CheckCircle className="h-3 w-3" />
-                        ไม่มีปัญหา
-                      </Badge>
-                    )}
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Reel Stats */}
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium flex items-center gap-2">
-                  <Film className="h-4 w-4" />
-                  Reel
-                  <Tooltip>
-                    <TooltipTrigger>
-                      <HelpCircle className="h-3 w-3 text-muted-foreground" />
-                    </TooltipTrigger>
-                    <TooltipContent className="max-w-xs">
-                      <p>สร้าง short video clips สำหรับ social media</p>
-                    </TooltipContent>
-                  </Tooltip>
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="flex flex-wrap gap-2 text-xs">
-                  {stats.reel?.exporting > 0 && (
-                    <Badge className="gap-1 status-processing">
-                      กำลัง export: {stats.reel.exporting}
-                    </Badge>
-                  )}
-                  {stats.reel?.ready > 0 && (
-                    <Badge variant="outline" className="gap-1 text-status-success border-status-success">
-                      <CheckCircle className="h-3 w-3" />
-                      เสร็จ: {stats.reel.ready}
-                    </Badge>
-                  )}
-                  {stats.reel?.failed > 0 && (
-                    <Badge variant="destructive" className="gap-1">
-                      <XCircle className="h-3 w-3" />
-                      ล้มเหลว: {stats.reel.failed}
-                    </Badge>
-                  )}
-                  {!stats.reel?.exporting && !stats.reel?.failed && (
-                    <Badge variant="outline" className="gap-1 text-muted-foreground">
-                      <CheckCircle className="h-3 w-3" />
-                      ไม่มีปัญหา
-                    </Badge>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+            <StatBox
+              icon={<Monitor className="h-5 w-5" />}
+              label="แปลงวิดีโอ"
+              processing={stats.transcode.processing || 0}
+              failed={(stats.transcode.failed || 0) + (stats.transcode.deadLetter || 0)}
+              pending={(stats.transcode.pending || 0) + (stats.transcode.queued || 0)}
+            />
+            <StatBox
+              icon={<Languages className="h-5 w-5" />}
+              label="ซับไตเติ้ล"
+              processing={stats.subtitle.processing || 0}
+              failed={stats.subtitle.failed || 0}
+              pending={stats.subtitle.queued || 0}
+            />
+            <StatBox
+              icon={<Database className="h-5 w-5" />}
+              label="แคช CDN"
+              processing={stats.warmCache.warming || 0}
+              failed={stats.warmCache.failed || 0}
+              pending={stats.warmCache.notCached || 0}
+              success={stats.warmCache.cached || 0}
+            />
+            <StatBox
+              icon={<Images className="h-5 w-5" />}
+              label="Gallery"
+              processing={stats.gallery?.processing || 0}
+              failed={stats.gallery?.failed || 0}
+              pending={stats.gallery?.pendingReview || 0}
+            />
+            <StatBox
+              icon={<Film className="h-5 w-5" />}
+              label="Reel"
+              processing={stats.reel?.exporting || 0}
+              failed={stats.reel?.failed || 0}
+            />
           </div>
         ) : null}
 
         {/* Tabs */}
-        <Tabs value={activeTab} onValueChange={setActiveTab}>
-          <TabsList className="grid w-full grid-cols-5">
+        <Tabs defaultValue="transcode" className="space-y-4">
+          <TabsList>
             <TabsTrigger value="transcode" className="gap-2">
               <Monitor className="h-4 w-4" />
               แปลงวิดีโอ
-              {stats?.transcode?.failed ? (
-                <Badge variant="destructive" className="ml-1 h-5 px-1.5">
-                  {stats.transcode.failed}
-                </Badge>
-              ) : null}
+              <CountBadge count={(stats?.transcode?.failed || 0) + (stats?.transcode?.deadLetter || 0)} />
             </TabsTrigger>
             <TabsTrigger value="subtitle" className="gap-2">
               <Languages className="h-4 w-4" />
               ซับไตเติ้ล
-              {(stats?.subtitle?.queued || 0) + (stats?.subtitle?.failed || 0) > 0 ? (
-                <Badge variant="destructive" className="ml-1 h-5 px-1.5">
-                  {(stats?.subtitle?.queued || 0) + (stats?.subtitle?.failed || 0)}
-                </Badge>
-              ) : null}
+              <CountBadge count={(stats?.subtitle?.queued || 0) + (stats?.subtitle?.failed || 0)} />
             </TabsTrigger>
             <TabsTrigger value="warmcache" className="gap-2">
               <Database className="h-4 w-4" />
               แคช CDN
-              {stats?.warmCache?.notCached ? (
-                <Badge variant="secondary" className="ml-1 h-5 px-1.5">
-                  {stats.warmCache.notCached}
-                </Badge>
-              ) : null}
+              <CountBadge count={stats?.warmCache?.notCached || 0} variant="warning" />
             </TabsTrigger>
             <TabsTrigger value="gallery" className="gap-2">
               <Images className="h-4 w-4" />
               Gallery
-              {(stats?.gallery?.processing || 0) + (stats?.gallery?.failed || 0) > 0 ? (
-                <Badge variant="destructive" className="ml-1 h-5 px-1.5">
-                  {(stats?.gallery?.processing || 0) + (stats?.gallery?.failed || 0)}
-                </Badge>
-              ) : null}
+              <CountBadge count={stats?.gallery?.failed || 0} />
             </TabsTrigger>
             <TabsTrigger value="reel" className="gap-2">
               <Film className="h-4 w-4" />
               Reel
-              {(stats?.reel?.exporting || 0) + (stats?.reel?.failed || 0) > 0 ? (
-                <Badge variant="destructive" className="ml-1 h-5 px-1.5">
-                  {(stats?.reel?.exporting || 0) + (stats?.reel?.failed || 0)}
-                </Badge>
-              ) : null}
+              <CountBadge count={stats?.reel?.failed || 0} />
             </TabsTrigger>
           </TabsList>
 
-          <TabsContent value="transcode" className="mt-4">
+          <TabsContent value="transcode">
             <TranscodeTab />
           </TabsContent>
-
-          <TabsContent value="subtitle" className="mt-4">
+          <TabsContent value="subtitle">
             <SubtitleTab />
           </TabsContent>
-
-          <TabsContent value="warmcache" className="mt-4">
+          <TabsContent value="warmcache">
             <WarmCacheTab />
           </TabsContent>
-
-          <TabsContent value="gallery" className="mt-4">
+          <TabsContent value="gallery">
             <GalleryTab />
           </TabsContent>
-
-          <TabsContent value="reel" className="mt-4">
+          <TabsContent value="reel">
             <ReelTab />
           </TabsContent>
         </Tabs>
@@ -429,342 +284,251 @@ export function QueueManagementPage() {
   )
 }
 
-// ==================== Transcode Tab ====================
+// ==================== Stats Box ====================
+
+function StatBox({
+  icon,
+  label,
+  processing = 0,
+  failed = 0,
+  pending = 0,
+  success,
+}: {
+  icon: React.ReactNode
+  label: string
+  processing?: number
+  failed?: number
+  pending?: number
+  success?: number
+}) {
+  const hasIssue = failed > 0 || pending > 0
+
+  return (
+    <div className={`rounded-lg border p-4 ${hasIssue ? 'border-yellow-500/50 bg-yellow-500/5' : ''}`}>
+      <div className="flex items-center gap-2 text-muted-foreground mb-2">
+        {icon}
+        <span className="text-sm font-medium">{label}</span>
+      </div>
+      <div className="flex items-center gap-3 text-sm">
+        {processing > 0 && (
+          <span className="text-blue-500 flex items-center gap-1">
+            <span className="relative flex h-2 w-2">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-500"></span>
+            </span>
+            {processing}
+          </span>
+        )}
+        {pending > 0 && <span className="text-yellow-600">{pending} รอ</span>}
+        {failed > 0 && <span className="text-red-500">{failed} ผิดพลาด</span>}
+        {success !== undefined && success > 0 && (
+          <span className="text-green-500">{success} สำเร็จ</span>
+        )}
+        {processing === 0 && pending === 0 && failed === 0 && (
+          <span className="text-muted-foreground">-</span>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function CountBadge({ count, variant = 'error' }: { count: number; variant?: 'error' | 'warning' }) {
+  if (count === 0) return null
+  return (
+    <Badge
+      variant={variant === 'error' ? 'destructive' : 'secondary'}
+      className="h-5 px-1.5 text-xs"
+    >
+      {count}
+    </Badge>
+  )
+}
+
+// ==================== Active Progress Section ====================
+
+function ActiveProgressSection({ activeProgress }: { activeProgress: Map<string, VideoProgress> }) {
+  const progressItems = Array.from(activeProgress.values())
+
+  // Group by type
+  const transcodeItems = progressItems.filter(p => p.type === 'transcode')
+  const subtitleItems = progressItems.filter(p => p.type === 'subtitle')
+  const galleryItems = progressItems.filter(p => p.type === 'gallery')
+  const reelItems = progressItems.filter(p => p.type === 'reel')
+
+  return (
+    <div className="rounded-lg border border-blue-500/30 bg-blue-500/5 p-4 space-y-4">
+      <div className="flex items-center gap-2">
+        <span className="relative flex h-3 w-3">
+          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
+          <span className="relative inline-flex rounded-full h-3 w-3 bg-blue-500"></span>
+        </span>
+        <h3 className="font-medium">กำลังประมวลผล (Real-time)</h3>
+        <Badge variant="secondary" className="text-xs">{progressItems.length} งาน</Badge>
+      </div>
+
+      <div className="grid gap-3">
+        {transcodeItems.map(item => (
+          <ProgressItem key={`${item.videoId}-${item.type}`} item={item} icon={<Monitor className="h-4 w-4" />} />
+        ))}
+        {subtitleItems.map(item => (
+          <ProgressItem key={`${item.videoId}-${item.type}`} item={item} icon={<Languages className="h-4 w-4" />} />
+        ))}
+        {galleryItems.map(item => (
+          <ProgressItem key={`${item.videoId}-${item.type}`} item={item} icon={<Images className="h-4 w-4" />} />
+        ))}
+        {reelItems.map(item => (
+          <ProgressItem key={`${item.videoId}-${item.type}`} item={item} icon={<Film className="h-4 w-4" />} />
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function ProgressItem({ item, icon }: { item: VideoProgress; icon: React.ReactNode }) {
+  const getStatusColor = () => {
+    switch (item.status) {
+      case 'completed': return 'text-green-500'
+      case 'failed': return 'text-red-500'
+      default: return 'text-blue-500'
+    }
+  }
+
+  const getTypeLabel = () => {
+    switch (item.type) {
+      case 'transcode': return 'แปลงวิดีโอ'
+      case 'subtitle': return item.language ? `ซับ ${item.language}` : 'ซับไตเติ้ล'
+      case 'gallery': return 'Gallery'
+      case 'reel': return 'Reel'
+      default: return item.type
+    }
+  }
+
+  return (
+    <div className="bg-background rounded-lg border p-3 space-y-2">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <span className="text-muted-foreground">{icon}</span>
+          <span className="font-mono text-sm">{item.videoCode}</span>
+          <Badge variant="outline" className="text-xs">{getTypeLabel()}</Badge>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className={`text-sm font-medium ${getStatusColor()}`}>
+            {item.progress}%
+          </span>
+          {item.status === 'completed' && <CheckCircle className="h-4 w-4 text-green-500" />}
+          {item.status === 'failed' && <XCircle className="h-4 w-4 text-red-500" />}
+        </div>
+      </div>
+
+      <Progress value={item.progress} className="h-2" />
+
+      <div className="flex items-center justify-between text-xs text-muted-foreground">
+        <span>{item.currentStep || item.message}</span>
+        {item.errorMessage && (
+          <span className="text-red-500 truncate max-w-[200px]">{item.errorMessage}</span>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ==================== Tabs ====================
 
 function TranscodeTab() {
   const [page, setPage] = useState(1)
-  const { data, isLoading } = useTranscodeFailed(page)
-  const retryAll = useRetryTranscodeAll()
-  const retryOne = useRetryTranscodeOne()
-
-  const items = data?.data ?? []
-  const meta = data?.meta
+  const { data, isLoading } = useFailedJobs('transcode', page)
+  const retryJob = useRetryJob()
+  const purgeStream = usePurgeTranscodeStream()
+  const jobs = data?.jobs ?? []
 
   return (
-    <Card>
-      <CardHeader>
-        <div className="flex flex-row items-start justify-between">
-          <div>
-            <CardTitle>วิดีโอที่แปลงไม่สำเร็จ</CardTitle>
-            <CardDescription>
-              รายการวิดีโอที่แปลงล้มเหลว สามารถกด "ลองใหม่" เพื่อส่งงานเข้าคิวอีกครั้ง
-            </CardDescription>
-          </div>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => retryAll.mutate()}
-            disabled={retryAll.isPending || items.length === 0}
-          >
-            <RotateCcw className={`h-4 w-4 mr-2 ${retryAll.isPending ? 'animate-spin' : ''}`} />
-            ลองใหม่ทั้งหมด
-          </Button>
-        </div>
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <h3 className="font-medium">วิดีโอที่แปลงล้มเหลว</h3>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => purgeStream.mutate()}
+          disabled={purgeStream.isPending}
+        >
+          <Trash2 className={`h-4 w-4 mr-2 ${purgeStream.isPending ? 'animate-pulse' : ''}`} />
+          Purge NATS Stream
+        </Button>
+      </div>
 
-        <Alert className="mt-4">
-          <HelpCircle className="h-4 w-4" />
-          <AlertDescription>
-            <strong>วิธีแก้ไข:</strong> กด "ลองใหม่" เพื่อส่งงานเข้าคิวอีกครั้ง หากยังไม่สำเร็จ
-            ให้ตรวจสอบไฟล์ต้นฉบับว่าเสียหายหรือไม่ หรือติดต่อผู้ดูแลระบบ
-          </AlertDescription>
-        </Alert>
-      </CardHeader>
-      <CardContent>
-        {isLoading ? (
-          <div className="space-y-2">
-            <Skeleton className="h-10 w-full" />
-            <Skeleton className="h-10 w-full" />
-            <Skeleton className="h-10 w-full" />
-          </div>
-        ) : items.length === 0 ? (
-          <div className="text-center py-8 text-muted-foreground">
-            <CheckCircle className="h-12 w-12 mx-auto mb-2 text-status-success" />
-            <p>ไม่มีวิดีโอที่ล้มเหลว</p>
-          </div>
-        ) : (
-          <>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>รหัส</TableHead>
-                  <TableHead>ชื่อ</TableHead>
-                  <TableHead>ข้อผิดพลาด</TableHead>
-                  <TableHead className="text-center">ลองแล้ว</TableHead>
-                  <TableHead className="w-32">จัดการ</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {items.map((item: TranscodeQueueItem) => (
-                  <TableRow key={item.id}>
-                    <TableCell className="font-mono text-xs">{item.code}</TableCell>
-                    <TableCell className="max-w-[200px] truncate">{item.title}</TableCell>
-                    <TableCell className="max-w-[300px]">
-                      <span className="text-destructive text-xs line-clamp-2">
-                        {item.error || '-'}
-                      </span>
-                    </TableCell>
-                    <TableCell className="text-center">
-                      <Badge variant="outline">{item.retryCount} ครั้ง</Badge>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex gap-1">
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => retryOne.mutate(item.id)}
-                              disabled={retryOne.isPending}
-                            >
-                              <RotateCcw className="h-4 w-4" />
-                            </Button>
-                          </TooltipTrigger>
-                          <TooltipContent>ลองใหม่</TooltipContent>
-                        </Tooltip>
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <Button variant="ghost" size="sm" asChild>
-                              <Link to={`/videos?code=${item.code}`}>
-                                <ExternalLink className="h-4 w-4" />
-                              </Link>
-                            </Button>
-                          </TooltipTrigger>
-                          <TooltipContent>ดูรายละเอียด</TooltipContent>
-                        </Tooltip>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-
-            {meta && meta.totalPages > 1 && (
-              <div className="flex items-center justify-between mt-4">
-                <p className="text-sm text-muted-foreground">
-                  หน้า {meta.page} จาก {meta.totalPages} (ทั้งหมด {meta.total} รายการ)
-                </p>
-                <div className="flex gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setPage((p) => Math.max(1, p - 1))}
-                    disabled={!meta.hasPrev}
-                  >
-                    ก่อนหน้า
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setPage((p) => p + 1)}
-                    disabled={!meta.hasNext}
-                  >
-                    ถัดไป
-                  </Button>
-                </div>
-              </div>
-            )}
-          </>
-        )}
-      </CardContent>
-    </Card>
+      {isLoading ? (
+        <TableSkeleton />
+      ) : jobs.length === 0 ? (
+        <EmptyState message="ไม่มีวิดีโอที่ล้มเหลว" />
+      ) : (
+        <JobTable jobs={jobs} onRetry={(id) => retryJob.mutate(id)} isRetrying={retryJob.isPending} />
+      )}
+    </div>
   )
 }
 
-// ==================== Subtitle Tab ====================
-
 function SubtitleTab() {
-  const [subtab, setSubtab] = useState<'stuck' | 'failed'>('stuck')
+  const [view, setView] = useState<'processing' | 'failed'>('failed')
   const [page, setPage] = useState(1)
 
-  const stuckQuery = useSubtitleStuck(page)
-  const failedQuery = useSubtitleFailed(page)
+  const processingQuery = useProcessingJobs('subtitle_transcribe', page)
+  const failedQuery = useFailedJobs('subtitle_transcribe', page)
+
   const retryAll = useRetrySubtitleAll()
   const clearAll = useClearSubtitleAll()
   const queueMissing = useQueueMissingSubtitles()
+  const retryJob = useRetryJob()
 
-  const { data, isLoading } = subtab === 'stuck' ? stuckQuery : failedQuery
-  const items = data?.data ?? []
-  const meta = data?.meta
+  const { data, isLoading } = view === 'processing' ? processingQuery : failedQuery
+  const jobs = data?.jobs ?? []
 
   return (
-    <Card>
-      <CardHeader>
-        <div className="flex flex-row items-start justify-between">
-          <div>
-            <CardTitle>ซับไตเติ้ลที่มีปัญหา</CardTitle>
-            <CardDescription>
-              รายการซับไตเติ้ลที่ค้างหรือล้มเหลว
-            </CardDescription>
-          </div>
-          <div className="flex gap-2">
-            <Button
-              variant={subtab === 'stuck' ? 'default' : 'outline'}
-              size="sm"
-              onClick={() => {
-                setSubtab('stuck')
-                setPage(1)
-              }}
-            >
-              ค้าง
-            </Button>
-            <Button
-              variant={subtab === 'failed' ? 'default' : 'outline'}
-              size="sm"
-              onClick={() => {
-                setSubtab('failed')
-                setPage(1)
-              }}
-            >
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <h3 className="font-medium">ซับไตเติ้ล</h3>
+          <div className="flex gap-1 ml-4">
+            <Button variant={view === 'failed' ? 'secondary' : 'ghost'} size="sm" onClick={() => setView('failed')}>
               ล้มเหลว
             </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => retryAll.mutate()}
-              disabled={retryAll.isPending || items.length === 0}
-            >
-              <RotateCcw className={`h-4 w-4 mr-2 ${retryAll.isPending ? 'animate-spin' : ''}`} />
-              ลองใหม่ทั้งหมด
+            <Button variant={view === 'processing' ? 'secondary' : 'ghost'} size="sm" onClick={() => setView('processing')}>
+              กำลังทำ
             </Button>
-            {subtab === 'stuck' && (
-              <>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => clearAll.mutate()}
-                  disabled={clearAll.isPending || items.length === 0}
-                  className="text-destructive hover:text-destructive"
-                >
-                  <Trash2 className={`h-4 w-4 mr-2 ${clearAll.isPending ? 'animate-pulse' : ''}`} />
-                  ล้างทั้งหมด
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => queueMissing.mutate()}
-                  disabled={queueMissing.isPending}
-                >
-                  <Plus className={`h-4 w-4 mr-2 ${queueMissing.isPending ? 'animate-pulse' : ''}`} />
-                  Queue ใหม่
-                </Button>
-              </>
-            )}
           </div>
         </div>
+        <div className="flex gap-2">
+          <Button variant="outline" size="sm" onClick={() => retryAll.mutate()} disabled={retryAll.isPending}>
+            <RotateCcw className={`h-4 w-4 mr-1 ${retryAll.isPending ? 'animate-spin' : ''}`} />
+            Retry All
+          </Button>
+          {view === 'processing' && (
+            <>
+              <Button variant="outline" size="sm" onClick={() => clearAll.mutate()} disabled={clearAll.isPending}>
+                <Trash2 className="h-4 w-4 mr-1" />
+                Clear
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => queueMissing.mutate()} disabled={queueMissing.isPending}>
+                <Plus className="h-4 w-4 mr-1" />
+                Queue Missing
+              </Button>
+            </>
+          )}
+        </div>
+      </div>
 
-        <Alert className="mt-4">
-          <HelpCircle className="h-4 w-4" />
-          <AlertDescription>
-            {subtab === 'stuck' ? (
-              <>
-                <strong>"ค้าง" คืออะไร?</strong> งานที่รออยู่ในคิวนานเกินไป อาจเกิดจาก Worker หยุดทำงานกลางคัน
-                กด "ล้างทั้งหมด" เพื่อล้าง NATS queue และลบ record ที่ค้าง แล้วกด "Queue ใหม่" เพื่อสแกนหา videos ที่ยังไม่มี subtitle แล้ว queue ใหม่ทั้งหมด
-              </>
-            ) : (
-              <>
-                <strong>วิธีแก้ไข:</strong> กด "ลองใหม่ทั้งหมด" หากยังไม่สำเร็จ
-                ให้ตรวจสอบว่าไฟล์เสียงของวิดีโอมีปัญหาหรือไม่ หรือติดต่อผู้ดูแลระบบ
-              </>
-            )}
-          </AlertDescription>
-        </Alert>
-      </CardHeader>
-      <CardContent>
-        {isLoading ? (
-          <div className="space-y-2">
-            <Skeleton className="h-10 w-full" />
-            <Skeleton className="h-10 w-full" />
-            <Skeleton className="h-10 w-full" />
-          </div>
-        ) : items.length === 0 ? (
-          <div className="text-center py-8 text-muted-foreground">
-            <CheckCircle className="h-12 w-12 mx-auto mb-2 text-status-success" />
-            <p>ไม่มีซับไตเติ้ลที่{subtab === 'stuck' ? 'ค้าง' : 'ล้มเหลว'}</p>
-          </div>
-        ) : (
-          <>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>รหัส</TableHead>
-                  <TableHead>ชื่อวิดีโอ</TableHead>
-                  <TableHead>ภาษา</TableHead>
-                  <TableHead>ประเภท</TableHead>
-                  <TableHead>ข้อผิดพลาด</TableHead>
-                  <TableHead className="w-20">จัดการ</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {items.map((item: SubtitleQueueItem) => (
-                  <TableRow key={item.id}>
-                    <TableCell className="font-mono text-xs">{item.videoCode}</TableCell>
-                    <TableCell className="max-w-[200px] truncate">{item.videoTitle}</TableCell>
-                    <TableCell>
-                      <Badge variant="outline">{item.language}</Badge>
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant="secondary">
-                        {item.type === 'transcribed' ? 'ถอดเสียง' : 'แปล'}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="max-w-[200px]">
-                      <span className="text-destructive text-xs line-clamp-2">
-                        {item.error || '-'}
-                      </span>
-                    </TableCell>
-                    <TableCell>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <Button variant="ghost" size="sm" asChild>
-                            <Link to={`/videos?code=${item.videoCode}`}>
-                              <ExternalLink className="h-4 w-4" />
-                            </Link>
-                          </Button>
-                        </TooltipTrigger>
-                        <TooltipContent>ดูรายละเอียดวิดีโอ</TooltipContent>
-                      </Tooltip>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-
-            {meta && meta.totalPages > 1 && (
-              <div className="flex items-center justify-between mt-4">
-                <p className="text-sm text-muted-foreground">
-                  หน้า {meta.page} จาก {meta.totalPages} (ทั้งหมด {meta.total} รายการ)
-                </p>
-                <div className="flex gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setPage((p) => Math.max(1, p - 1))}
-                    disabled={!meta.hasPrev}
-                  >
-                    ก่อนหน้า
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setPage((p) => p + 1)}
-                    disabled={!meta.hasNext}
-                  >
-                    ถัดไป
-                  </Button>
-                </div>
-              </div>
-            )}
-          </>
-        )}
-      </CardContent>
-    </Card>
+      {isLoading ? (
+        <TableSkeleton />
+      ) : jobs.length === 0 ? (
+        <EmptyState message={`ไม่มีซับไตเติ้ลที่${view === 'processing' ? 'กำลังทำ' : 'ล้มเหลว'}`} />
+      ) : (
+        <JobTable jobs={jobs} onRetry={(id) => retryJob.mutate(id)} isRetrying={retryJob.isPending} showJobType />
+      )}
+    </div>
   )
 }
 
-// ==================== Warm Cache Tab ====================
-
 function WarmCacheTab() {
-  const [subtab, setSubtab] = useState<'pending' | 'failed'>('pending')
+  const [view, setView] = useState<'pending' | 'failed'>('pending')
   const [page, setPage] = useState(1)
 
   const pendingQuery = useWarmCachePending(page)
@@ -772,556 +536,274 @@ function WarmCacheTab() {
   const warmOne = useWarmCacheOne()
   const warmAll = useWarmCacheAll()
 
-  const { data, isLoading } = subtab === 'pending' ? pendingQuery : failedQuery
+  const { data, isLoading } = view === 'pending' ? pendingQuery : failedQuery
   const items = data?.data ?? []
-  const meta = data?.meta
 
   return (
-    <Card>
-      <CardHeader>
-        <div className="flex flex-row items-start justify-between">
-          <div>
-            <CardTitle>แคช CDN</CardTitle>
-            <CardDescription>
-              โหลดวิดีโอไปเก็บที่ CDN ล่วงหน้า เพื่อให้ผู้ชมโหลดได้เร็วขึ้น
-            </CardDescription>
-          </div>
-          <div className="flex gap-2">
-            <Button
-              variant={subtab === 'pending' ? 'default' : 'outline'}
-              size="sm"
-              onClick={() => {
-                setSubtab('pending')
-                setPage(1)
-              }}
-            >
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <h3 className="font-medium">แคช CDN</h3>
+          <div className="flex gap-1 ml-4">
+            <Button variant={view === 'pending' ? 'secondary' : 'ghost'} size="sm" onClick={() => setView('pending')}>
               รอแคช
             </Button>
-            <Button
-              variant={subtab === 'failed' ? 'default' : 'outline'}
-              size="sm"
-              onClick={() => {
-                setSubtab('failed')
-                setPage(1)
-              }}
-            >
+            <Button variant={view === 'failed' ? 'secondary' : 'ghost'} size="sm" onClick={() => setView('failed')}>
               ล้มเหลว
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => warmAll.mutate()}
-              disabled={warmAll.isPending || items.length === 0}
-            >
-              <Flame className={`h-4 w-4 mr-2 ${warmAll.isPending ? 'animate-pulse' : ''}`} />
-              แคชทั้งหมด
             </Button>
           </div>
         </div>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => warmAll.mutate()}
+          disabled={warmAll.isPending || items.length === 0}
+        >
+          <Flame className={`h-4 w-4 mr-1 ${warmAll.isPending ? 'animate-pulse' : ''}`} />
+          Warm All
+        </Button>
+      </div>
 
-        <Alert className="mt-4">
-          <HelpCircle className="h-4 w-4" />
-          <AlertDescription>
-            {subtab === 'pending' ? (
-              <>
-                <strong>รอแคช:</strong> วิดีโอเหล่านี้ยังไม่ได้โหลดไปเก็บที่ CDN
-                กด "แคชทั้งหมด" หรือกดไอคอนไฟเพื่อแคชทีละตัว
-                (ไม่จำเป็นต้องทำทันที - ระบบจะแคชอัตโนมัติเมื่อมีคนดู)
-              </>
-            ) : (
-              <>
-                <strong>แคชล้มเหลว:</strong> อาจเกิดจากปัญหาเครือข่าย กด "แคชทั้งหมด" เพื่อลองใหม่
-              </>
-            )}
-          </AlertDescription>
-        </Alert>
-      </CardHeader>
-      <CardContent>
-        {isLoading ? (
-          <div className="space-y-2">
-            <Skeleton className="h-10 w-full" />
-            <Skeleton className="h-10 w-full" />
-            <Skeleton className="h-10 w-full" />
-          </div>
-        ) : items.length === 0 ? (
-          <div className="text-center py-8 text-muted-foreground">
-            <CheckCircle className="h-12 w-12 mx-auto mb-2 text-status-success" />
-            <p>
-              {subtab === 'pending'
-                ? 'ไม่มีวิดีโอที่รอแคช'
-                : 'ไม่มีวิดีโอที่แคชล้มเหลว'}
-            </p>
-          </div>
-        ) : (
-          <>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>รหัส</TableHead>
-                  <TableHead>ชื่อ</TableHead>
-                  <TableHead>คุณภาพ</TableHead>
-                  <TableHead>สถานะ</TableHead>
-                  {subtab === 'failed' && <TableHead>ข้อผิดพลาด</TableHead>}
-                  <TableHead className="w-32">จัดการ</TableHead>
+      {isLoading ? (
+        <TableSkeleton />
+      ) : items.length === 0 ? (
+        <EmptyState message={view === 'pending' ? 'ไม่มีวิดีโอที่รอแคช' : 'ไม่มีวิดีโอที่แคชล้มเหลว'} />
+      ) : (
+        <div className="border rounded-lg overflow-hidden">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>รหัส</TableHead>
+                <TableHead>ชื่อ</TableHead>
+                <TableHead>คุณภาพ</TableHead>
+                <TableHead>สถานะ</TableHead>
+                <TableHead className="w-20"></TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {items.map((item: WarmCacheQueueItem) => (
+                <TableRow key={item.id}>
+                  <TableCell className="font-mono text-xs">{item.code}</TableCell>
+                  <TableCell className="max-w-[200px] truncate text-sm">{item.title}</TableCell>
+                  <TableCell>
+                    <div className="flex gap-1">
+                      {item.qualities?.map((q) => (
+                        <Badge key={q} variant="outline" className="text-xs px-1">
+                          {q}
+                        </Badge>
+                      ))}
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    <Badge variant={item.cacheStatus === 'failed' ? 'destructive' : 'secondary'} className="text-xs">
+                      {item.cacheStatus}
+                    </Badge>
+                  </TableCell>
+                  <TableCell>
+                    <div className="flex gap-1">
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button variant="ghost" size="sm" onClick={() => warmOne.mutate(item.id)} disabled={warmOne.isPending}>
+                            <Flame className="h-4 w-4" />
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>Warm</TooltipContent>
+                      </Tooltip>
+                      <LinkButton code={item.code} />
+                    </div>
+                  </TableCell>
                 </TableRow>
-              </TableHeader>
-              <TableBody>
-                {items.map((item: WarmCacheQueueItem) => (
-                  <TableRow key={item.id}>
-                    <TableCell className="font-mono text-xs">{item.code}</TableCell>
-                    <TableCell className="max-w-[200px] truncate">{item.title}</TableCell>
-                    <TableCell>
-                      <div className="flex flex-wrap gap-1">
-                        {item.qualities?.map((q) => (
-                          <Badge key={q} variant="outline" className="text-xs">
-                            {q}
-                          </Badge>
-                        ))}
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <Badge
-                        variant={item.cacheStatus === 'failed' ? 'destructive' : 'secondary'}
-                      >
-                        {item.cacheStatus === 'pending' && 'รอแคช'}
-                        {item.cacheStatus === 'warming' && 'กำลังแคช'}
-                        {item.cacheStatus === 'cached' && 'แคชแล้ว'}
-                        {item.cacheStatus === 'failed' && 'ล้มเหลว'}
-                      </Badge>
-                      {item.cachePercentage > 0 && (
-                        <span className="ml-2 text-xs text-muted-foreground">
-                          {item.cachePercentage.toFixed(0)}%
-                        </span>
-                      )}
-                    </TableCell>
-                    {subtab === 'failed' && (
-                      <TableCell className="max-w-[200px]">
-                        <span className="text-destructive text-xs line-clamp-2">
-                          {item.error || '-'}
-                        </span>
-                      </TableCell>
-                    )}
-                    <TableCell>
-                      <div className="flex gap-1">
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => warmOne.mutate(item.id)}
-                              disabled={warmOne.isPending}
-                            >
-                              <Flame className="h-4 w-4" />
-                            </Button>
-                          </TooltipTrigger>
-                          <TooltipContent>แคชวิดีโอนี้</TooltipContent>
-                        </Tooltip>
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <Button variant="ghost" size="sm" asChild>
-                              <Link to={`/videos?code=${item.code}`}>
-                                <ExternalLink className="h-4 w-4" />
-                              </Link>
-                            </Button>
-                          </TooltipTrigger>
-                          <TooltipContent>ดูรายละเอียด</TooltipContent>
-                        </Tooltip>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-
-            {meta && meta.totalPages > 1 && (
-              <div className="flex items-center justify-between mt-4">
-                <p className="text-sm text-muted-foreground">
-                  หน้า {meta.page} จาก {meta.totalPages} (ทั้งหมด {meta.total} รายการ)
-                </p>
-                <div className="flex gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setPage((p) => Math.max(1, p - 1))}
-                    disabled={!meta.hasPrev}
-                  >
-                    ก่อนหน้า
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setPage((p) => p + 1)}
-                    disabled={!meta.hasNext}
-                  >
-                    ถัดไป
-                  </Button>
-                </div>
-              </div>
-            )}
-          </>
-        )}
-      </CardContent>
-    </Card>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+      )}
+    </div>
   )
 }
-
-// ==================== Gallery Tab ====================
 
 function GalleryTab() {
-  const [subtab, setSubtab] = useState<'processing' | 'failed'>('processing')
+  const [view, setView] = useState<'processing' | 'failed'>('failed')
   const [page, setPage] = useState(1)
 
-  const processingQuery = useGalleryProcessing(page)
-  const failedQuery = useGalleryFailed(page)
-  const retryAll = useRetryGalleryAll()
+  const processingQuery = useProcessingJobs('gallery', page)
+  const failedQuery = useFailedJobs('gallery', page)
+  const retryJob = useRetryJob()
 
-  const { data, isLoading } = subtab === 'processing' ? processingQuery : failedQuery
-  const items = data?.data ?? []
-  const meta = data?.meta
+  const { data, isLoading } = view === 'processing' ? processingQuery : failedQuery
+  const jobs = data?.jobs ?? []
 
   return (
-    <Card>
-      <CardHeader>
-        <div className="flex flex-row items-start justify-between">
-          <div>
-            <CardTitle>Gallery Queue</CardTitle>
-            <CardDescription>
-              รายการวิดีโอที่กำลังสร้าง gallery หรือล้มเหลว
-            </CardDescription>
-          </div>
-          <div className="flex gap-2">
-            <Button
-              variant={subtab === 'processing' ? 'default' : 'outline'}
-              size="sm"
-              onClick={() => {
-                setSubtab('processing')
-                setPage(1)
-              }}
-            >
-              กำลังสร้าง
-            </Button>
-            <Button
-              variant={subtab === 'failed' ? 'default' : 'outline'}
-              size="sm"
-              onClick={() => {
-                setSubtab('failed')
-                setPage(1)
-              }}
-            >
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <h3 className="font-medium">Gallery</h3>
+          <div className="flex gap-1 ml-4">
+            <Button variant={view === 'failed' ? 'secondary' : 'ghost'} size="sm" onClick={() => setView('failed')}>
               ล้มเหลว
             </Button>
-            {subtab === 'failed' && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => retryAll.mutate()}
-                disabled={retryAll.isPending || items.length === 0}
-              >
-                <RotateCcw className={`h-4 w-4 mr-2 ${retryAll.isPending ? 'animate-spin' : ''}`} />
-                ลองใหม่ทั้งหมด
-              </Button>
-            )}
+            <Button variant={view === 'processing' ? 'secondary' : 'ghost'} size="sm" onClick={() => setView('processing')}>
+              กำลังสร้าง
+            </Button>
           </div>
         </div>
+      </div>
 
-        <Alert className="mt-4">
-          <HelpCircle className="h-4 w-4" />
-          <AlertDescription>
-            {subtab === 'processing' ? (
-              <>
-                <strong>กำลังสร้าง:</strong> วิดีโอเหล่านี้กำลังอยู่ระหว่างการสร้าง gallery
-                โดยปกติใช้เวลา 2-5 นาทีต่อวิดีโอ
-              </>
-            ) : (
-              <>
-                <strong>ล้มเหลว:</strong> กด "ลองใหม่ทั้งหมด" เพื่อ queue การสร้าง gallery ใหม่
-              </>
-            )}
-          </AlertDescription>
-        </Alert>
-      </CardHeader>
-      <CardContent>
-        {isLoading ? (
-          <div className="space-y-2">
-            <Skeleton className="h-10 w-full" />
-            <Skeleton className="h-10 w-full" />
-            <Skeleton className="h-10 w-full" />
-          </div>
-        ) : items.length === 0 ? (
-          <div className="text-center py-8 text-muted-foreground">
-            <CheckCircle className="h-12 w-12 mx-auto mb-2 text-status-success" />
-            <p>
-              {subtab === 'processing'
-                ? 'ไม่มีวิดีโอที่กำลังสร้าง gallery'
-                : 'ไม่มีวิดีโอที่ gallery ล้มเหลว'}
-            </p>
-          </div>
-        ) : (
-          <>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>รหัส</TableHead>
-                  <TableHead>ชื่อ</TableHead>
-                  <TableHead>สถานะ</TableHead>
-                  <TableHead>ภาพ</TableHead>
-                  {subtab === 'failed' && <TableHead>ข้อผิดพลาด</TableHead>}
-                  <TableHead className="w-20">จัดการ</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {items.map((item: GalleryQueueItem) => (
-                  <TableRow key={item.id}>
-                    <TableCell className="font-mono text-xs">{item.code}</TableCell>
-                    <TableCell className="max-w-[200px] truncate">{item.title}</TableCell>
-                    <TableCell>
-                      <Badge
-                        variant={item.galleryStatus === 'failed' ? 'destructive' : 'secondary'}
-                      >
-                        {item.galleryStatus === 'processing' && 'กำลังสร้าง'}
-                        {item.galleryStatus === 'pending_review' && 'รอตรวจ'}
-                        {item.galleryStatus === 'ready' && 'พร้อม'}
-                        {item.galleryStatus === 'failed' && 'ล้มเหลว'}
-                        {item.galleryStatus === 'none' && 'ยังไม่สร้าง'}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex gap-2 text-xs">
-                        <span>ต้นฉบับ: {item.sourceCount}</span>
-                        <span>Safe: {item.safeCount}</span>
-                        <span>NSFW: {item.nsfwCount}</span>
-                      </div>
-                    </TableCell>
-                    {subtab === 'failed' && (
-                      <TableCell className="max-w-[200px]">
-                        <span className="text-destructive text-xs line-clamp-2">
-                          {item.error || '-'}
-                        </span>
-                      </TableCell>
-                    )}
-                    <TableCell>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <Button variant="ghost" size="sm" asChild>
-                            <Link to={`/videos?code=${item.code}`}>
-                              <ExternalLink className="h-4 w-4" />
-                            </Link>
-                          </Button>
-                        </TooltipTrigger>
-                        <TooltipContent>ดูรายละเอียด</TooltipContent>
-                      </Tooltip>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-
-            {meta && meta.totalPages > 1 && (
-              <div className="flex items-center justify-between mt-4">
-                <p className="text-sm text-muted-foreground">
-                  หน้า {meta.page} จาก {meta.totalPages} (ทั้งหมด {meta.total} รายการ)
-                </p>
-                <div className="flex gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setPage((p) => Math.max(1, p - 1))}
-                    disabled={!meta.hasPrev}
-                  >
-                    ก่อนหน้า
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setPage((p) => p + 1)}
-                    disabled={!meta.hasNext}
-                  >
-                    ถัดไป
-                  </Button>
-                </div>
-              </div>
-            )}
-          </>
-        )}
-      </CardContent>
-    </Card>
+      {isLoading ? (
+        <TableSkeleton />
+      ) : jobs.length === 0 ? (
+        <EmptyState message={`ไม่มี gallery ที่${view === 'processing' ? 'กำลังสร้าง' : 'ล้มเหลว'}`} />
+      ) : (
+        <JobTable jobs={jobs} onRetry={(id) => retryJob.mutate(id)} isRetrying={retryJob.isPending} />
+      )}
+    </div>
   )
 }
 
-// ==================== Reel Tab ====================
-
 function ReelTab() {
-  const [subtab, setSubtab] = useState<'exporting' | 'failed'>('exporting')
+  const [view, setView] = useState<'processing' | 'failed'>('failed')
   const [page, setPage] = useState(1)
 
-  const exportingQuery = useReelExporting(page)
-  const failedQuery = useReelFailed(page)
-  const retryAll = useRetryReelAll()
+  const processingQuery = useProcessingJobs('reel', page)
+  const failedQuery = useFailedJobs('reel', page)
+  const retryJob = useRetryJob()
 
-  const { data, isLoading } = subtab === 'exporting' ? exportingQuery : failedQuery
-  const items = data?.data ?? []
-  const meta = data?.meta
+  const { data, isLoading } = view === 'processing' ? processingQuery : failedQuery
+  const jobs = data?.jobs ?? []
 
   return (
-    <Card>
-      <CardHeader>
-        <div className="flex flex-row items-start justify-between">
-          <div>
-            <CardTitle>Reel Queue</CardTitle>
-            <CardDescription>
-              รายการ reel ที่กำลัง export หรือล้มเหลว
-            </CardDescription>
-          </div>
-          <div className="flex gap-2">
-            <Button
-              variant={subtab === 'exporting' ? 'default' : 'outline'}
-              size="sm"
-              onClick={() => {
-                setSubtab('exporting')
-                setPage(1)
-              }}
-            >
-              กำลัง export
-            </Button>
-            <Button
-              variant={subtab === 'failed' ? 'default' : 'outline'}
-              size="sm"
-              onClick={() => {
-                setSubtab('failed')
-                setPage(1)
-              }}
-            >
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <h3 className="font-medium">Reel</h3>
+          <div className="flex gap-1 ml-4">
+            <Button variant={view === 'failed' ? 'secondary' : 'ghost'} size="sm" onClick={() => setView('failed')}>
               ล้มเหลว
             </Button>
-            {subtab === 'failed' && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => retryAll.mutate()}
-                disabled={retryAll.isPending || items.length === 0}
-              >
-                <RotateCcw className={`h-4 w-4 mr-2 ${retryAll.isPending ? 'animate-spin' : ''}`} />
-                ลองใหม่ทั้งหมด
-              </Button>
-            )}
+            <Button variant={view === 'processing' ? 'secondary' : 'ghost'} size="sm" onClick={() => setView('processing')}>
+              กำลัง export
+            </Button>
           </div>
         </div>
+      </div>
 
-        <Alert className="mt-4">
-          <HelpCircle className="h-4 w-4" />
-          <AlertDescription>
-            {subtab === 'exporting' ? (
-              <>
-                <strong>กำลัง export:</strong> Reel เหล่านี้กำลังอยู่ระหว่างการ render
-                โดยปกติใช้เวลา 1-3 นาทีต่อ reel
-              </>
-            ) : (
-              <>
-                <strong>ล้มเหลว:</strong> กด "ลองใหม่ทั้งหมด" เพื่อ export reel ใหม่
-              </>
-            )}
-          </AlertDescription>
-        </Alert>
-      </CardHeader>
-      <CardContent>
-        {isLoading ? (
-          <div className="space-y-2">
-            <Skeleton className="h-10 w-full" />
-            <Skeleton className="h-10 w-full" />
-            <Skeleton className="h-10 w-full" />
-          </div>
-        ) : items.length === 0 ? (
-          <div className="text-center py-8 text-muted-foreground">
-            <CheckCircle className="h-12 w-12 mx-auto mb-2 text-status-success" />
-            <p>
-              {subtab === 'exporting'
-                ? 'ไม่มี reel ที่กำลัง export'
-                : 'ไม่มี reel ที่ export ล้มเหลว'}
-            </p>
-          </div>
-        ) : (
-          <>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Video Code</TableHead>
-                  <TableHead>ชื่อ Reel</TableHead>
-                  <TableHead>สถานะ</TableHead>
-                  <TableHead>ความยาว</TableHead>
-                  {subtab === 'failed' && <TableHead>ข้อผิดพลาด</TableHead>}
-                  <TableHead className="w-20">จัดการ</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {items.map((item: ReelQueueItem) => (
-                  <TableRow key={item.id}>
-                    <TableCell className="font-mono text-xs">{item.videoCode}</TableCell>
-                    <TableCell className="max-w-[200px] truncate">{item.reelTitle}</TableCell>
-                    <TableCell>
-                      <Badge
-                        variant={item.status === 'failed' ? 'destructive' : 'secondary'}
-                      >
-                        {item.status === 'exporting' && 'กำลัง export'}
-                        {item.status === 'ready' && 'เสร็จ'}
-                        {item.status === 'failed' && 'ล้มเหลว'}
-                        {item.status === 'draft' && 'ร่าง'}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      <span className="text-xs">{item.duration}s</span>
-                    </TableCell>
-                    {subtab === 'failed' && (
-                      <TableCell className="max-w-[200px]">
-                        <span className="text-destructive text-xs line-clamp-2">
-                          {item.error || '-'}
-                        </span>
-                      </TableCell>
-                    )}
-                    <TableCell>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <Button variant="ghost" size="sm" asChild>
-                            <Link to={`/reels/create?videoId=${item.videoId}`}>
-                              <ExternalLink className="h-4 w-4" />
-                            </Link>
-                          </Button>
-                        </TooltipTrigger>
-                        <TooltipContent>ไปหน้า Reel</TooltipContent>
-                      </Tooltip>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+      {isLoading ? (
+        <TableSkeleton />
+      ) : jobs.length === 0 ? (
+        <EmptyState message={`ไม่มี reel ที่${view === 'processing' ? 'กำลัง export' : 'ล้มเหลว'}`} />
+      ) : (
+        <JobTable jobs={jobs} onRetry={(id) => retryJob.mutate(id)} isRetrying={retryJob.isPending} linkTo="/reels" />
+      )}
+    </div>
+  )
+}
 
-            {meta && meta.totalPages > 1 && (
-              <div className="flex items-center justify-between mt-4">
-                <p className="text-sm text-muted-foreground">
-                  หน้า {meta.page} จาก {meta.totalPages} (ทั้งหมด {meta.total} รายการ)
-                </p>
-                <div className="flex gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setPage((p) => Math.max(1, p - 1))}
-                    disabled={!meta.hasPrev}
-                  >
-                    ก่อนหน้า
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setPage((p) => p + 1)}
-                    disabled={!meta.hasNext}
-                  >
-                    ถัดไป
-                  </Button>
+// ==================== Shared Components ====================
+
+function TableSkeleton() {
+  return (
+    <div className="space-y-2">
+      <Skeleton className="h-10 w-full" />
+      <Skeleton className="h-10 w-full" />
+      <Skeleton className="h-10 w-full" />
+    </div>
+  )
+}
+
+function EmptyState({ message }: { message: string }) {
+  return (
+    <div className="text-center py-12 text-muted-foreground border rounded-lg bg-muted/20">
+      <CheckCircle className="h-10 w-10 mx-auto mb-3 text-green-500" />
+      <p>{message}</p>
+    </div>
+  )
+}
+
+function JobTable({
+  jobs,
+  onRetry,
+  isRetrying,
+  showJobType,
+  linkTo,
+}: {
+  jobs: WorkerJob[]
+  onRetry: (id: string) => void
+  isRetrying: boolean
+  showJobType?: boolean
+  linkTo?: string
+}) {
+  return (
+    <div className="border rounded-lg overflow-hidden">
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>รหัส</TableHead>
+            {showJobType && <TableHead>ประเภท</TableHead>}
+            <TableHead>สถานะ</TableHead>
+            <TableHead>ข้อผิดพลาด</TableHead>
+            <TableHead className="text-center w-20">Retry</TableHead>
+            <TableHead className="w-20"></TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {jobs.map((job) => (
+            <TableRow key={job.id}>
+              <TableCell className="font-mono text-xs">{job.entity_code}</TableCell>
+              {showJobType && (
+                <TableCell>
+                  <Badge variant="outline" className="text-xs">
+                    {job.job_type === 'subtitle_detect' && 'detect'}
+                    {job.job_type === 'subtitle_transcribe' && 'transcribe'}
+                    {job.job_type === 'subtitle_translate' && 'translate'}
+                    {!job.job_type.startsWith('subtitle') && job.job_type}
+                  </Badge>
+                </TableCell>
+              )}
+              <TableCell>
+                <Badge variant={job.status === 'failed' ? 'destructive' : 'secondary'} className="text-xs">
+                  {job.status}
+                </Badge>
+              </TableCell>
+              <TableCell className="max-w-[300px]">
+                <span className="text-xs text-muted-foreground line-clamp-1">{job.last_error || '-'}</span>
+              </TableCell>
+              <TableCell className="text-center">
+                <span className="text-xs text-muted-foreground">{job.retry_count}x</span>
+              </TableCell>
+              <TableCell>
+                <div className="flex gap-1">
+                  {job.status === 'failed' && (
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button variant="ghost" size="sm" onClick={() => onRetry(job.id)} disabled={isRetrying}>
+                          <RotateCcw className="h-4 w-4" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>Retry</TooltipContent>
+                    </Tooltip>
+                  )}
+                  <LinkButton code={job.entity_code} to={linkTo} />
                 </div>
-              </div>
-            )}
-          </>
-        )}
-      </CardContent>
-    </Card>
+              </TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    </div>
+  )
+}
+
+function LinkButton({ code, to }: { code: string; to?: string }) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button variant="ghost" size="sm" asChild>
+          <Link to={to || `/videos?code=${code}`}>
+            <ExternalLink className="h-4 w-4" />
+          </Link>
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent>ดูรายละเอียด</TooltipContent>
+    </Tooltip>
   )
 }

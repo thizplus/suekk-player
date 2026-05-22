@@ -1,14 +1,12 @@
 import { apiClient, type PaginationMeta } from '@/lib/api-client'
-import { VIDEO_ROUTES, TRANSCODING_ROUTES, CONFIG_ROUTES, HLS_ROUTES, GALLERY_ADMIN_ROUTES } from '@/constants/api-routes'
+import { VIDEO_ROUTES, QUEUE_ROUTES, CONFIG_ROUTES, HLS_ROUTES, GALLERY_ADMIN_ROUTES } from '@/constants/api-routes'
 import type {
   Video,
   VideoUploadResponse,
   BatchUploadResponse,
   VideoFilterParams,
   UpdateVideoRequest,
-  TranscodingStatus,
   TranscodingStats,
-  WorkersResponse,
   DLQVideo,
   UploadLimits,
   GalleryUrlsResponse,
@@ -75,26 +73,14 @@ export const videoService = {
 
   // === Transcoding ===
 
-  // เพิ่มวิดีโอเข้าคิว transcoding
+  // เพิ่มวิดีโอเข้าคิว transcoding (Standard Route)
   async queueTranscoding(videoId: string): Promise<void> {
-    await apiClient.post(TRANSCODING_ROUTES.QUEUE_VIDEO(videoId))
+    await apiClient.post(VIDEO_ROUTES.TRANSCODE(videoId))
   },
 
-  // ดึงสถานะ transcoding
-  async getTranscodingStatus(videoId: string): Promise<TranscodingStatus> {
-    return apiClient.get<TranscodingStatus>(TRANSCODING_ROUTES.STATUS(videoId))
-  },
-
-  // ดึงสถิติ transcoding
+  // ดึงสถิติ queue (สำหรับ Dashboard)
   async getTranscodingStats(): Promise<TranscodingStats> {
-    return apiClient.get<TranscodingStats>(TRANSCODING_ROUTES.STATS)
-  },
-
-  // === Workers ===
-
-  // ดึงรายการ Workers ทั้งหมด
-  async getWorkers(): Promise<WorkersResponse> {
-    return apiClient.get<WorkersResponse>(TRANSCODING_ROUTES.WORKERS)
+    return apiClient.get<TranscodingStats>(QUEUE_ROUTES.STATS)
   },
 
   // === Dead Letter Queue (DLQ) ===

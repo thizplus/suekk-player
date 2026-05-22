@@ -1,73 +1,120 @@
-// ==================== Queue Stats ====================
+// ==================== Worker Job Types ====================
 
-export interface TranscodeStats {
-  pending: number
-  queued: number
-  processing: number
-  failed: number
-  deadLetter: number
-}
+// Job types (matches backend WorkerJobType)
+export type WorkerJobType =
+  | 'transcode'
+  | 'gallery'
+  | 'warmcache'
+  | 'subtitle_detect'
+  | 'subtitle_transcribe'
+  | 'subtitle_translate'
+  | 'reel'
 
-export interface SubtitleStats {
-  queued: number
-  processing: number
-  failed: number
-}
+// Job status (matches backend WorkerJobStatus)
+export type WorkerJobStatus =
+  | 'pending'
+  | 'queued'
+  | 'processing'
+  | 'completed'
+  | 'failed'
+  | 'cancelled'
+  | 'dead_letter'
 
-export interface WarmCacheStats {
-  notCached: number
-  warming: number
-  cached: number
-  failed: number
-}
+// Entity types
+export type WorkerEntityType = 'video' | 'subtitle' | 'reel'
 
-export interface GalleryStats {
-  none: number
-  processing: number
-  pendingReview: number
-  ready: number
-  failed: number
-}
+// ==================== Worker Job Response ====================
 
-export interface ReelStats {
-  draft: number
-  exporting: number
-  ready: number
-  failed: number
-}
-
-export interface QueueStatsResponse {
-  transcode: TranscodeStats
-  subtitle: SubtitleStats
-  warmCache: WarmCacheStats
-  gallery: GalleryStats
-  reel: ReelStats
-}
-
-// ==================== Queue Items ====================
-
-export interface TranscodeQueueItem {
+export interface WorkerJob {
   id: string
-  code: string
-  title: string
-  status: string
-  error: string
-  retryCount: number
-  createdAt: string
-  updatedAt: string
+  job_type: WorkerJobType
+  entity_type: WorkerEntityType
+  entity_id: string
+  entity_code: string
+  status: WorkerJobStatus
+  progress: number
+  current_stage: string
+  message: string
+  worker_id?: string
+  priority: number
+  created_at: string
+  queued_at?: string
+  started_at?: string
+  completed_at?: string
+  retry_count: number
+  max_retries: number
+  last_error?: string
+  duration_sec?: number
 }
 
-export interface SubtitleQueueItem {
-  id: string
-  videoId: string
-  videoCode: string
-  videoTitle: string
-  language: string
-  type: string // transcribed | translated
-  status: string
+export interface WorkerJobDetail extends WorkerJob {
+  job_data?: Record<string, unknown>
+  output_data?: Record<string, unknown>
+  error_history?: WorkerJobErrorRecord[]
+}
+
+export interface WorkerJobErrorRecord {
+  attempt: number
   error: string
-  createdAt: string
-  updatedAt: string
+  error_code?: string
+  worker_id?: string
+  stage?: string
+  timestamp: string
+}
+
+// ==================== Stats ====================
+
+export interface WorkerJobStats {
+  total_jobs: number
+  pending_jobs: number
+  queued_jobs: number
+  processing_jobs: number
+  completed_jobs: number
+  failed_jobs: number
+  avg_duration_sec: number
+  success_rate: number
+}
+
+// Stats grouped by job type (from /stats/all)
+export type WorkerJobAllStats = {
+  [K in WorkerJobType]?: WorkerJobStats
+}
+
+// ==================== Legacy Types (for warm cache) ====================
+
+// Legacy stats (for WarmCache which uses Video.CacheStatus)
+export interface LegacyQueueStats {
+  transcode: {
+    pending: number
+    queued: number
+    processing: number
+    failed: number
+    deadLetter: number
+  }
+  subtitle: {
+    queued: number
+    processing: number
+    failed: number
+  }
+  warmCache: {
+    notCached: number
+    warming: number
+    cached: number
+    failed: number
+  }
+  gallery: {
+    none: number
+    processing: number
+    pendingReview: number
+    ready: number
+    failed: number
+  }
+  reel: {
+    draft: number
+    exporting: number
+    ready: number
+    failed: number
+  }
 }
 
 export interface WarmCacheQueueItem {
@@ -81,33 +128,16 @@ export interface WarmCacheQueueItem {
   lastWarmedAt: string | null
 }
 
-export interface GalleryQueueItem {
-  id: string
-  code: string
-  title: string
-  galleryStatus: string
-  sourceCount: number
-  safeCount: number
-  nsfwCount: number
-  error?: string
-  createdAt: string
-  updatedAt: string
-}
-
-export interface ReelQueueItem {
-  id: string
-  videoId: string
-  videoCode: string
-  videoTitle: string
-  reelTitle: string
-  status: string
-  error?: string
-  duration: number
-  createdAt: string
-  updatedAt: string
-}
-
 // ==================== Response Types ====================
+
+export interface WorkerJobListResponse {
+  jobs: WorkerJob[]
+  meta: {
+    total: number
+    offset: number
+    limit: number
+  }
+}
 
 export interface RetryResponse {
   totalFound: number

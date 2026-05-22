@@ -1,4 +1,4 @@
-import { LayoutDashboard, Video, FolderOpen, Activity, Settings, UserCircle, Globe, Server, ListChecks, Film, type LucideIcon } from 'lucide-react'
+import { LayoutDashboard, Video, FolderOpen, Settings, UserCircle, Globe, Server, ListChecks, Film, type LucideIcon } from 'lucide-react'
 
 // Sidebar navigation types
 export interface NavSubItem {
@@ -35,11 +35,6 @@ export const NAV_MAIN: NavItem[] = [
     title: 'หมวดหมู่',
     url: '/categories',
     icon: FolderOpen,
-  },
-  {
-    title: 'ประมวลผล',
-    url: '/transcoding',
-    icon: Activity,
   },
   {
     title: 'เครื่องประมวลผล',

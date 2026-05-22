@@ -56,11 +56,6 @@ const CategoryListPage = lazyWithReload(() =>
   import('@/features/category').then((m) => ({ default: m.CategoryListPage }))
 )
 
-// Lazy load transcoding page
-const TranscodingPage = lazyWithReload(() =>
-  import('@/features/transcoding').then((m) => ({ default: m.TranscodingPage }))
-)
-
 // Lazy load whitelist page (Phase 6)
 const WhitelistPage = lazyWithReload(() =>
   import('@/features/whitelist').then((m) => ({ default: m.WhitelistPage }))
@@ -150,9 +145,6 @@ export default function AppRoutes() {
 
             {/* Category routes */}
             <Route path="/categories" element={<CategoryListPage />} />
-
-            {/* Transcoding routes */}
-            <Route path="/transcoding" element={<TranscodingPage />} />
 
             {/* Whitelist routes (Phase 6) */}
             <Route path="/whitelist" element={<WhitelistPage />} />

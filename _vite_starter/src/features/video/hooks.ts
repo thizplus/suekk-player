@@ -11,9 +11,7 @@ export const videoKeys = {
   detail: (id: string) => [...videoKeys.details(), id] as const,
   byCode: (code: string) => [...videoKeys.all, 'code', code] as const,
   transcoding: () => [...videoKeys.all, 'transcoding'] as const,
-  transcodingStatus: (videoId: string) => [...videoKeys.transcoding(), 'status', videoId] as const,
   transcodingStats: () => [...videoKeys.transcoding(), 'stats'] as const,
-  workers: () => [...videoKeys.all, 'workers'] as const,
   dlq: () => [...videoKeys.all, 'dlq'] as const,
   dlqList: (params?: { page?: number; limit?: number }) => [...videoKeys.dlq(), 'list', params] as const,
 }
@@ -132,30 +130,11 @@ export function useQueueTranscoding() {
   })
 }
 
-// ดึงสถานะ transcoding
-export function useTranscodingStatus(videoId: string) {
-  return useQuery({
-    queryKey: videoKeys.transcodingStatus(videoId),
-    queryFn: () => videoService.getTranscodingStatus(videoId),
-    enabled: !!videoId,
-    refetchInterval: 3000, // Refresh every 3 seconds
-  })
-}
-
-// ดึงสถิติ transcoding
+// ดึงสถิติ transcoding (สำหรับ Dashboard)
 export function useTranscodingStats() {
   return useQuery({
     queryKey: videoKeys.transcodingStats(),
     queryFn: () => videoService.getTranscodingStats(),
-    refetchInterval: 5000, // Refresh every 5 seconds
-  })
-}
-
-// ดึงรายการ Workers
-export function useWorkers() {
-  return useQuery({
-    queryKey: videoKeys.workers(),
-    queryFn: () => videoService.getWorkers(),
     refetchInterval: 5000, // Refresh every 5 seconds
   })
 }

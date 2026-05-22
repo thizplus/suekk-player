@@ -1,59 +1,100 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { queueService } from './service'
 import { toast } from 'sonner'
+import type { WorkerJobType, WorkerJobStatus } from './types'
 
 // Query Key Factory
 export const queueKeys = {
-  all: ['queue'] as const,
+  all: ['worker-jobs'] as const,
   stats: () => [...queueKeys.all, 'stats'] as const,
-  transcode: () => [...queueKeys.all, 'transcode'] as const,
-  transcodeFailed: (page: number, limit: number) =>
-    [...queueKeys.transcode(), 'failed', { page, limit }] as const,
-  subtitle: () => [...queueKeys.all, 'subtitle'] as const,
-  subtitleStuck: (page: number, limit: number) =>
-    [...queueKeys.subtitle(), 'stuck', { page, limit }] as const,
-  subtitleFailed: (page: number, limit: number) =>
-    [...queueKeys.subtitle(), 'failed', { page, limit }] as const,
-  warmCache: () => [...queueKeys.all, 'warmCache'] as const,
-  warmCachePending: (page: number, limit: number) =>
-    [...queueKeys.warmCache(), 'pending', { page, limit }] as const,
-  warmCacheFailed: (page: number, limit: number) =>
-    [...queueKeys.warmCache(), 'failed', { page, limit }] as const,
-  gallery: () => [...queueKeys.all, 'gallery'] as const,
-  galleryProcessing: (page: number, limit: number) =>
-    [...queueKeys.gallery(), 'processing', { page, limit }] as const,
-  galleryFailed: (page: number, limit: number) =>
-    [...queueKeys.gallery(), 'failed', { page, limit }] as const,
-  reel: () => [...queueKeys.all, 'reel'] as const,
-  reelExporting: (page: number, limit: number) =>
-    [...queueKeys.reel(), 'exporting', { page, limit }] as const,
-  reelFailed: (page: number, limit: number) =>
-    [...queueKeys.reel(), 'failed', { page, limit }] as const,
+  statsAll: () => [...queueKeys.all, 'stats', 'all'] as const,
+  list: (params?: {
+    jobType?: WorkerJobType
+    status?: WorkerJobStatus
+    page?: number
+    limit?: number
+  }) => [...queueKeys.all, 'list', params] as const,
+  detail: (id: string) => [...queueKeys.all, 'detail', id] as const,
+  byEntity: (entityType: string, entityId: string) =>
+    [...queueKeys.all, 'entity', entityType, entityId] as const,
 }
 
 // ==================== Stats ====================
 
-export function useQueueStats() {
+export function useAllStats() {
   return useQuery({
-    queryKey: queueKeys.stats(),
-    queryFn: () => queueService.getStats(),
+    queryKey: queueKeys.statsAll(),
+    queryFn: () => queueService.getAllStats(),
     refetchInterval: 10000, // Refresh every 10 seconds
   })
 }
 
-// ==================== Transcode Queue ====================
-
-export function useTranscodeFailed(page = 1, limit = 20) {
+export function useStats(jobType?: WorkerJobType) {
   return useQuery({
-    queryKey: queueKeys.transcodeFailed(page, limit),
-    queryFn: () => queueService.getTranscodeFailed({ page, limit }),
+    queryKey: [...queueKeys.stats(), jobType],
+    queryFn: () => queueService.getStats(jobType),
+    refetchInterval: 10000,
   })
 }
 
-export function useRetryTranscodeAll() {
+// ==================== List Jobs ====================
+
+export function useJobList(params: {
+  jobType?: WorkerJobType
+  status?: WorkerJobStatus
+  page?: number
+  limit?: number
+}) {
+  return useQuery({
+    queryKey: queueKeys.list(params),
+    queryFn: () =>
+      queueService.listJobs({
+        job_type: params.jobType,
+        status: params.status,
+        page: params.page,
+        limit: params.limit,
+      }),
+    placeholderData: (prev) => prev,
+  })
+}
+
+// Convenience hooks for common queries
+export function useFailedJobs(jobType: WorkerJobType, page = 1, limit = 20) {
+  return useJobList({ jobType, status: 'failed', page, limit })
+}
+
+export function useProcessingJobs(jobType: WorkerJobType, page = 1, limit = 20) {
+  return useJobList({ jobType, status: 'processing', page, limit })
+}
+
+export function useQueuedJobs(jobType: WorkerJobType, page = 1, limit = 20) {
+  return useJobList({ jobType, status: 'queued', page, limit })
+}
+
+// ==================== Job Detail ====================
+
+export function useJobDetail(id: string, enabled = true) {
+  return useQuery({
+    queryKey: queueKeys.detail(id),
+    queryFn: () => queueService.getJob(id),
+    enabled,
+  })
+}
+
+export function useJobsByEntity(entityType: string, entityId: string, enabled = true) {
+  return useQuery({
+    queryKey: queueKeys.byEntity(entityType, entityId),
+    queryFn: () => queueService.getJobsByEntity(entityType, entityId),
+    enabled,
+  })
+}
+
+// ==================== Actions ====================
+
+export function useRetryJob() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: () => queueService.retryTranscodeAll(),
+    mutationFn: (id: string) => queueService.retryJob(id),
     onSuccess: (data) => {
       toast.success(data.message)
       queryClient.invalidateQueries({ queryKey: queueKeys.all })
@@ -64,35 +105,79 @@ export function useRetryTranscodeAll() {
   })
 }
 
-export function useRetryTranscodeOne() {
+export function useCancelJob() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: (id: string) => queueService.retryTranscodeOne(id),
-    onSuccess: () => {
-      toast.success('Retry queued')
+    mutationFn: (id: string) => queueService.cancelJob(id),
+    onSuccess: (data) => {
+      toast.success(data.message)
       queryClient.invalidateQueries({ queryKey: queueKeys.all })
     },
     onError: () => {
-      toast.error('Retry failed')
+      toast.error('Cancel failed')
     },
   })
 }
 
-// ==================== Subtitle Queue ====================
+// ==================== Cleanup Actions ====================
 
-export function useSubtitleStuck(page = 1, limit = 20) {
-  return useQuery({
-    queryKey: queueKeys.subtitleStuck(page, limit),
-    queryFn: () => queueService.getSubtitleStuck({ page, limit }),
+export function useDeleteJob() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) => queueService.deleteJob(id),
+    onSuccess: (data) => {
+      toast.success(data.message)
+      queryClient.invalidateQueries({ queryKey: queueKeys.all })
+    },
+    onError: () => {
+      toast.error('ลบ job ไม่สำเร็จ')
+    },
   })
 }
 
-export function useSubtitleFailed(page = 1, limit = 20) {
-  return useQuery({
-    queryKey: queueKeys.subtitleFailed(page, limit),
-    queryFn: () => queueService.getSubtitleFailed({ page, limit }),
+export function useDeleteOrphanedJobs() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: () => queueService.deleteOrphanedJobs(),
+    onSuccess: (data) => {
+      toast.success(`ลบ ${data.count} orphaned jobs สำเร็จ`)
+      queryClient.invalidateQueries({ queryKey: queueKeys.all })
+    },
+    onError: () => {
+      toast.error('ลบ orphaned jobs ไม่สำเร็จ')
+    },
   })
 }
+
+export function useDeleteCompletedJobs() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (days = 7) => queueService.deleteCompletedJobs(days),
+    onSuccess: (data) => {
+      toast.success(`ลบ ${data.count} completed jobs (เก่ากว่า ${data.older_than_days} วัน) สำเร็จ`)
+      queryClient.invalidateQueries({ queryKey: queueKeys.all })
+    },
+    onError: () => {
+      toast.error('ลบ completed jobs ไม่สำเร็จ')
+    },
+  })
+}
+
+export function useDeleteFailedJobs() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: () => queueService.deleteFailedJobs(),
+    onSuccess: (data) => {
+      toast.success(`ลบ ${data.count} failed jobs สำเร็จ`)
+      queryClient.invalidateQueries({ queryKey: queueKeys.all })
+    },
+    onError: () => {
+      toast.error('ลบ failed jobs ไม่สำเร็จ')
+    },
+  })
+}
+
+// ==================== Legacy Subtitle Actions ====================
 
 export function useRetrySubtitleAll() {
   const queryClient = useQueryClient()
@@ -136,19 +221,29 @@ export function useQueueMissingSubtitles() {
   })
 }
 
-// ==================== Warm Cache Queue ====================
+// ==================== Legacy Stats (for WarmCache) ====================
+
+export function useLegacyStats() {
+  return useQuery({
+    queryKey: [...queueKeys.all, 'legacy-stats'],
+    queryFn: () => queueService.getLegacyStats(),
+    refetchInterval: 10000,
+  })
+}
+
+// ==================== Legacy Warm Cache (uses Video.CacheStatus) ====================
 
 export function useWarmCachePending(page = 1, limit = 20) {
   return useQuery({
-    queryKey: queueKeys.warmCachePending(page, limit),
-    queryFn: () => queueService.getWarmCachePending({ page, limit }),
+    queryKey: [...queueKeys.all, 'warmcache', 'pending', { page, limit }],
+    queryFn: () => queueService.getWarmCachePending(page, limit),
   })
 }
 
 export function useWarmCacheFailed(page = 1, limit = 20) {
   return useQuery({
-    queryKey: queueKeys.warmCacheFailed(page, limit),
-    queryFn: () => queueService.getWarmCacheFailed({ page, limit }),
+    queryKey: [...queueKeys.all, 'warmcache', 'failed', { page, limit }],
+    queryFn: () => queueService.getWarmCacheFailed(page, limit),
   })
 }
 
@@ -180,62 +275,18 @@ export function useWarmCacheAll() {
   })
 }
 
-// ==================== Gallery Queue ====================
+// ==================== Stream Management ====================
 
-export function useGalleryProcessing(page = 1, limit = 20) {
-  return useQuery({
-    queryKey: queueKeys.galleryProcessing(page, limit),
-    queryFn: () => queueService.getGalleryProcessing({ page, limit }),
-  })
-}
-
-export function useGalleryFailed(page = 1, limit = 20) {
-  return useQuery({
-    queryKey: queueKeys.galleryFailed(page, limit),
-    queryFn: () => queueService.getGalleryFailed({ page, limit }),
-  })
-}
-
-export function useRetryGalleryAll() {
+export function usePurgeTranscodeStream() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: () => queueService.retryGalleryAll(),
+    mutationFn: () => queueService.purgeTranscodeStream(),
     onSuccess: (data) => {
       toast.success(data.message)
       queryClient.invalidateQueries({ queryKey: queueKeys.all })
     },
     onError: () => {
-      toast.error('Retry gallery failed')
-    },
-  })
-}
-
-// ==================== Reel Queue ====================
-
-export function useReelExporting(page = 1, limit = 20) {
-  return useQuery({
-    queryKey: queueKeys.reelExporting(page, limit),
-    queryFn: () => queueService.getReelExporting({ page, limit }),
-  })
-}
-
-export function useReelFailed(page = 1, limit = 20) {
-  return useQuery({
-    queryKey: queueKeys.reelFailed(page, limit),
-    queryFn: () => queueService.getReelFailed({ page, limit }),
-  })
-}
-
-export function useRetryReelAll() {
-  const queryClient = useQueryClient()
-  return useMutation({
-    mutationFn: () => queueService.retryReelAll(),
-    onSuccess: (data) => {
-      toast.success(data.message)
-      queryClient.invalidateQueries({ queryKey: queueKeys.all })
-    },
-    onError: () => {
-      toast.error('Retry reel failed')
+      toast.error('Purge transcode stream failed')
     },
   })
 }

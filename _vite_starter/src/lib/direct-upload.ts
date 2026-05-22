@@ -77,7 +77,7 @@ export interface DirectUploadResult {
  * รองรับ multipart upload, parallel upload, และ progress tracking
  */
 export async function directUpload(options: DirectUploadOptions): Promise<DirectUploadResult> {
-  const { file, title, onProgress, maxConcurrency = 3, abortSignal } = options
+  const { file, title, onProgress, maxConcurrency = 5, abortSignal } = options
 
   // Phase 1: Preparing - ขอ presigned URLs จาก API
   onProgress?.({
@@ -236,7 +236,7 @@ export function formatBytes(bytes: number): string {
 export const DIRECT_UPLOAD_DEFAULTS = {
   MAX_FILE_SIZE: 10 * 1024 * 1024 * 1024, // 10GB
   PART_SIZE: 64 * 1024 * 1024, // 64MB
-  DEFAULT_CONCURRENCY: 3,
+  DEFAULT_CONCURRENCY: 5,
   ALLOWED_TYPES: ['video/mp4', 'video/x-matroska', 'video/x-msvideo', 'video/quicktime', 'video/webm', 'video/MP2T', 'video/mp2t', 'video/vnd.dlna.mpeg-tts'],
 }
 
