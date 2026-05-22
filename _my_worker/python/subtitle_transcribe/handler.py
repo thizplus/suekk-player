@@ -417,7 +417,7 @@ class SubtitleTranscribeHandler:
             # ตัด filename ออกถ้ามี .srt/.vtt ต่อท้าย
             base_path = output_path
             if base_path.endswith(".srt") or base_path.endswith(".vtt"):
-                base_path = str(Path(base_path).parent)
+                base_path = base_path.rsplit("/", 1)[0]  # ใช้ string split ไม่ใช่ Path (Windows ใส่ \ ให้)
             remote_srt = f"{base_path}/{language}.srt"
             remote_vtt = f"{base_path}/{language}.vtt"
 
