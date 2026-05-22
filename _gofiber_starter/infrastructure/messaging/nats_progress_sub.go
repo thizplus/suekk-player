@@ -42,7 +42,7 @@ func (s *NATSProgressSubscriber) Subscribe(ctx context.Context, handler ports.Pr
 		}
 
 		// Convert to port type and call handler
-		handler(&ports.ProgressData{
+		data := &ports.ProgressData{
 			VideoID:         update.VideoID,
 			VideoCode:       update.VideoCode,
 			Status:          update.Status,
@@ -59,7 +59,16 @@ func (s *NATSProgressSubscriber) Subscribe(ctx context.Context, handler ports.Pr
 			// Reel-specific fields
 			ReelID:   update.ReelID,
 			FileSize: update.FileSize,
-		})
+		}
+
+		// Extract output data from new worker format
+		if update.Output != nil {
+			data.Duration = update.Output.Duration
+			data.DiskUsage = update.Output.DiskUsage
+			data.QualitySizes = update.Output.QualitySizes
+		}
+
+		handler(data)
 	}
 
 	// Register handler

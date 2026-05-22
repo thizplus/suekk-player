@@ -249,6 +249,20 @@ type ProgressUpdate struct {
 	ReelID   string `json:"reel_id,omitempty"`
 	FileSize int64  `json:"file_size,omitempty"`
 	// Note: reel worker ใช้ output_url แทน output_path แต่เรา map เป็น OutputPath
+
+	// Transcode output fields (from new worker - nested in "output" object)
+	Output *TranscodeOutputData `json:"output,omitempty"`
+}
+
+// TranscodeOutputData contains detailed output from transcode worker
+type TranscodeOutputData struct {
+	HLSPath       string           `json:"hls_path,omitempty"`
+	ThumbnailPath string           `json:"thumbnail_path,omitempty"`
+	AudioPath     string           `json:"audio_path,omitempty"`
+	Duration      int              `json:"duration,omitempty"`
+	DiskUsage     int64            `json:"disk_usage,omitempty"`
+	QualitySizes  map[string]int64 `json:"quality_sizes,omitempty"`
+	SegmentCounts map[string]int   `json:"segment_counts,omitempty"`
 }
 
 // GetVideoID returns video_id (prefers entity_id if available)

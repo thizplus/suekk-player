@@ -59,6 +59,11 @@ type ProgressData struct {
 	// Reel-specific fields
 	ReelID   string
 	FileSize int64
+
+	// Transcode output (from new worker completed message)
+	Duration     int
+	DiskUsage    int64
+	QualitySizes map[string]int64
 }
 
 // ProgressPublisherPort - Interface สำหรับส่ง progress

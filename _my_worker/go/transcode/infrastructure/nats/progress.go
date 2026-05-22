@@ -51,12 +51,11 @@ func (p *ProgressPublisher) Publish(ctx context.Context, update *ports.ProgressU
 		return err
 	}
 
-	p.logger.Debug("Progress published",
+	p.logger.Info("Progress published",
 		"job_id", update.JobID,
-		"entity_id", update.EntityID,
-		"status", update.Status,
 		"progress", update.Progress,
 		"stage", update.Stage,
+		"message", update.Message,
 	)
 
 	return nil

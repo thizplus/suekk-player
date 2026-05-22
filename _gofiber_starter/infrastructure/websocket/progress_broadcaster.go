@@ -276,9 +276,32 @@ func (pb *ProgressBroadcaster) updateVideoStatus(update *ports.ProgressData) {
 		if update.AudioPath != "" {
 			video.AudioPath = update.AudioPath
 		}
+
+		// Update fields from worker output (เหมือน worker เก่าที่ update DB ตรง)
+		if update.Duration > 0 {
+			video.Duration = update.Duration
+		}
+		if update.DiskUsage > 0 {
+			video.DiskUsage = update.DiskUsage
+			video.HLSSize = update.DiskUsage
+		}
+		if len(update.QualitySizes) > 0 {
+			video.QualitySizes = models.QualitySizes(update.QualitySizes)
+			// Set highest quality
+			for _, q := range []string{"1080p", "720p", "480p", "360p"} {
+				if _, exists := update.QualitySizes[q]; exists {
+					video.Quality = q
+					break
+				}
+			}
+		}
+
 		logger.Info("Updating video status to ready",
 			"video_id", update.VideoID,
 			"audio_path", update.AudioPath,
+			"duration", update.Duration,
+			"disk_usage", update.DiskUsage,
+			"quality_sizes", update.QualitySizes,
 			"worker_id", update.WorkerID,
 		)
 	} else if update.Status == "failed" {

@@ -19,38 +19,37 @@ type AdaptiveWatcherConfig struct {
 func GetAdaptiveWatcherConfig(durationSec float64, renditionCount int) AdaptiveWatcherConfig {
 	durationMin := durationSec / 60
 
+	// ค่าจาก worker เก่าที่ผ่าน IDrive E2 ได้: 5 workers, 6 req/s, window 6
 	switch {
 	case durationMin < 30:
-		// Turbo Mode: วิดีโอสั้น - ลด rate limit เพื่อหลีกเลี่ยง S3 throttling
 		return AdaptiveWatcherConfig{
 			Mode:           "turbo",
-			Workers:        30,
-			MaxUncommitted: 300,
-			BaseRateLimit:  30.0, // ลดจาก 50
-			WindowSize:     2,
-			FlushInterval:  1 * time.Second,
+			Workers:        8,
+			MaxUncommitted: 100,
+			BaseRateLimit:  8.0,
+			WindowSize:     6,
+			FlushInterval:  3 * time.Second,
 		}
 
 	case durationMin < 90:
-		// Balanced Mode: วิดีโอกลาง - balance speed/stability
 		return AdaptiveWatcherConfig{
 			Mode:           "balanced",
-			Workers:        20,
-			MaxUncommitted: 200,
-			BaseRateLimit:  25.0, // ลดจาก 40
-			WindowSize:     3,
-			FlushInterval:  2 * time.Second,
+			Workers:        6,
+			MaxUncommitted: 100,
+			BaseRateLimit:  6.0,
+			WindowSize:     6,
+			FlushInterval:  4 * time.Second,
 		}
 
 	default:
-		// Stable Mode: วิดีโอยาว > 90 นาที - เน้นความเสถียร
+		// Stable Mode: ตรงกับ worker เก่า
 		return AdaptiveWatcherConfig{
 			Mode:           "stable",
-			Workers:        15,
-			MaxUncommitted: 150,
-			BaseRateLimit:  20.0, // ลดจาก 30
-			WindowSize:     4,
-			FlushInterval:  2 * time.Second,
+			Workers:        5,
+			MaxUncommitted: 100,
+			BaseRateLimit:  6.0,
+			WindowSize:     6,
+			FlushInterval:  5 * time.Second,
 		}
 	}
 }

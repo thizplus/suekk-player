@@ -518,8 +518,8 @@ func (t *Transcoder) HasAvailableVRAM() bool {
 		return true
 	}
 
-	// Require at least 2GB free VRAM
-	minVRAM := 2000
+	// Require at least 1GB free VRAM
+	minVRAM := 1000
 	available := freeVRAM >= minVRAM
 
 	if !available {
