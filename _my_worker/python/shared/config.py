@@ -9,6 +9,13 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional, List, Dict, Any
 
+
+def _ensure_https(endpoint: str) -> str:
+    """Add https:// prefix if missing."""
+    if endpoint and not endpoint.startswith("http"):
+        return f"https://{endpoint}"
+    return endpoint
+
 from dotenv import load_dotenv
 
 
@@ -211,8 +218,8 @@ def load_config(worker_type: str) -> Config:
         consumer_name=os.getenv(f"{worker_type.upper()}_CONSUMER_NAME", consumer_name),
         subject=os.getenv(f"{worker_type.upper()}_SUBJECT", subject),
 
-        # S3
-        s3_endpoint=os.getenv("S3_ENDPOINT", ""),
+        # S3 (auto-add https:// if missing)
+        s3_endpoint=_ensure_https(os.getenv("S3_ENDPOINT", "")),
         s3_access_key=os.getenv("S3_ACCESS_KEY", ""),
         s3_secret_key=os.getenv("S3_SECRET_KEY", ""),
         s3_bucket=os.getenv("S3_BUCKET", "suekk"),

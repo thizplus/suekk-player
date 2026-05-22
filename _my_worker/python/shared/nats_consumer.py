@@ -135,10 +135,12 @@ class NATSConsumer:
 
         self._running = True
 
-        # Setup signal handlers
-        loop = asyncio.get_event_loop()
-        for sig in (signal.SIGINT, signal.SIGTERM):
-            loop.add_signal_handler(sig, self._handle_shutdown)
+        # Setup signal handlers (not supported on Windows)
+        import sys
+        if sys.platform != "win32":
+            loop = asyncio.get_event_loop()
+            for sig in (signal.SIGINT, signal.SIGTERM):
+                loop.add_signal_handler(sig, self._handle_shutdown)
 
         logger.info("Worker ready - waiting for jobs")
 

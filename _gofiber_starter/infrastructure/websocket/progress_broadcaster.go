@@ -305,9 +305,19 @@ func (pb *ProgressBroadcaster) updateVideoStatus(update *ports.ProgressData) {
 			"worker_id", update.WorkerID,
 		)
 	} else if update.Status == "failed" {
+		// ห้ามเปลี่ยน video ที่ ready แล้วกลับเป็น failed
+		// (subtitle/gallery/warmcache fail ต้องไม่กระทบ video ที่ transcode สำเร็จแล้ว)
+		if video.Status == "ready" {
+			logger.Warn("Ignoring failed status for ready video",
+				"video_id", update.VideoID,
+				"worker_id", update.WorkerID,
+			)
+			return
+		}
 		video.Status = "failed"
 		logger.Info("Updating video status to failed",
 			"video_id", update.VideoID,
+			"old_status", video.Status,
 			"worker_id", update.WorkerID,
 		)
 	}
