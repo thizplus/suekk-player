@@ -152,7 +152,7 @@ export function useDeleteOrphanedJobs() {
 export function useDeleteCompletedJobs() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: (days = 7) => queueService.deleteCompletedJobs(days),
+    mutationFn: (days?: number) => queueService.deleteCompletedJobs(days ?? 7),
     onSuccess: (data) => {
       toast.success(`ลบ ${data.count} completed jobs (เก่ากว่า ${data.older_than_days} วัน) สำเร็จ`)
       queryClient.invalidateQueries({ queryKey: queueKeys.all })

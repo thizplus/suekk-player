@@ -9,7 +9,6 @@ import {
   Plus,
   CheckCircle,
   XCircle,
-  AlertTriangle,
   Monitor,
   Languages,
   Database,
@@ -68,24 +67,12 @@ export function QueueManagementPage() {
   const deleteFailed = useDeleteFailedJobs()
 
   // Calculate totals for header
-  const totalPending =
-    (stats?.transcode?.pending || 0) +
-    (stats?.transcode?.queued || 0) +
-    (stats?.subtitle?.queued || 0) +
-    (stats?.warmCache?.notCached || 0)
   const totalProcessing =
     (stats?.transcode?.processing || 0) +
     (stats?.subtitle?.processing || 0) +
     (stats?.warmCache?.warming || 0) +
     (stats?.gallery?.processing || 0) +
     (stats?.reel?.exporting || 0)
-  const totalFailed =
-    (stats?.transcode?.failed || 0) +
-    (stats?.transcode?.deadLetter || 0) +
-    (stats?.subtitle?.failed || 0) +
-    (stats?.warmCache?.failed || 0) +
-    (stats?.gallery?.failed || 0) +
-    (stats?.reel?.failed || 0)
 
   return (
     <TooltipProvider>
@@ -435,7 +422,7 @@ function ProgressItem({ item, icon }: { item: VideoProgress; icon: React.ReactNo
 // ==================== Tabs ====================
 
 function TranscodeTab() {
-  const [page, setPage] = useState(1)
+  const [page, _setPage] = useState(1)
   const { data, isLoading } = useFailedJobs('transcode', page)
   const retryJob = useRetryJob()
   const purgeStream = usePurgeTranscodeStream()
@@ -469,7 +456,7 @@ function TranscodeTab() {
 
 function SubtitleTab() {
   const [view, setView] = useState<'processing' | 'failed'>('failed')
-  const [page, setPage] = useState(1)
+  const [page, _setPage] = useState(1)
 
   const processingQuery = useProcessingJobs('subtitle_transcribe', page)
   const failedQuery = useFailedJobs('subtitle_transcribe', page)
@@ -529,7 +516,7 @@ function SubtitleTab() {
 
 function WarmCacheTab() {
   const [view, setView] = useState<'pending' | 'failed'>('pending')
-  const [page, setPage] = useState(1)
+  const [page, _setPage] = useState(1)
 
   const pendingQuery = useWarmCachePending(page)
   const failedQuery = useWarmCacheFailed(page)
@@ -624,7 +611,7 @@ function WarmCacheTab() {
 
 function GalleryTab() {
   const [view, setView] = useState<'processing' | 'failed'>('failed')
-  const [page, setPage] = useState(1)
+  const [page, _setPage] = useState(1)
 
   const processingQuery = useProcessingJobs('gallery', page)
   const failedQuery = useFailedJobs('gallery', page)
@@ -662,7 +649,7 @@ function GalleryTab() {
 
 function ReelTab() {
   const [view, setView] = useState<'processing' | 'failed'>('failed')
-  const [page, setPage] = useState(1)
+  const [page, _setPage] = useState(1)
 
   const processingQuery = useProcessingJobs('reel', page)
   const failedQuery = useFailedJobs('reel', page)
