@@ -1,0 +1,207 @@
+# docker-compose.test.yml - Local Testing (แยกทั้งหมดจาก prod)
+#
+# จุดประสงค์: ทดสอบว่า code ใหม่ทำงานได้
+#   - API start + DB migrate สำเร็จ (worker_jobs, scheduled_jobs tables)
+#   - NATS streams + consumers ถูกสร้าง
+#   - Worker connect NATS + รับ job ได้
+#   - Upload video → status flow ถูกต้อง
+#
+# Usage:
+#   docker compose -f docker-compose.test.yml up -d --build
+#   docker compose -f docker-compose.test.yml logs -f api
+#   docker compose -f docker-compose.test.yml logs -f transcode-worker
+#   docker compose -f docker-compose.test.yml down -v
+#
+# ไม่ต้อง set อะไรเลย - ทุกอย่าง self-contained
+
+services:
+  # ─── Infrastructure ───────────────────────────────────────
+
+  postgres:
+    image: postgres:13-alpine
+    container_name: test-postgres
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: testpass123
+      POSTGRES_DB: suekk_test
+    volumes:
+      - test-pg-data:/var/lib/postgresql/data
+    networks:
+      - test-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  nats:
+    image: nats:2.10-alpine
+    container_name: test-nats
+    ports:
+      - "4222:4222"
+      - "8222:8222"
+    command: ["--js", "--sd=/data", "-m=8222"]
+    volumes:
+      - test-nats-data:/data
+    networks:
+      - test-network
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8222/healthz"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: test-redis
+    command: redis-server --appendonly yes --requirepass testredis123
+    volumes:
+      - test-redis-data:/data
+    networks:
+      - test-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "testredis123", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # ─── MinIO (S3 จำลอง - แทน prod S3) ─────────────────────
+
+  minio:
+    image: minio/minio:latest
+    container_name: test-minio
+    ports:
+      - "9000:9000"     # S3 API
+      - "9001:9001"     # Web Console
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin123
+    command: server /data --console-address ":9001"
+    volumes:
+      - test-minio-data:/data
+    networks:
+      - test-network
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # สร้าง bucket อัตโนมัติ
+  minio-init:
+    image: minio/mc:latest
+    container_name: test-minio-init
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+      mc alias set myminio http://minio:9000 minioadmin minioadmin123;
+      mc mb myminio/suekk-test --ignore-existing;
+      mc anonymous set download myminio/suekk-test;
+      echo 'Bucket suekk-test created and public';
+      "
+    networks:
+      - test-network
+
+  # ─── API (Backend code ใหม่) ──────────────────────────────
+
+  api:
+    build:
+      context: ./_gofiber_starter
+      dockerfile: Dockerfile
+    container_name: test-api
+    ports:
+      - "8080:8080"
+    environment:
+      - APP_ENV=development
+      - APP_PORT=8080
+      - APP_NAME=Suekk Test
+      # DB
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_USER=postgres
+      - DB_PASSWORD=testpass123
+      - DB_NAME=suekk_test
+      - DB_SSL_MODE=disable
+      # NATS
+      - NATS_URL=nats://nats:4222
+      # Redis
+      - REDIS_URL=redis://:testredis123@redis:6379
+      # JWT
+      - JWT_SECRET=test-jwt-secret-for-local-testing-only-1234567890
+      # S3 → MinIO
+      - STORAGE_TYPE=s3
+      - S3_ENDPOINT=minio:9000
+      - S3_ACCESS_KEY=minioadmin
+      - S3_SECRET_KEY=minioadmin123
+      - S3_BUCKET=suekk-test
+      - S3_REGION=us-east-1
+      - S3_USE_SSL=false
+      # CDN → MinIO direct
+      - CDN_BASE_URL=http://localhost:9000/suekk-test
+      - STREAM_COOKIE_KEY=test-cookie-key-1234567890abcdef
+      - STREAM_COOKIE_DOMAIN=localhost
+      - FRONTEND_URL=http://localhost:3000
+    depends_on:
+      postgres:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    networks:
+      - test-network
+
+  # ─── Transcode Worker (CPU mode) ─────────────────────────
+
+  transcode-worker:
+    build:
+      context: ./_my_worker/go/transcode
+      dockerfile: Dockerfile
+    container_name: test-transcode-worker
+    environment:
+      - NATS_URL=nats://nats:4222
+      - NATS_STREAM_NAME=TRANSCODE_JOBS
+      - NATS_CONSUMER_NAME=TRANSCODE_WORKER
+      - NATS_SUBJECT=jobs.transcode
+      # S3 → MinIO
+      - S3_ENDPOINT=minio:9000
+      - S3_ACCESS_KEY=minioadmin
+      - S3_SECRET_KEY=minioadmin123
+      - S3_BUCKET=suekk-test
+      - S3_REGION=us-east-1
+      - S3_USE_SSL=false
+      # CDN
+      - CDN_BASE_URL=http://minio:9000/suekk-test
+      # CPU mode
+      - USE_NVENC=false
+      - FFMPEG_CRF=23
+      - HLS_TIME=2
+      - TRANSCODE_CONCURRENCY=1
+      - TEMP_DIR=/tmp/transcode
+      - AUTO_SUBTITLE_ENABLED=false
+      # Debug
+      - LOG_LEVEL=debug
+      - LOG_FORMAT=text
+      - LOG_OUTPUT=stdout
+    depends_on:
+      - nats
+      - api
+      - minio
+    networks:
+      - test-network
+
+volumes:
+  test-pg-data:
+  test-nats-data:
+  test-redis-data:
+  test-minio-data:
+
+networks:
+  test-network:
+    driver: bridge

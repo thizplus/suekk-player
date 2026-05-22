@@ -1,0 +1,113 @@
+version: '3.8'
+
+# Docker Compose for all workers
+# Note: Workers ที่ต้องใช้ GPU (transcode, gallery) ควรรันบน Host แทน
+
+services:
+  # ═══════════════════════════════════════════════════════════════════════════════
+  # Go Workers (CPU only - GPU workers run on host)
+  # ═══════════════════════════════════════════════════════════════════════════════
+
+  warmcache:
+    build:
+      context: ./go/warmcache
+      dockerfile: Dockerfile
+    env_file:
+      - .env
+    restart: unless-stopped
+    networks:
+      - worker-net
+    depends_on:
+      - nats
+
+  # transcode - รันบน Host เพราะต้องใช้ GPU (NVENC)
+  # gallery   - รันบน Host เพราะต้องใช้ FFmpeg + Python classifier
+
+  reel:
+    build:
+      context: ./go/reel
+      dockerfile: Dockerfile
+    env_file:
+      - .env
+    restart: unless-stopped
+    networks:
+      - worker-net
+    depends_on:
+      - nats
+
+  # ═══════════════════════════════════════════════════════════════════════════════
+  # Python Workers (Subtitle Pipeline)
+  # ═══════════════════════════════════════════════════════════════════════════════
+
+  subtitle-detect:
+    build:
+      context: ./python
+      dockerfile: subtitle_detect/Dockerfile
+    env_file:
+      - .env
+    volumes:
+      - subtitle-temp:/tmp/subtitle
+    restart: unless-stopped
+    networks:
+      - worker-net
+    depends_on:
+      - nats
+    # Uncomment for GPU support:
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: 1
+    #           capabilities: [gpu]
+
+  subtitle-transcribe:
+    build:
+      context: ./python
+      dockerfile: subtitle_transcribe/Dockerfile
+    env_file:
+      - .env
+    volumes:
+      - subtitle-temp:/tmp/subtitle
+    restart: unless-stopped
+    networks:
+      - worker-net
+    depends_on:
+      - nats
+
+  subtitle-translate:
+    build:
+      context: ./python
+      dockerfile: subtitle_translate/Dockerfile
+    env_file:
+      - .env
+    volumes:
+      - subtitle-temp:/tmp/subtitle
+    restart: unless-stopped
+    networks:
+      - worker-net
+    depends_on:
+      - nats
+
+  # ═══════════════════════════════════════════════════════════════════════════════
+  # Infrastructure (ถ้าต้องการรัน standalone)
+  # ═══════════════════════════════════════════════════════════════════════════════
+
+  nats:
+    image: nats:latest
+    command: ["--jetstream", "--store_dir=/data", "-m", "8222"]
+    ports:
+      - "4222:4222"
+      - "8222:8222"
+    volumes:
+      - nats-data:/data
+    networks:
+      - worker-net
+
+networks:
+  worker-net:
+    driver: bridge
+
+volumes:
+  nats-data:
+  subtitle-temp:
