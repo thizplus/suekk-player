@@ -183,8 +183,26 @@ export const queueService = {
 
   // ==================== Stream Management ====================
 
-  async retryAllTranscode(): Promise<RetryResponse> {
-    return apiClient.post<RetryResponse>(QUEUE_ROUTES.TRANSCODE_RETRY_ALL)
+  async retryAllTranscode(videoIds: string[]): Promise<RetryResponse> {
+    let retried = 0
+    const errors: string[] = []
+
+    for (const id of videoIds) {
+      try {
+        await apiClient.post(`/api/v1/videos/${id}/transcode`, {})
+        retried++
+      } catch {
+        errors.push(id)
+      }
+    }
+
+    return {
+      message: `Queue ใหม่ ${retried}/${videoIds.length} วิดีโอ`,
+      totalFound: videoIds.length,
+      totalRetried: retried,
+      skipped: errors.length,
+      errors,
+    }
   },
 
   async purgeTranscodeStream(): Promise<{ message: string }> {

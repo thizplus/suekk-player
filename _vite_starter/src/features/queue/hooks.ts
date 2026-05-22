@@ -280,7 +280,7 @@ export function useWarmCacheAll() {
 export function useRetryAllTranscode() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: () => queueService.retryAllTranscode(),
+    mutationFn: (videoIds: string[]) => queueService.retryAllTranscode(videoIds),
     onSuccess: (data) => {
       toast.success(data.message)
       queryClient.invalidateQueries({ queryKey: queueKeys.all })

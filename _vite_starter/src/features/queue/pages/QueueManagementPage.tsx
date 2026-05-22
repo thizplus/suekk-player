@@ -353,11 +353,11 @@ function TranscodeTab() {
             <Button
               variant="outline"
               size="sm"
-              onClick={() => retryAll.mutate()}
+              onClick={() => retryAll.mutate(jobs.map(j => j.entity_id))}
               disabled={retryAll.isPending}
             >
               <RotateCcw className={`h-4 w-4 mr-2 ${retryAll.isPending ? 'animate-spin' : ''}`} />
-              Queue ใหม่ทั้งหมด
+              Queue ใหม่ทั้งหมด ({jobs.length})
             </Button>
           )}
           <Button
