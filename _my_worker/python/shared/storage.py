@@ -26,7 +26,7 @@ class S3Client:
         self.config = config
         self.bucket = config.s3_bucket
 
-        # Create boto3 client
+        # Create boto3 client with retry config
         self.client = boto3.client(
             "s3",
             endpoint_url=config.s3_endpoint,
@@ -36,6 +36,12 @@ class S3Client:
             config=BotoConfig(
                 signature_version="s3v4",
                 s3={"addressing_style": "path"},
+                retries={
+                    "max_attempts": 10,
+                    "mode": "adaptive",  # adaptive backoff with rate limiting
+                },
+                connect_timeout=30,
+                read_timeout=300,
             ),
         )
 
@@ -58,19 +64,28 @@ class S3Client:
         # Create local directory
         Path(local_path).parent.mkdir(parents=True, exist_ok=True)
 
-        # Get file size for progress
-        try:
-            head = self.client.head_object(Bucket=self.bucket, Key=remote_path)
-            total_size = head.get("ContentLength", 0)
-            logger.info(f"File exists: {remote_path} ({total_size / 1024 / 1024:.1f} MB)")
-        except self.client.exceptions.ClientError as e:
-            error_code = e.response["Error"]["Code"]
-            error_msg = e.response["Error"]["Message"]
-            logger.error(f"HeadObject failed: {remote_path} → {error_code}: {error_msg}")
-            raise Exception(f"File not accessible: {remote_path} ({error_code}: {error_msg})")
-        except Exception as e:
-            logger.error(f"HeadObject unexpected error: {remote_path} → {type(e).__name__}: {e}")
-            raise
+        # Get file size for progress (with manual retry for 503)
+        total_size = 0
+        for attempt in range(3):
+            try:
+                head = self.client.head_object(Bucket=self.bucket, Key=remote_path)
+                total_size = head.get("ContentLength", 0)
+                logger.info(f"File exists: {remote_path} ({total_size / 1024 / 1024:.1f} MB)")
+                break
+            except self.client.exceptions.ClientError as e:
+                error_code = e.response["Error"]["Code"]
+                error_msg = e.response["Error"]["Message"]
+                if error_code in ("503", "500", "429") and attempt < 2:
+                    wait = (attempt + 1) * 10
+                    logger.warning(f"HeadObject {error_code}, retrying in {wait}s (attempt {attempt+1}/3): {remote_path}")
+                    import time
+                    time.sleep(wait)
+                    continue
+                logger.error(f"HeadObject failed: {remote_path} → {error_code}: {error_msg}")
+                raise Exception(f"File not accessible: {remote_path} ({error_code}: {error_msg})")
+            except Exception as e:
+                logger.error(f"HeadObject unexpected error: {remote_path} → {type(e).__name__}: {e}")
+                raise
 
         # Download with progress tracking
         downloaded = 0
