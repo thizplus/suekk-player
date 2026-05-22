@@ -48,16 +48,34 @@ import (
 // Total Time: ~55 sec (vs ~90 sec sequential)
 // ============================================================================
 
-// GenerateArticleContentV2 รัน 7-chunk pipeline แบบ parallel
+// GenerateArticleContentV2 รัน 7-chunk pipeline แบบ parallel (with language router)
 func (c *GeminiClient) GenerateArticleContentV2(ctx context.Context, input *ports.AIInput) (*ports.AIOutput, error) {
+	// Language router - default to TH if not specified
+	lang := input.Language
+	if lang == "" {
+		lang = "th"
+	}
+
+	// Route to EN generation if language is English
+	if lang == "en" {
+		return c.GenerateArticleContentV2EN(ctx, input)
+	}
+
+	// Continue with TH generation (default)
+	return c.generateArticleContentV2TH(ctx, input)
+}
+
+// generateArticleContentV2TH รัน 7-chunk pipeline สำหรับ Thai content
+func (c *GeminiClient) generateArticleContentV2TH(ctx context.Context, input *ports.AIInput) (*ports.AIOutput, error) {
 	videoCode := input.VideoMetadata.RealCode
 	if videoCode == "" {
 		videoCode = input.VideoMetadata.Code
 	}
 
-	c.logger.InfoContext(ctx, "Starting 7-chunk V2 generation",
+	c.logger.InfoContext(ctx, "Starting 7-chunk V2 generation (TH)",
 		"video_code", videoCode,
 		"model", c.model,
+		"language", "th",
 	)
 
 	startTime := time.Now()
@@ -617,6 +635,508 @@ func (c *GeminiClient) generateChunk7V2(ctx context.Context, input *ports.AIInpu
 	}
 
 	// Post-process: Sanitize all text fields
+	chunk.CinematographyAnalysis = c.sanitizeText(chunk.CinematographyAnalysis)
+	chunk.CharacterJourney = c.sanitizeText(chunk.CharacterJourney)
+	chunk.ThematicExplanation = c.sanitizeText(chunk.ThematicExplanation)
+	chunk.ViewingTips = c.sanitizeText(chunk.ViewingTips)
+	chunk.AudienceMatch = c.sanitizeText(chunk.AudienceMatch)
+
+	return &chunk, nil
+}
+
+// ============================================================================
+// English Content Generation (EN)
+// ============================================================================
+
+// GenerateArticleContentV2EN รัน 7-chunk pipeline สำหรับ English content
+func (c *GeminiClient) GenerateArticleContentV2EN(ctx context.Context, input *ports.AIInput) (*ports.AIOutput, error) {
+	videoCode := input.VideoMetadata.RealCode
+	if videoCode == "" {
+		videoCode = input.VideoMetadata.Code
+	}
+
+	c.logger.InfoContext(ctx, "Starting 7-chunk V2 generation (EN)",
+		"video_code", videoCode,
+		"model", c.model,
+		"language", "en",
+	)
+
+	startTime := time.Now()
+
+	// ===== Phase 1: Chunk 1 EN (Foundation) =====
+	c.logger.InfoContext(ctx, "[Phase 1 EN] Generating Chunk 1: Core Identity...")
+	chunk1, err := c.generateChunk1ENWithRetry(ctx, input)
+	if err != nil {
+		return nil, fmt.Errorf("chunk1 EN failed: %w", err)
+	}
+	c.logger.InfoContext(ctx, "[Phase 1 EN] Chunk 1 completed",
+		"title_len", len(chunk1.Title),
+		"summary_len", len(chunk1.Summary),
+	)
+
+	// Build CoreContext
+	coreCtx := BuildCoreContext(chunk1, input.Casts, []string{})
+
+	// ===== Phase 2: Chunks 2, 3, 4 EN (Parallel) =====
+	c.logger.InfoContext(ctx, "[Phase 2 EN] Generating Chunks 2,3,4 in parallel...")
+	chunk2, chunk3, chunk4, err := c.generateChunks234ParallelEN(ctx, input, coreCtx)
+	if err != nil {
+		return nil, fmt.Errorf("phase 2 EN failed: %w", err)
+	}
+	c.logger.InfoContext(ctx, "[Phase 2 EN] Chunks 2,3,4 completed",
+		"highlights", len(chunk2.Highlights),
+		"topQuotes", len(chunk3.TopQuotes),
+		"detailedReview_len", len(chunk4.DetailedReview),
+	)
+
+	// Update CoreContext with scene locations
+	coreCtx.Entities.Locations = chunk2.SceneLocations
+
+	// ===== Phase 3: Chunk 5 EN (Sequential) =====
+	c.logger.InfoContext(ctx, "[Phase 3 EN] Generating Chunk 5: Recommendations...")
+	chunk5, err := c.generateChunk5ENWithRetry(ctx, input, coreCtx, chunk2, chunk3, chunk4)
+	if err != nil {
+		return nil, fmt.Errorf("chunk5 EN failed: %w", err)
+	}
+	c.logger.InfoContext(ctx, "[Phase 3 EN] Chunk 5 completed",
+		"contextualLinks", len(chunk5.ContextualLinks),
+		"moodTone", len(chunk5.MoodTone),
+	)
+
+	// Build ExtendedContext
+	extCtx := BuildExtendedContext(coreCtx, chunk2, chunk4)
+
+	// ===== Phase 4: Chunks 6, 7 EN (Parallel) =====
+	c.logger.InfoContext(ctx, "[Phase 4 EN] Generating Chunks 6,7 in parallel...")
+	chunk6, chunk7, err := c.generateChunks67ParallelEN(ctx, input, extCtx)
+	if err != nil {
+		return nil, fmt.Errorf("phase 4 EN failed: %w", err)
+	}
+	c.logger.InfoContext(ctx, "[Phase 4 EN] Chunks 6,7 completed",
+		"faqItems", len(chunk6.FAQItems),
+		"cinematography_len", len(chunk7.CinematographyAnalysis),
+	)
+
+	// ===== Aggregate =====
+	output := AggregateChunksV2(chunk1, chunk2, chunk3, chunk4, chunk5, chunk6, chunk7)
+
+	elapsed := time.Since(startTime)
+	c.logger.InfoContext(ctx, "7-chunk V2 EN generation completed successfully",
+		"video_code", videoCode,
+		"elapsed", elapsed.String(),
+		"language", "en",
+	)
+
+	return output, nil
+}
+
+// generateChunks234ParallelEN runs chunks 2,3,4 in parallel for English
+func (c *GeminiClient) generateChunks234ParallelEN(
+	ctx context.Context,
+	input *ports.AIInput,
+	coreCtx *CoreContext,
+) (*Chunk2OutputV2, *Chunk3OutputV2, *Chunk4OutputV2, error) {
+	var wg sync.WaitGroup
+	var chunk2 *Chunk2OutputV2
+	var chunk3 *Chunk3OutputV2
+	var chunk4 *Chunk4OutputV2
+	var err2, err3, err4 error
+
+	wg.Add(3)
+
+	go func() {
+		defer wg.Done()
+		chunk2, err2 = c.generateChunk2ENWithRetry(ctx, input, coreCtx)
+	}()
+
+	go func() {
+		defer wg.Done()
+		chunk3, err3 = c.generateChunk3ENWithRetry(ctx, input, coreCtx)
+	}()
+
+	go func() {
+		defer wg.Done()
+		chunk4, err4 = c.generateChunk4ENWithRetry(ctx, input, coreCtx)
+	}()
+
+	wg.Wait()
+
+	if err2 != nil {
+		return nil, nil, nil, fmt.Errorf("chunk2 EN failed: %w", err2)
+	}
+	if err3 != nil {
+		return nil, nil, nil, fmt.Errorf("chunk3 EN failed: %w", err3)
+	}
+	if err4 != nil {
+		return nil, nil, nil, fmt.Errorf("chunk4 EN failed: %w", err4)
+	}
+
+	return chunk2, chunk3, chunk4, nil
+}
+
+// generateChunks67ParallelEN runs chunks 6,7 in parallel for English
+func (c *GeminiClient) generateChunks67ParallelEN(
+	ctx context.Context,
+	input *ports.AIInput,
+	extCtx *ExtendedContext,
+) (*Chunk6OutputV2, *Chunk7OutputV2, error) {
+	var wg sync.WaitGroup
+	var chunk6 *Chunk6OutputV2
+	var chunk7 *Chunk7OutputV2
+	var err6, err7 error
+
+	wg.Add(2)
+
+	go func() {
+		defer wg.Done()
+		chunk6, err6 = c.generateChunk6ENWithRetry(ctx, input, extCtx)
+	}()
+
+	go func() {
+		defer wg.Done()
+		chunk7, err7 = c.generateChunk7ENWithRetry(ctx, input, extCtx)
+	}()
+
+	wg.Wait()
+
+	if err6 != nil {
+		return nil, nil, fmt.Errorf("chunk6 EN failed: %w", err6)
+	}
+	if err7 != nil {
+		return nil, nil, fmt.Errorf("chunk7 EN failed: %w", err7)
+	}
+
+	return chunk6, chunk7, nil
+}
+
+// ============================================================================
+// EN Chunk Generators with Retry
+// ============================================================================
+
+func (c *GeminiClient) generateChunk1ENWithRetry(ctx context.Context, input *ports.AIInput) (*Chunk1OutputV2, error) {
+	var lastErr error
+	for i := 0; i < maxRetries; i++ {
+		chunk, err := c.generateChunk1EN(ctx, input)
+		if err == nil {
+			return chunk, nil
+		}
+		lastErr = err
+		c.logger.WarnContext(ctx, "[Chunk 1 EN] Failed, retrying", "attempt", i+1, "error", err)
+		time.Sleep(retryBaseDelay * time.Duration(i+1))
+	}
+	return nil, fmt.Errorf("chunk1 EN failed after %d retries: %w", maxRetries, lastErr)
+}
+
+func (c *GeminiClient) generateChunk2ENWithRetry(ctx context.Context, input *ports.AIInput, coreCtx *CoreContext) (*Chunk2OutputV2, error) {
+	var lastErr error
+	for i := 0; i < maxRetries; i++ {
+		chunk, err := c.generateChunk2EN(ctx, input, coreCtx)
+		if err == nil {
+			return chunk, nil
+		}
+		lastErr = err
+		c.logger.WarnContext(ctx, "[Chunk 2 EN] Failed, retrying", "attempt", i+1, "error", err)
+		time.Sleep(retryBaseDelay * time.Duration(i+1))
+	}
+	return nil, fmt.Errorf("chunk2 EN failed after %d retries: %w", maxRetries, lastErr)
+}
+
+func (c *GeminiClient) generateChunk3ENWithRetry(ctx context.Context, input *ports.AIInput, coreCtx *CoreContext) (*Chunk3OutputV2, error) {
+	var lastErr error
+	for i := 0; i < maxRetries; i++ {
+		chunk, err := c.generateChunk3EN(ctx, input, coreCtx)
+		if err == nil {
+			return chunk, nil
+		}
+		lastErr = err
+		c.logger.WarnContext(ctx, "[Chunk 3 EN] Failed, retrying", "attempt", i+1, "error", err)
+		time.Sleep(retryBaseDelay * time.Duration(i+1))
+	}
+	return nil, fmt.Errorf("chunk3 EN failed after %d retries: %w", maxRetries, lastErr)
+}
+
+func (c *GeminiClient) generateChunk4ENWithRetry(ctx context.Context, input *ports.AIInput, coreCtx *CoreContext) (*Chunk4OutputV2, error) {
+	var lastErr error
+	for i := 0; i < maxRetries; i++ {
+		chunk, err := c.generateChunk4EN(ctx, input, coreCtx)
+		if err == nil {
+			return chunk, nil
+		}
+		lastErr = err
+		c.logger.WarnContext(ctx, "[Chunk 4 EN] Failed, retrying", "attempt", i+1, "error", err)
+		time.Sleep(retryBaseDelay * time.Duration(i+1))
+	}
+	return nil, fmt.Errorf("chunk4 EN failed after %d retries: %w", maxRetries, lastErr)
+}
+
+func (c *GeminiClient) generateChunk5ENWithRetry(
+	ctx context.Context,
+	input *ports.AIInput,
+	coreCtx *CoreContext,
+	chunk2 *Chunk2OutputV2,
+	chunk3 *Chunk3OutputV2,
+	chunk4 *Chunk4OutputV2,
+) (*Chunk5OutputV2, error) {
+	var lastErr error
+	for i := 0; i < maxRetries; i++ {
+		chunk, err := c.generateChunk5EN(ctx, input, coreCtx, chunk2, chunk3, chunk4)
+		if err == nil {
+			return chunk, nil
+		}
+		lastErr = err
+		c.logger.WarnContext(ctx, "[Chunk 5 EN] Failed, retrying", "attempt", i+1, "error", err)
+		time.Sleep(retryBaseDelay * time.Duration(i+1))
+	}
+	return nil, fmt.Errorf("chunk5 EN failed after %d retries: %w", maxRetries, lastErr)
+}
+
+func (c *GeminiClient) generateChunk6ENWithRetry(ctx context.Context, input *ports.AIInput, extCtx *ExtendedContext) (*Chunk6OutputV2, error) {
+	var lastErr error
+	for i := 0; i < maxRetries; i++ {
+		chunk, err := c.generateChunk6EN(ctx, input, extCtx)
+		if err == nil {
+			return chunk, nil
+		}
+		lastErr = err
+		c.logger.WarnContext(ctx, "[Chunk 6 EN] Failed, retrying", "attempt", i+1, "error", err)
+		time.Sleep(retryBaseDelay * time.Duration(i+1))
+	}
+	return nil, fmt.Errorf("chunk6 EN failed after %d retries: %w", maxRetries, lastErr)
+}
+
+func (c *GeminiClient) generateChunk7ENWithRetry(ctx context.Context, input *ports.AIInput, extCtx *ExtendedContext) (*Chunk7OutputV2, error) {
+	var lastErr error
+	for i := 0; i < maxRetries; i++ {
+		chunk, err := c.generateChunk7EN(ctx, input, extCtx)
+		if err == nil {
+			return chunk, nil
+		}
+		lastErr = err
+		c.logger.WarnContext(ctx, "[Chunk 7 EN] Failed, retrying", "attempt", i+1, "error", err)
+		time.Sleep(retryBaseDelay * time.Duration(i+1))
+	}
+	return nil, fmt.Errorf("chunk7 EN failed after %d retries: %w", maxRetries, lastErr)
+}
+
+// ============================================================================
+// EN Chunk Generators (Individual)
+// ============================================================================
+
+func (c *GeminiClient) generateChunk1EN(ctx context.Context, input *ports.AIInput) (*Chunk1OutputV2, error) {
+	model := c.client.GenerativeModel(c.model)
+	c.configureModel(model)
+	model.ResponseSchema = c.buildChunk1SchemaEN() // EN Schema
+
+	prompt := c.buildChunk1PromptEN(input) // EN Prompt
+	prompt = sanitizeUTF8(prompt)
+
+	resp, err := model.GenerateContent(ctx, genai.Text(prompt))
+	if err != nil {
+		return nil, fmt.Errorf("gemini generate failed: %w", err)
+	}
+
+	jsonString, err := c.extractJSON(resp)
+	if err != nil {
+		return nil, err
+	}
+
+	var chunk Chunk1OutputV2
+	if err := json.Unmarshal([]byte(jsonString), &chunk); err != nil {
+		debugPath := fmt.Sprintf("output/chunk1en_debug_%s.json", input.VideoMetadata.RealCode)
+		_ = writeDebugFile(debugPath, jsonString)
+		return nil, fmt.Errorf("failed to parse chunk1 EN: %w", err)
+	}
+
+	return &chunk, nil
+}
+
+func (c *GeminiClient) generateChunk2EN(ctx context.Context, input *ports.AIInput, coreCtx *CoreContext) (*Chunk2OutputV2, error) {
+	model := c.client.GenerativeModel(c.model)
+	c.configureModel(model)
+	model.ResponseSchema = c.buildChunk2SchemaEN()
+
+	prompt := c.buildChunk2PromptEN(input, coreCtx)
+	prompt = sanitizeUTF8(prompt)
+
+	resp, err := model.GenerateContent(ctx, genai.Text(prompt))
+	if err != nil {
+		return nil, fmt.Errorf("gemini generate failed: %w", err)
+	}
+
+	jsonString, err := c.extractJSON(resp)
+	if err != nil {
+		return nil, err
+	}
+
+	var chunk Chunk2OutputV2
+	if err := json.Unmarshal([]byte(jsonString), &chunk); err != nil {
+		debugPath := fmt.Sprintf("output/chunk2en_debug_%s.json", input.VideoMetadata.RealCode)
+		_ = writeDebugFile(debugPath, jsonString)
+		return nil, fmt.Errorf("failed to parse chunk2 EN: %w", err)
+	}
+
+	// Post-process
+	chunk.KeyMoments = c.processKeyMomentsSafe(chunk.KeyMoments, input.VideoMetadata.Duration)
+
+	return &chunk, nil
+}
+
+func (c *GeminiClient) generateChunk3EN(ctx context.Context, input *ports.AIInput, coreCtx *CoreContext) (*Chunk3OutputV2, error) {
+	model := c.client.GenerativeModel(c.model)
+	c.configureModel(model)
+	model.ResponseSchema = c.buildChunk3SchemaEN()
+
+	prompt := c.buildChunk3PromptEN(input, coreCtx)
+	prompt = sanitizeUTF8(prompt)
+
+	resp, err := model.GenerateContent(ctx, genai.Text(prompt))
+	if err != nil {
+		return nil, fmt.Errorf("gemini generate failed: %w", err)
+	}
+
+	jsonString, err := c.extractJSON(resp)
+	if err != nil {
+		return nil, err
+	}
+
+	var chunk Chunk3OutputV2
+	if err := json.Unmarshal([]byte(jsonString), &chunk); err != nil {
+		debugPath := fmt.Sprintf("output/chunk3en_debug_%s.json", input.VideoMetadata.RealCode)
+		_ = writeDebugFile(debugPath, jsonString)
+		return nil, fmt.Errorf("failed to parse chunk3 EN: %w", err)
+	}
+
+	// Post-process
+	chunk.TopQuotes = c.filterTopQuotesSafe(chunk.TopQuotes)
+
+	return &chunk, nil
+}
+
+func (c *GeminiClient) generateChunk4EN(ctx context.Context, input *ports.AIInput, coreCtx *CoreContext) (*Chunk4OutputV2, error) {
+	model := c.client.GenerativeModel(c.model)
+	c.configureModel(model)
+	model.ResponseSchema = c.buildChunk4SchemaEN()
+
+	prompt := c.buildChunk4PromptEN(input, coreCtx)
+	prompt = sanitizeUTF8(prompt)
+
+	resp, err := model.GenerateContent(ctx, genai.Text(prompt))
+	if err != nil {
+		return nil, fmt.Errorf("gemini generate failed: %w", err)
+	}
+
+	jsonString, err := c.extractJSON(resp)
+	if err != nil {
+		return nil, err
+	}
+
+	var chunk Chunk4OutputV2
+	if err := json.Unmarshal([]byte(jsonString), &chunk); err != nil {
+		debugPath := fmt.Sprintf("output/chunk4en_debug_%s.json", input.VideoMetadata.RealCode)
+		_ = writeDebugFile(debugPath, jsonString)
+		return nil, fmt.Errorf("failed to parse chunk4 EN: %w", err)
+	}
+
+	// Post-process
+	chunk.TagDescriptions = c.sanitizeTagDescriptions(chunk.TagDescriptions)
+
+	return &chunk, nil
+}
+
+func (c *GeminiClient) generateChunk5EN(
+	ctx context.Context,
+	input *ports.AIInput,
+	coreCtx *CoreContext,
+	chunk2 *Chunk2OutputV2,
+	chunk3 *Chunk3OutputV2,
+	chunk4 *Chunk4OutputV2,
+) (*Chunk5OutputV2, error) {
+	model := c.client.GenerativeModel(c.model)
+	c.configureModel(model)
+	model.ResponseSchema = c.buildChunk5SchemaEN()
+
+	prompt := c.buildChunk5PromptEN(input, coreCtx, chunk2, chunk3, chunk4)
+	prompt = sanitizeUTF8(prompt)
+
+	resp, err := model.GenerateContent(ctx, genai.Text(prompt))
+	if err != nil {
+		return nil, fmt.Errorf("gemini generate failed: %w", err)
+	}
+
+	jsonString, err := c.extractJSON(resp)
+	if err != nil {
+		return nil, err
+	}
+
+	var chunk Chunk5OutputV2
+	if err := json.Unmarshal([]byte(jsonString), &chunk); err != nil {
+		debugPath := fmt.Sprintf("output/chunk5en_debug_%s.json", input.VideoMetadata.RealCode)
+		_ = writeDebugFile(debugPath, jsonString)
+		return nil, fmt.Errorf("failed to parse chunk5 EN: %w", err)
+	}
+
+	return &chunk, nil
+}
+
+func (c *GeminiClient) generateChunk6EN(ctx context.Context, input *ports.AIInput, extCtx *ExtendedContext) (*Chunk6OutputV2, error) {
+	model := c.client.GenerativeModel(c.model)
+	c.configureModel(model)
+	model.ResponseSchema = c.buildChunk6SchemaEN()
+
+	prompt := c.buildChunk6PromptEN(input, extCtx)
+	prompt = sanitizeUTF8(prompt)
+
+	resp, err := model.GenerateContent(ctx, genai.Text(prompt))
+	if err != nil {
+		return nil, fmt.Errorf("gemini generate failed: %w", err)
+	}
+
+	jsonString, err := c.extractJSON(resp)
+	if err != nil {
+		return nil, err
+	}
+
+	var chunk Chunk6OutputV2
+	if err := json.Unmarshal([]byte(jsonString), &chunk); err != nil {
+		debugPath := fmt.Sprintf("output/chunk6en_debug_%s.json", input.VideoMetadata.RealCode)
+		_ = writeDebugFile(debugPath, jsonString)
+		return nil, fmt.Errorf("failed to parse chunk6 EN: %w", err)
+	}
+
+	// Post-process
+	chunk.Keywords = c.filterSEOKeywords(chunk.Keywords)
+	chunk.LongTailKeywords = c.filterSEOKeywords(chunk.LongTailKeywords)
+	chunk.FAQItems = c.sanitizeFAQItems(chunk.FAQItems)
+
+	return &chunk, nil
+}
+
+func (c *GeminiClient) generateChunk7EN(ctx context.Context, input *ports.AIInput, extCtx *ExtendedContext) (*Chunk7OutputV2, error) {
+	model := c.client.GenerativeModel(c.model)
+	c.configureModel(model)
+	model.ResponseSchema = c.buildChunk7SchemaEN()
+
+	prompt := c.buildChunk7PromptEN(input, extCtx)
+	prompt = sanitizeUTF8(prompt)
+
+	resp, err := model.GenerateContent(ctx, genai.Text(prompt))
+	if err != nil {
+		return nil, fmt.Errorf("gemini generate failed: %w", err)
+	}
+
+	jsonString, err := c.extractJSON(resp)
+	if err != nil {
+		return nil, err
+	}
+
+	var chunk Chunk7OutputV2
+	if err := json.Unmarshal([]byte(jsonString), &chunk); err != nil {
+		debugPath := fmt.Sprintf("output/chunk7en_debug_%s.json", input.VideoMetadata.RealCode)
+		_ = writeDebugFile(debugPath, jsonString)
+		return nil, fmt.Errorf("failed to parse chunk7 EN: %w", err)
+	}
+
+	// Post-process
 	chunk.CinematographyAnalysis = c.sanitizeText(chunk.CinematographyAnalysis)
 	chunk.CharacterJourney = c.sanitizeText(chunk.CharacterJourney)
 	chunk.ThematicExplanation = c.sanitizeText(chunk.ThematicExplanation)

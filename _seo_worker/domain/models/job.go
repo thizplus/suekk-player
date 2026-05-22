@@ -7,8 +7,10 @@ import "time"
 type SEOArticleJob struct {
 	VideoID     string `json:"video_id"`
 	VideoCode   string `json:"video_code"`
+	Language    string `json:"language"`     // "th" or "en" (default: "th")
 	Priority    int    `json:"priority"`     // 1=urgent, 2=normal, 3=backfill
 	GenerateTTS bool   `json:"generate_tts"` // ต้องการ TTS หรือไม่
+	UseV3       bool   `json:"use_v3"`       // ใช้ V3 Intent-Driven pipeline (default: false = V2)
 	CreatedAt   int64  `json:"created_at"`
 }
 
@@ -17,6 +19,22 @@ func NewSEOArticleJob(videoID, videoCode string, generateTTS bool) *SEOArticleJo
 	return &SEOArticleJob{
 		VideoID:     videoID,
 		VideoCode:   videoCode,
+		Language:    "th", // default Thai
+		Priority:    2,    // normal
+		GenerateTTS: generateTTS,
+		CreatedAt:   time.Now().Unix(),
+	}
+}
+
+// NewSEOArticleJobWithLang สร้าง job ใหม่พร้อมระบุภาษา
+func NewSEOArticleJobWithLang(videoID, videoCode, language string, generateTTS bool) *SEOArticleJob {
+	if language == "" {
+		language = "th"
+	}
+	return &SEOArticleJob{
+		VideoID:     videoID,
+		VideoCode:   videoCode,
+		Language:    language,
 		Priority:    2, // normal
 		GenerateTTS: generateTTS,
 		CreatedAt:   time.Now().Unix(),

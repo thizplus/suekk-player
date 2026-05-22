@@ -16,11 +16,17 @@ type AIPort interface {
 	// ใช้ Atomic Chunking + Context Feeding + Entity-Consistency
 	// ~55 sec (vs ~90 sec sequential)
 	GenerateArticleContentV2(ctx context.Context, input *AIInput) (*AIOutput, error)
+
+	// GenerateArticleContentV3 รัน 6-chunk pipeline แบบ Intent-Driven
+	// 6 Chunks: Search Intent → Facts → Story → Review → FAQ → SEO
+	// ~40 sec (optimized parallel execution)
+	GenerateArticleContentV3(ctx context.Context, input *AIInput) (*models.ArticleContentV3, error)
 }
 
 // AIInput - ข้อมูลที่ส่งให้ AI
 type AIInput struct {
 	SRTContent      string                   // Full SRT text
+	Language        string                   // "th" or "en" (default: "th")
 	VideoMetadata   *models.VideoMetadata    // From api.subth.com
 	Casts           []models.CastMetadata    // Cast info
 	Tags            []models.TagMetadata     // Tag info (สำหรับ generate tag descriptions)

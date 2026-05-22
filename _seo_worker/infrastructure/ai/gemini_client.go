@@ -92,6 +92,7 @@ func toPtr[T any](v T) *T {
 type GeminiClient struct {
 	client *genai.Client
 	model  string
+	apiKey string // เก็บไว้สำหรับสร้าง v3 client
 	logger *slog.Logger
 }
 
@@ -105,6 +106,7 @@ func NewGeminiClient(apiKey, model string) (*GeminiClient, error) {
 	return &GeminiClient{
 		client: client,
 		model:  model,
+		apiKey: apiKey,
 		logger: slog.Default().With("component", "gemini"),
 	}, nil
 }

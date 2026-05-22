@@ -4,7 +4,8 @@ import "time"
 
 // ArticleContent - ข้อมูล SEO Article (E-E-A-T Framework)
 type ArticleContent struct {
-	VideoID string `json:"videoId"`
+	VideoID  string `json:"videoId"`
+	Language string `json:"language"` // "th" or "en" - for multi-language support
 
 	// === Core SEO ===
 	Title           string `json:"title"`           // H1 title (50-60 chars)

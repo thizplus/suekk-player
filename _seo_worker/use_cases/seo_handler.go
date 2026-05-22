@@ -61,6 +61,14 @@ func NewSEOHandler(
 	}
 }
 
+// ProcessJobRouter routes to V2 or V3 pipeline based on job.UseV3 flag
+func (h *SEOHandler) ProcessJobRouter(ctx context.Context, job *models.SEOArticleJob) error {
+	if job.UseV3 {
+		return h.ProcessJobV3(ctx, job)
+	}
+	return h.ProcessJob(ctx, job)
+}
+
 func (h *SEOHandler) ProcessJob(ctx context.Context, job *models.SEOArticleJob) error {
 	startTime := time.Now()
 
@@ -203,8 +211,15 @@ func (h *SEOHandler) ProcessJob(ctx context.Context, job *models.SEOArticleJob) 
 	// Build related articles for contextual linking (from previous works)
 	relatedArticles := h.buildRelatedArticlesForAI(previousWorks, casts, tags)
 
+	// Get language from job (default to "th")
+	language := job.Language
+	if language == "" {
+		language = "th"
+	}
+
 	aiInput := &ports.AIInput{
 		SRTContent:      srtContent,
+		Language:        language, // Pass language to AI generator
 		VideoMetadata:   metadata,
 		Casts:           casts,
 		Tags:            tags,
@@ -214,14 +229,19 @@ func (h *SEOHandler) ProcessJob(ctx context.Context, job *models.SEOArticleJob) 
 	}
 
 	// ใช้ V2: 7-chunk pipeline (Atomic Chunking + Context Feeding)
+	// Language router อยู่ใน GenerateArticleContentV2
 	aiOutput, err := h.aiService.GenerateArticleContentV2(ctx, aiInput)
 	if err != nil {
 		h.messenger.SendFailed(ctx, job.VideoID, err)
 		return fmt.Errorf("AI generation failed: %w", err)
 	}
 
-	// Sanitize AI output: แก้ไขชื่อนักแสดงที่ผสมภาษา
-	h.sanitizeAIOutput(aiOutput, casts)
+	// Sanitize AI output based on language
+	if language == "en" {
+		h.sanitizeAIOutputEN(aiOutput, casts)
+	} else {
+		h.sanitizeAIOutput(aiOutput, casts) // Default: Thai
+	}
 
 	h.sendProgress(ctx, job.VideoID, ports.StageAIComplete, 60)
 
@@ -256,8 +276,12 @@ func (h *SEOHandler) ProcessJob(ctx context.Context, job *models.SEOArticleJob) 
 				return
 			}
 
-			// Upload to storage
-			audioPath := fmt.Sprintf("audio/articles/%s/summary.mp3", job.VideoCode)
+			// Upload to storage (include language in path to avoid overwriting)
+			audioLang := language
+			if audioLang == "" {
+				audioLang = "th"
+			}
+			audioPath := fmt.Sprintf("audio/articles/%s/summary_%s.mp3", job.VideoCode, audioLang)
 			if err := h.storage.Upload(ctx, audioPath, ttsResult.AudioData, "audio/mpeg"); err != nil {
 				h.logger.WarnContext(ctx, "TTS upload failed",
 					"video_id", job.VideoID,
@@ -400,6 +424,12 @@ func (h *SEOHandler) buildArticle(
 ) *models.ArticleContent {
 	now := time.Now()
 
+	// Language from job (default to "th")
+	language := job.Language
+	if language == "" {
+		language = "th"
+	}
+
 	// Build cast profiles with AI-generated bios
 	castProfiles := make([]models.CastProfile, len(casts))
 	for i, cast := range casts {
@@ -427,7 +457,11 @@ func (h *SEOHandler) buildArticle(
 			galleryImages[i].Alt = aiOutput.GalleryAlts[i]
 		} else {
 			// Fallback สำหรับภาพที่เกินจำนวน alt ที่ AI generate
-			galleryImages[i].Alt = fmt.Sprintf("ฉากจาก %s", metadata.RealCode)
+			if language == "en" {
+				galleryImages[i].Alt = fmt.Sprintf("Scene from %s", metadata.RealCode)
+			} else {
+				galleryImages[i].Alt = fmt.Sprintf("ฉากจาก %s", metadata.RealCode)
+			}
 		}
 	}
 
@@ -533,9 +567,18 @@ func (h *SEOHandler) buildArticle(
 		slug = job.VideoCode
 	}
 
+	// EN content reading time adjustment (*1.25 for longer English text)
+	if language == "en" {
+		readingTime = int(float64(readingTime) * 1.25)
+		if readingTime < 1 {
+			readingTime = 1
+		}
+	}
+
 	return &models.ArticleContent{
 		// === Core ===
 		VideoID:          metadata.ID,
+		Language:         language,
 		Title:            aiOutput.Title,
 		MetaTitle:        aiOutput.MetaTitle,
 		MetaDescription:  aiOutput.MetaDescription,
@@ -1440,4 +1483,453 @@ func (h *SEOHandler) sanitizeAIOutput(aiOutput *ports.AIOutput, casts []models.C
 			"casts", len(casts),
 		)
 	}
+}
+
+// sanitizeAIOutputEN sanitizes English AI output:
+// 1. Removes any Thai characters that might have leaked through
+// 2. Ensures "[Eng Sub]" in metaTitle instead of "ซับไทย"
+// 3. Converts [PARA] markers to proper paragraph breaks
+// 4. Validates metaDescription length (150-160 chars)
+func (h *SEOHandler) sanitizeAIOutputEN(aiOutput *ports.AIOutput, casts []models.CastMetadata) {
+	thaiRemovalCount := 0
+
+	// Helper function to remove Thai characters
+	removeThai := func(text string) string {
+		var result strings.Builder
+		originalLen := len(text)
+		for _, r := range text {
+			// Thai Unicode range: 0x0E00 - 0x0E7F
+			if r < 0x0E00 || r > 0x0E7F {
+				result.WriteRune(r)
+			}
+		}
+		cleaned := result.String()
+		if len(cleaned) != originalLen {
+			thaiRemovalCount++
+		}
+		return cleaned
+	}
+
+	// Helper for long text fields - includes paragraph markers conversion
+	sanitizeLongTextEN := func(text string) string {
+		result := removeThai(text)
+		// Convert [PARA] markers to \n\n
+		result = convertParagraphMarkers(result)
+		return result
+	}
+
+	// Sanitize short text fields
+	aiOutput.Title = removeThai(aiOutput.Title)
+	aiOutput.MetaTitle = removeThai(aiOutput.MetaTitle)
+
+	// Ensure metaTitle has "[Eng Sub]" keyword for SEO
+	if !strings.Contains(strings.ToLower(aiOutput.MetaTitle), "eng sub") &&
+		!strings.Contains(strings.ToLower(aiOutput.MetaTitle), "english sub") {
+		// Add "[Eng Sub]" after first ] or at the end
+		if idx := strings.Index(aiOutput.MetaTitle, "]"); idx != -1 {
+			aiOutput.MetaTitle = aiOutput.MetaTitle[:idx+1] + " [Eng Sub]" + aiOutput.MetaTitle[idx+1:]
+		} else {
+			aiOutput.MetaTitle = aiOutput.MetaTitle + " [Eng Sub]"
+		}
+	}
+
+	aiOutput.MetaDescription = removeThai(aiOutput.MetaDescription)
+	// Truncate metaDescription if too long (max 160 chars for EN)
+	if len(aiOutput.MetaDescription) > 160 {
+		// Find last period or space before 160
+		truncPoint := 157
+		for i := 156; i > 100; i-- {
+			if aiOutput.MetaDescription[i] == '.' || aiOutput.MetaDescription[i] == ' ' {
+				truncPoint = i
+				break
+			}
+		}
+		aiOutput.MetaDescription = aiOutput.MetaDescription[:truncPoint] + "..."
+	}
+
+	aiOutput.ThumbnailAlt = removeThai(aiOutput.ThumbnailAlt)
+
+	// Sanitize long text fields with paragraph conversion
+	aiOutput.Summary = sanitizeLongTextEN(aiOutput.Summary)
+	aiOutput.SummaryShort = removeThai(aiOutput.SummaryShort)
+	aiOutput.DetailedReview = sanitizeLongTextEN(aiOutput.DetailedReview)
+	aiOutput.ExpertAnalysis = sanitizeLongTextEN(aiOutput.ExpertAnalysis)
+	aiOutput.DialogueAnalysis = sanitizeLongTextEN(aiOutput.DialogueAnalysis)
+	aiOutput.CharacterInsight = sanitizeLongTextEN(aiOutput.CharacterInsight)
+	aiOutput.CharacterDynamic = sanitizeLongTextEN(aiOutput.CharacterDynamic)
+	aiOutput.PlotAnalysis = sanitizeLongTextEN(aiOutput.PlotAnalysis)
+	aiOutput.Recommendation = sanitizeLongTextEN(aiOutput.Recommendation)
+	aiOutput.ActorPerformanceTrend = sanitizeLongTextEN(aiOutput.ActorPerformanceTrend)
+	aiOutput.ComparisonNote = sanitizeLongTextEN(aiOutput.ComparisonNote)
+	aiOutput.CinematographyAnalysis = sanitizeLongTextEN(aiOutput.CinematographyAnalysis)
+	aiOutput.CharacterJourney = sanitizeLongTextEN(aiOutput.CharacterJourney)
+	aiOutput.ThematicExplanation = sanitizeLongTextEN(aiOutput.ThematicExplanation)
+	aiOutput.ActorEvolution = sanitizeLongTextEN(aiOutput.ActorEvolution)
+	aiOutput.ViewingTips = sanitizeLongTextEN(aiOutput.ViewingTips)
+	aiOutput.AudienceMatch = sanitizeLongTextEN(aiOutput.AudienceMatch)
+	aiOutput.ReplayValue = sanitizeLongTextEN(aiOutput.ReplayValue)
+
+	// Sanitize array fields
+	for i := range aiOutput.Highlights {
+		aiOutput.Highlights[i] = removeThai(aiOutput.Highlights[i])
+	}
+	aiOutput.Highlights = filterEmptyHighlights(aiOutput.Highlights, casts)
+
+	for i := range aiOutput.GalleryAlts {
+		aiOutput.GalleryAlts[i] = removeThai(aiOutput.GalleryAlts[i])
+	}
+	for i := range aiOutput.Keywords {
+		aiOutput.Keywords[i] = removeThai(aiOutput.Keywords[i])
+	}
+	for i := range aiOutput.LongTailKeywords {
+		aiOutput.LongTailKeywords[i] = removeThai(aiOutput.LongTailKeywords[i])
+	}
+	for i := range aiOutput.BestMoments {
+		aiOutput.BestMoments[i] = removeThai(aiOutput.BestMoments[i])
+	}
+	aiOutput.BestMoments = filterEmptyHighlights(aiOutput.BestMoments, casts)
+
+	for i := range aiOutput.KeyMoments {
+		aiOutput.KeyMoments[i].Name = removeThai(aiOutput.KeyMoments[i].Name)
+	}
+	aiOutput.KeyMoments = filterEmptyKeyMoments(aiOutput.KeyMoments, casts)
+
+	for i := range aiOutput.CastBios {
+		aiOutput.CastBios[i].Bio = removeThai(aiOutput.CastBios[i].Bio)
+	}
+	for i := range aiOutput.TopQuotes {
+		aiOutput.TopQuotes[i].Text = removeThai(aiOutput.TopQuotes[i].Text)
+		aiOutput.TopQuotes[i].Context = removeThai(aiOutput.TopQuotes[i].Context)
+	}
+	for i := range aiOutput.FAQItems {
+		aiOutput.FAQItems[i].Question = removeThai(aiOutput.FAQItems[i].Question)
+		aiOutput.FAQItems[i].Answer = removeThai(aiOutput.FAQItems[i].Answer)
+	}
+	aiOutput.FAQItems = filterInvalidFAQs(aiOutput.FAQItems, casts)
+
+	for i := range aiOutput.EmotionalArc {
+		aiOutput.EmotionalArc[i].Description = removeThai(aiOutput.EmotionalArc[i].Description)
+	}
+
+	if thaiRemovalCount > 0 {
+		h.logger.Warn("EN content contained Thai characters - cleaned up",
+			"fields_with_thai", thaiRemovalCount,
+		)
+	}
+
+	h.logger.Info("AI output sanitized for English content")
+}
+
+// ============================================================================
+// V3 Pipeline: Intent-Driven Architecture
+// ============================================================================
+
+// ProcessJobV3 runs the Intent-Driven V3 pipeline (6 chunks)
+// This is the new generation pipeline optimized for Google Search Intent
+func (h *SEOHandler) ProcessJobV3(ctx context.Context, job *models.SEOArticleJob) error {
+	startTime := time.Now()
+
+	h.logger.InfoContext(ctx, "Processing SEO job (V3 Intent-Driven)",
+		"video_id", job.VideoID,
+		"video_code", job.VideoCode,
+		"generate_tts", job.GenerateTTS,
+	)
+
+	// === Stage 1: Fetch Raw Materials ===
+	h.sendProgress(ctx, job.VideoID, ports.StageFetching, 10)
+
+	// 1.1 Fetch SRT content
+	srtContent, err := h.srtFetcher.FetchSRT(ctx, job.VideoCode)
+	if err != nil {
+		h.messenger.SendFailed(ctx, job.VideoID, err)
+		return fmt.Errorf("failed to fetch SRT: %w", err)
+	}
+
+	// 1.2 Fetch video info from api.suekk.com
+	suekkVideoInfo, err := h.suekkVideoFetcher.FetchVideoInfo(ctx, job.VideoCode)
+	if err != nil {
+		h.logger.WarnContext(ctx, "Failed to fetch Suekk video info (non-critical)",
+			"video_code", job.VideoCode,
+			"error", err,
+		)
+		suekkVideoInfo = &models.SuekkVideoInfo{
+			Code:     job.VideoCode,
+			Duration: 0,
+		}
+	}
+
+	// 1.3 Fetch metadata from api.subth.com
+	metadata, err := h.metadataFetcher.FetchVideoMetadataByCode(ctx, job.VideoCode)
+	if err != nil {
+		h.messenger.SendFailed(ctx, job.VideoID, err)
+		return fmt.Errorf("failed to fetch metadata: %w", err)
+	}
+
+	// Use duration from suekk if available
+	if suekkVideoInfo.Duration > 0 {
+		metadata.Duration = suekkVideoInfo.Duration
+	}
+
+	casts := metadata.Casts
+	makerInfo := metadata.Maker
+	tags := metadata.Tags
+
+	// 1.5 Fetch previous works
+	var previousWorks []models.PreviousWork
+	for _, cast := range casts {
+		works, _ := h.metadataFetcher.FetchPreviousWorks(ctx, cast.Slug, 5)
+		previousWorks = append(previousWorks, works...)
+	}
+
+	// 1.7 Fetch gallery images (Two-Tier)
+	var galleryImages []models.GalleryImage
+	var memberGalleryImages []models.GalleryImage
+	var coverURL string
+
+	if suekkVideoInfo.GalleryPath != "" {
+		tieredImages, err := h.suekkVideoFetcher.ListAllGalleryImages(ctx, suekkVideoInfo.GalleryPath)
+		if err == nil && tieredImages != nil {
+			if h.imageCopier != nil {
+				copyResult, err := h.imageCopier.CopyTieredGallery(ctx, job.VideoCode, tieredImages)
+				if err == nil && copyResult != nil {
+					galleryImages = copyResult.PublicImages
+					memberGalleryImages = copyResult.MemberImages
+					coverURL = copyResult.CoverURL
+				}
+			}
+		}
+	}
+
+	h.sendProgress(ctx, job.VideoID, ports.StageDataFetched, 25)
+
+	// === Stage 2: AI Processing (V3 Intent-Driven) ===
+	h.sendProgress(ctx, job.VideoID, ports.StageAI, 30)
+
+	language := job.Language
+	if language == "" {
+		language = "th"
+	}
+
+	aiInput := &ports.AIInput{
+		SRTContent:    srtContent,
+		Language:      language,
+		VideoMetadata: metadata,
+		Casts:         casts,
+		Tags:          tags,
+		PreviousWorks: previousWorks,
+		GalleryCount:  len(galleryImages),
+	}
+
+	// Use V3: 6-chunk Intent-Driven pipeline
+	articleV3, err := h.aiService.GenerateArticleContentV3(ctx, aiInput)
+	if err != nil {
+		h.messenger.SendFailed(ctx, job.VideoID, err)
+		return fmt.Errorf("AI V3 generation failed: %w", err)
+	}
+
+	h.sendProgress(ctx, job.VideoID, ports.StageAIComplete, 60)
+
+	// === Stage 3: TTS & Embedding (Parallel) ===
+	h.sendProgress(ctx, job.VideoID, ports.StageTTSEmbed, 65)
+
+	var wg sync.WaitGroup
+	var embedErr error
+	var audioURL string
+	var audioDuration int
+
+	// 3.1 TTS Generation (Optional)
+	if job.GenerateTTS && h.ttsService != nil {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+
+			// Use QuickAnswer for TTS (short and concise)
+			ttsScript := articleV3.QuickAnswer
+			if ttsScript == "" {
+				return
+			}
+
+			ttsResult, err := h.ttsService.GenerateAudio(ctx, ttsScript, "")
+			if err != nil {
+				h.logger.WarnContext(ctx, "TTS failed (non-critical)", "error", err)
+				return
+			}
+
+			audioLang := language
+			if audioLang == "" {
+				audioLang = "th"
+			}
+			audioPath := fmt.Sprintf("audio/articles/%s/summary_%s.mp3", job.VideoCode, audioLang)
+			if err := h.storage.Upload(ctx, audioPath, ttsResult.AudioData, "audio/mpeg"); err != nil {
+				h.logger.WarnContext(ctx, "TTS upload failed", "error", err)
+				return
+			}
+
+			audioURL = h.storage.GetPublicURL(audioPath)
+			audioDuration = ttsResult.Duration
+		}()
+	}
+
+	// 3.2 Embedding Generation
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+
+		// Combine content for embedding
+		embeddingText := articleV3.QuickAnswer + " " + articleV3.Synopsis + " " + articleV3.ReviewSummary
+
+		vector, err := h.embeddingService.GenerateEmbedding(ctx, embeddingText)
+		if err != nil {
+			embedErr = err
+			return
+		}
+
+		embeddingData := &models.EmbeddingData{
+			VideoID:   job.VideoID,
+			Vector:    vector,
+			CastIDs:   metadata.CastIDs,
+			MakerID:   metadata.MakerID,
+			TagIDs:    metadata.TagIDs,
+			CreatedAt: time.Now(),
+		}
+		if err := h.embeddingService.StoreEmbedding(ctx, embeddingData); err != nil {
+			h.logger.WarnContext(ctx, "pgvector store failed (non-critical)", "error", err)
+		}
+	}()
+
+	wg.Wait()
+
+	if embedErr != nil {
+		h.logger.WarnContext(ctx, "Embedding failed (non-critical)", "error", embedErr)
+	}
+
+	h.sendProgress(ctx, job.VideoID, ports.StageTTSEmbedComplete, 90)
+
+	// === Stage 4: Enrich Article with Metadata ===
+	h.sendProgress(ctx, job.VideoID, ports.StagePublishing, 95)
+
+	// Enrich articleV3 with metadata (cast profiles, maker, tags, gallery, etc.)
+	h.enrichArticleV3(articleV3, metadata, casts, makerInfo, tags, galleryImages, memberGalleryImages, coverURL, audioURL, audioDuration)
+
+	// Save JSON for debug
+	outputPath := fmt.Sprintf("output/%s_article_v3.json", job.VideoCode)
+	if err := h.saveArticleV3JSON(articleV3, outputPath); err != nil {
+		h.logger.WarnContext(ctx, "Failed to save article V3 JSON", "error", err)
+	}
+
+	// Publish article V3
+	if err := h.articlePublisher.PublishArticleV3(ctx, articleV3); err != nil {
+		h.messenger.SendFailed(ctx, job.VideoID, err)
+		return fmt.Errorf("publish V3 failed: %w", err)
+	}
+
+	h.logger.InfoContext(ctx, "Article V3 published successfully",
+		"video_id", job.VideoID,
+		"video_code", job.VideoCode,
+	)
+
+	// === Done ===
+	h.messenger.SendCompleted(ctx, job.VideoID)
+
+	h.logger.InfoContext(ctx, "SEO job V3 completed",
+		"video_id", job.VideoID,
+		"video_code", job.VideoCode,
+		"duration", time.Since(startTime),
+	)
+
+	return nil
+}
+
+// enrichArticleV3 adds metadata to the ArticleContentV3
+func (h *SEOHandler) enrichArticleV3(
+	article *models.ArticleContentV3,
+	metadata *models.VideoMetadata,
+	casts []models.CastMetadata,
+	maker *models.MakerMetadata,
+	tags []models.TagMetadata,
+	galleryImages []models.GalleryImage,
+	memberGalleryImages []models.GalleryImage,
+	coverURL string,
+	audioURL string,
+	audioDuration int,
+) {
+	// Build cast profiles
+	castProfiles := make([]models.CastProfile, len(casts))
+	for i, cast := range casts {
+		castProfiles[i] = models.CastProfile{
+			ID:         cast.ID,
+			Name:       cast.Name,
+			NameTH:     cast.NameTH,
+			ImageURL:   cast.ImageURL,
+			ProfileURL: fmt.Sprintf("/casts/%s", cast.Slug),
+		}
+	}
+	article.CastProfiles = castProfiles
+
+	// Build maker info
+	if maker != nil {
+		article.MakerInfo = &models.MakerInfo{
+			ID:         maker.ID,
+			Name:       maker.Name,
+			ProfileURL: fmt.Sprintf("/makers/%s", maker.Slug),
+		}
+	}
+
+	// Build tag descriptions
+	tagDescs := make([]models.TagDesc, len(tags))
+	for i, tag := range tags {
+		tagDescs[i] = models.TagDesc{
+			ID:   tag.ID,
+			Name: tag.Name,
+			URL:  fmt.Sprintf("/tags/%s", tag.Slug),
+		}
+	}
+	article.TagDescriptions = tagDescs
+
+	// Add gallery images
+	article.GalleryImages = galleryImages
+	article.MemberGalleryImages = memberGalleryImages
+	article.MemberGalleryCount = len(memberGalleryImages)
+
+	// Set thumbnail URL
+	if coverURL != "" {
+		article.ThumbnailURL = coverURL
+	} else {
+		article.ThumbnailURL = metadata.Thumbnail
+	}
+
+	// Set audio
+	article.AudioSummaryURL = audioURL
+	article.AudioDuration = audioDuration
+
+	// Update slug if empty
+	if article.Slug == "" {
+		article.Slug = strings.ToLower(metadata.RealCode)
+		if article.Slug == "" {
+			article.Slug = metadata.Code
+		}
+	}
+
+	// Calculate durationMinutes from metadata if not set by AI
+	if article.Facts.DurationMinutes == 0 && metadata.Duration > 0 {
+		article.Facts.DurationMinutes = metadata.Duration / 60
+	}
+}
+
+// saveArticleV3JSON saves article V3 content to JSON file for review
+func (h *SEOHandler) saveArticleV3JSON(article *models.ArticleContentV3, path string) error {
+	if err := os.MkdirAll("output", 0755); err != nil {
+		return fmt.Errorf("failed to create output directory: %w", err)
+	}
+
+	jsonData, err := json.MarshalIndent(article, "", "  ")
+	if err != nil {
+		return fmt.Errorf("failed to marshal article v3: %w", err)
+	}
+
+	if err := os.WriteFile(path, jsonData, 0644); err != nil {
+		return fmt.Errorf("failed to write file: %w", err)
+	}
+
+	return nil
 }

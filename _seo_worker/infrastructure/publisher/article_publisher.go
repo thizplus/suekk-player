@@ -100,6 +100,68 @@ func (p *ArticlePublisher) PublishArticle(ctx context.Context, article *models.A
 	return nil
 }
 
+// PublishArticleV3 ส่ง article V3 (Intent-Driven) ไปบันทึกที่ api.subth.com
+// ใช้ ingest endpoint เดียวกับ V2 (Backend รับ JSONB ทุกรูปแบบ)
+func (p *ArticlePublisher) PublishArticleV3(ctx context.Context, article *models.ArticleContentV3) error {
+	url := fmt.Sprintf("%s/api/v1/articles/ingest", p.apiURL)
+
+	// Get token from auth client
+	token, err := p.authClient.GetToken(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to get auth token: %w", err)
+	}
+
+	jsonBody, err := json.Marshal(article)
+	if err != nil {
+		return fmt.Errorf("failed to marshal article v3: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(jsonBody))
+	if err != nil {
+		return fmt.Errorf("failed to create request: %w", err)
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+token)
+
+	p.logger.InfoContext(ctx, "Publishing article V3",
+		"video_id", article.VideoID,
+		"url", url,
+	)
+
+	resp, err := p.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("publish request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	// Handle 401 - invalidate token and retry once
+	if resp.StatusCode == http.StatusUnauthorized {
+		p.authClient.InvalidateToken()
+		return p.PublishArticleV3(ctx, article) // Retry with new token
+	}
+
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("publish API error: %d - %s", resp.StatusCode, string(body))
+	}
+
+	var apiResp apiResponse
+	if err := json.NewDecoder(resp.Body).Decode(&apiResp); err != nil {
+		return fmt.Errorf("failed to decode response: %w", err)
+	}
+
+	if !apiResp.Success {
+		return fmt.Errorf("API error: %s", apiResp.Error)
+	}
+
+	p.logger.InfoContext(ctx, "Article V3 published",
+		"video_id", article.VideoID,
+	)
+
+	return nil
+}
+
 // UpdateArticleStatus อัพเดทสถานะ article
 func (p *ArticlePublisher) UpdateArticleStatus(ctx context.Context, videoID string, status string) error {
 	url := fmt.Sprintf("%s/api/v1/articles/%s/status", p.apiURL, videoID)

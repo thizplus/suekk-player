@@ -25,6 +25,7 @@ func main() {
 	// Parse flags
 	videoCode := flag.String("code", "utywgage", "Video code to process")
 	generateTTS := flag.Bool("tts", false, "Generate TTS (default: false for faster testing)")
+	language := flag.String("lang", "th", "Language for article generation: th (default) or en")
 	flag.Parse()
 
 	// Setup logger
@@ -33,7 +34,7 @@ func main() {
 	}))
 	slog.SetDefault(logger)
 
-	logger.Info("Direct test mode", "video_code", *videoCode, "tts", *generateTTS)
+	logger.Info("Direct test mode", "video_code", *videoCode, "tts", *generateTTS, "lang", *language)
 
 	// Load config
 	cfg, err := config.Load()
@@ -152,6 +153,7 @@ func main() {
 		VideoCode:   *videoCode,
 		Priority:    2,
 		GenerateTTS: *generateTTS,
+		Language:    *language,
 	}
 
 	logger.Info("Processing job directly", "video_code", job.VideoCode)

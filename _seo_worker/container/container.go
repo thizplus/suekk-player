@@ -232,8 +232,8 @@ func NewContainer(cfg *config.Config) (*Container, error) {
 	)
 	c.logger.Info("SEO handler created")
 
-	// Wire handler to consumer
-	c.Consumer.SetHandler(c.SEOHandler.ProcessJob)
+	// Wire handler to consumer (routes V2/V3 based on job.UseV3)
+	c.Consumer.SetHandler(c.SEOHandler.ProcessJobRouter)
 
 	c.logger.Info("Container initialized successfully")
 	return c, nil
