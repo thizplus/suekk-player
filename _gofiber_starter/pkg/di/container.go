@@ -576,8 +576,8 @@ func (c *Container) initStuckDetector() error {
 	// ตรวจจับ jobs ที่ค้างและ mark เป็น failed อัตโนมัติ
 	detectorConfig := serviceimpl.StuckDetectorConfig{
 		CheckInterval:     30 * time.Second, // ตรวจสอบทุก 30 วินาที
-		ProcessingTimeout: 10 * time.Minute, // ถ้า processing > 10 นาที = stuck (worker crash)
-		PendingTimeout:    5 * time.Minute,  // ถ้า pending > 5 นาที = stuck (publish failed)
+		ProcessingTimeout: 60 * time.Minute, // ถ้า processing > 60 นาที = stuck (video ยาว transcode ได้ถึง 30+ นาที)
+		PendingTimeout:    10 * time.Minute, // ถ้า pending > 10 นาที = stuck (publish failed)
 		// ไม่มี QueuedTimeout - jobs รอใน queue ได้นานเท่าที่ต้องการ
 	}
 
