@@ -249,8 +249,8 @@ func (pb *ProgressBroadcaster) updateVideoStatus(update *ports.ProgressData) {
 
 	// อัพเดท status ตาม progress status
 	if update.Status == "processing" {
-		// อัพเดทเป็น processing เฉพาะเมื่อยังเป็น pending หรือ queued
-		if video.Status == "pending" || video.Status == "queued" {
+		// อัพเดทเป็น processing เมื่อ status เป็น pending, queued, หรือ failed (retry)
+		if video.Status == "pending" || video.Status == "queued" || video.Status == "failed" {
 			oldStatus := video.Status
 			video.Status = "processing"
 			logger.Info("Updating video status to processing",
