@@ -413,8 +413,13 @@ class SubtitleTranscribeHandler:
             # =================================================================
             await self._publish_progress(meta, STAGE_UPLOADING, 95, "กำลังอัพโหลด...")
 
-            remote_srt = f"{output_path}/{language}.srt"
-            remote_vtt = f"{output_path}/{language}.vtt"
+            # output_path อาจเป็น "subtitles/code/ja.srt" (full path) หรือ "subtitles/code" (directory)
+            # ตัด filename ออกถ้ามี .srt/.vtt ต่อท้าย
+            base_path = output_path
+            if base_path.endswith(".srt") or base_path.endswith(".vtt"):
+                base_path = str(Path(base_path).parent)
+            remote_srt = f"{base_path}/{language}.srt"
+            remote_vtt = f"{base_path}/{language}.vtt"
 
             self.storage.upload(remote_srt, str(local_srt))
             self.storage.upload(remote_vtt, str(local_vtt))

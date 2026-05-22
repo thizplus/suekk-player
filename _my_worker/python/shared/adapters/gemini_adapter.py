@@ -23,17 +23,17 @@ class GeminiAdapter:
     def __init__(
         self,
         api_key: Optional[str] = None,
-        model: str = "gemini-2.0-flash",
+        model: Optional[str] = None,
     ):
         """
         Initialize Gemini adapter.
 
         Args:
             api_key: Gemini API key (or from GEMINI_API_KEY env)
-            model: Model name
+            model: Model name (or from GEMINI_MODEL env)
         """
         self._api_key = api_key or os.getenv("GEMINI_API_KEY", "")
-        self._model_name = model
+        self._model_name = model or os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
         self._client = None
 
         if not self._api_key:
