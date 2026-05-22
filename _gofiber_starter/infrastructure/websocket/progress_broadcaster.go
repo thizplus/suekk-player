@@ -8,6 +8,7 @@ import (
 	"github.com/google/uuid"
 	"gorm.io/datatypes"
 
+	"gofiber-template/domain/dto"
 	"gofiber-template/domain/models"
 	"gofiber-template/domain/ports"
 	"gofiber-template/domain/repositories"
@@ -22,6 +23,7 @@ type ProgressBroadcaster struct {
 	manager          *WebSocketManager
 	videoRepo        repositories.VideoRepository
 	workerJobService services.WorkerJobService // For Dual Write - track jobs in DB
+	subtitleService  services.SubtitleService  // For orchestrating subtitle chain (detect → transcribe → translate)
 	notifier         ports.NotifierPort        // สำหรับส่ง notification เมื่อ completed/failed
 	titleCache       map[string]string         // cache video title เพื่อไม่ต้อง query ทุกครั้ง
 	cacheMu          sync.RWMutex
@@ -49,6 +51,12 @@ func (pb *ProgressBroadcaster) SetNotifier(notifier ports.NotifierPort) {
 func (pb *ProgressBroadcaster) SetWorkerJobService(svc services.WorkerJobService) {
 	pb.workerJobService = svc
 	logger.Info("WorkerJobService injected into ProgressBroadcaster (Dual Write enabled)")
+}
+
+// SetSubtitleService ตั้งค่า SubtitleService สำหรับ orchestrate subtitle chain
+func (pb *ProgressBroadcaster) SetSubtitleService(svc services.SubtitleService) {
+	pb.subtitleService = svc
+	logger.Info("SubtitleService injected into ProgressBroadcaster (subtitle orchestration enabled)")
 }
 
 // Start เริ่ม broadcaster
@@ -95,9 +103,11 @@ func (pb *ProgressBroadcaster) handleProgressUpdate(update *ports.ProgressData) 
 	isGalleryProgress := update.Quality == "gallery"
 	isWarmCacheProgress := update.Quality == "warmcache"
 
-	// Subtitle progress: ต้องมี SubtitleID หรือ Stage เป็น subtitle-specific
-	// ไม่ใช้แค่ Stage != "" เพราะ transcode ก็มี Stage
-	isSubtitleProgress := update.SubtitleID != "" ||
+	// Subtitle progress: ตรวจจับจาก JobType (ถ้ามี) หรือ SubtitleID/Stage
+	isSubtitleProgress := update.JobType == "subtitle_detect" ||
+		update.JobType == "subtitle_transcribe" ||
+		update.JobType == "subtitle_translate" ||
+		update.SubtitleID != "" ||
 		update.Stage == "detecting" ||
 		update.Stage == "transcribing" ||
 		update.Stage == "translating" ||
@@ -373,19 +383,33 @@ func (pb *ProgressBroadcaster) IsRunning() bool {
 }
 
 // handleSubtitleProgress จัดการ subtitle progress update
+// เมื่อ worker ส่ง completed → API orchestrate ขั้นตอนถัดไป:
+//   - detect completed → update video.DetectedLanguage + auto-trigger transcribe
+//   - transcribe completed → update subtitle record + auto-trigger translate
+//   - translate completed → update translated subtitle records
 func (pb *ProgressBroadcaster) handleSubtitleProgress(update *ports.ProgressData) {
 	// Map stage to Thai message
 	currentStep := update.Message
 	if currentStep == "" {
 		switch update.Stage {
+		case "initializing":
+			currentStep = "เริ่มต้น"
 		case "downloading":
 			currentStep = "กำลังดาวน์โหลดเสียง"
 		case "detecting":
 			currentStep = "กำลังตรวจจับภาษา"
+		case "demucs":
+			currentStep = "กำลังแยกเสียงพูด"
 		case "transcribing":
 			currentStep = "กำลังถอดเสียง"
+		case "processing":
+			currentStep = "กำลังประมวลผล"
 		case "vad":
 			currentStep = "กำลังวิเคราะห์เสียง"
+		case "gaps":
+			currentStep = "กำลังประมวลผลช่องว่าง"
+		case "merging":
+			currentStep = "กำลังรวมซับไตเติ้ล"
 		case "fixing":
 			currentStep = "กำลังแก้ไขช่องว่าง"
 		case "refining":
@@ -434,6 +458,7 @@ func (pb *ProgressBroadcaster) handleSubtitleProgress(update *ports.ProgressData
 
 	logger.Info("Subtitle progress broadcasted to WebSocket",
 		"video_id", update.VideoID,
+		"job_type", update.JobType,
 		"stage", update.Stage,
 		"progress", update.Progress,
 		"subtitle_id", update.SubtitleID,
@@ -441,24 +466,22 @@ func (pb *ProgressBroadcaster) handleSubtitleProgress(update *ports.ProgressData
 		"clients_count", pb.manager.GetTotalClients(),
 	)
 
+	// Determine job type from JobType field or stage
+	resolvedJobType := pb.resolveSubtitleJobType(update)
+
 	// Dual Write: Update WorkerJob
-	// Determine job type based on stage
-	var jobType models.WorkerJobType
 	var entityType models.WorkerEntityType
 	var entityID uuid.UUID
 
-	switch update.Stage {
-	case "detecting":
-		jobType = models.WorkerJobTypeSubtitleDetect
+	switch resolvedJobType {
+	case models.WorkerJobTypeSubtitleDetect:
 		entityType = models.WorkerEntityTypeVideo
 		entityID, _ = uuid.Parse(update.VideoID)
-	case "translating":
-		jobType = models.WorkerJobTypeSubtitleTranslate
+	case models.WorkerJobTypeSubtitleTranslate:
 		entityType = models.WorkerEntityTypeVideo
 		entityID, _ = uuid.Parse(update.VideoID)
 	default:
-		// transcribing, vad, fixing, refining, generating, uploading
-		jobType = models.WorkerJobTypeSubtitleTranscribe
+		// transcribe
 		if update.SubtitleID != "" {
 			entityType = models.WorkerEntityTypeSubtitle
 			entityID, _ = uuid.Parse(update.SubtitleID)
@@ -469,7 +492,217 @@ func (pb *ProgressBroadcaster) handleSubtitleProgress(update *ports.ProgressData
 	}
 
 	if entityID != uuid.Nil {
-		pb.updateWorkerJob(entityType, entityID, jobType, update)
+		pb.updateWorkerJob(entityType, entityID, resolvedJobType, update)
+	}
+
+	// === Orchestration: เมื่อ worker ส่ง completed → trigger ขั้นตอนถัดไป ===
+	if update.Status == "completed" && pb.subtitleService != nil {
+		go pb.orchestrateSubtitleChain(resolvedJobType, update)
+	}
+}
+
+// resolveSubtitleJobType กำหนด job type จาก JobType field หรือ stage
+func (pb *ProgressBroadcaster) resolveSubtitleJobType(update *ports.ProgressData) models.WorkerJobType {
+	// ใช้ JobType จาก worker ก่อน (ถ้ามี)
+	switch update.JobType {
+	case "subtitle_detect":
+		return models.WorkerJobTypeSubtitleDetect
+	case "subtitle_transcribe":
+		return models.WorkerJobTypeSubtitleTranscribe
+	case "subtitle_translate":
+		return models.WorkerJobTypeSubtitleTranslate
+	}
+
+	// Fallback: ใช้ stage เหมือนเดิม
+	switch update.Stage {
+	case "detecting":
+		return models.WorkerJobTypeSubtitleDetect
+	case "translating":
+		return models.WorkerJobTypeSubtitleTranslate
+	default:
+		return models.WorkerJobTypeSubtitleTranscribe
+	}
+}
+
+// orchestrateSubtitleChain trigger ขั้นตอนถัดไปเมื่อ subtitle job เสร็จ
+// Best practice: Worker ทำแค่ 1 job → ส่งผลกลับ → API orchestrate chain
+func (pb *ProgressBroadcaster) orchestrateSubtitleChain(jobType models.WorkerJobType, update *ports.ProgressData) {
+	ctx := context.Background()
+
+	switch jobType {
+	case models.WorkerJobTypeSubtitleDetect:
+		pb.handleDetectCompleted(ctx, update)
+	case models.WorkerJobTypeSubtitleTranscribe:
+		pb.handleTranscribeCompleted(ctx, update)
+	case models.WorkerJobTypeSubtitleTranslate:
+		pb.handleTranslateCompleted(ctx, update)
+	}
+}
+
+// handleDetectCompleted เมื่อ detect language เสร็จ → update DB + auto-trigger transcribe
+func (pb *ProgressBroadcaster) handleDetectCompleted(ctx context.Context, update *ports.ProgressData) {
+	videoID, err := uuid.Parse(update.VideoID)
+	if err != nil {
+		logger.Warn("Invalid video ID in detect completed", "video_id", update.VideoID, "error", err)
+		return
+	}
+
+	language := update.DetectedLanguage
+	confidence := update.Confidence
+	if language == "" {
+		logger.Warn("Detect completed but no language in output", "video_id", update.VideoID)
+		return
+	}
+
+	logger.Info("Subtitle detect completed, updating video language",
+		"video_id", update.VideoID,
+		"language", language,
+		"confidence", confidence,
+	)
+
+	// 1. Update video.DetectedLanguage via SubtitleService
+	req := &dto.DetectCompleteRequest{
+		Language:   language,
+		Confidence: confidence,
+		WorkerID:   update.WorkerID,
+	}
+	if err := pb.subtitleService.HandleDetectComplete(ctx, videoID, req); err != nil {
+		logger.Error("Failed to handle detect complete", "video_id", update.VideoID, "error", err)
+		return
+	}
+
+	// 2. Auto-trigger transcribe
+	logger.Info("Auto-triggering transcribe after detect",
+		"video_id", update.VideoID,
+		"language", language,
+	)
+
+	_, err = pb.subtitleService.TriggerTranscribe(ctx, videoID)
+	if err != nil {
+		logger.Warn("Auto-transcribe after detect failed (non-critical)",
+			"video_id", update.VideoID,
+			"error", err,
+		)
+	} else {
+		logger.Info("Auto-transcribe triggered successfully", "video_id", update.VideoID)
+	}
+}
+
+// handleTranscribeCompleted เมื่อ transcribe เสร็จ → update subtitle record + auto-trigger translate
+func (pb *ProgressBroadcaster) handleTranscribeCompleted(ctx context.Context, update *ports.ProgressData) {
+	if update.SubtitleID == "" {
+		logger.Warn("Transcribe completed but no subtitle_id", "video_id", update.VideoID)
+		return
+	}
+
+	subtitleID, err := uuid.Parse(update.SubtitleID)
+	if err != nil {
+		logger.Warn("Invalid subtitle ID in transcribe completed", "subtitle_id", update.SubtitleID, "error", err)
+		return
+	}
+
+	srtPath := update.SRTPath
+	language := update.DetectedLanguage
+	if srtPath == "" {
+		// Fallback: ถ้าไม่มี SRTPath ใน output อาจมาจาก output_path
+		srtPath = update.OutputPath
+	}
+
+	logger.Info("Subtitle transcribe completed, updating subtitle record",
+		"subtitle_id", update.SubtitleID,
+		"video_id", update.VideoID,
+		"srt_path", srtPath,
+		"language", language,
+	)
+
+	// 1. Update subtitle record via SubtitleService
+	req := &dto.TranscribeCompleteRequest{
+		SRTPath:  srtPath,
+		Language: language,
+		WorkerID: update.WorkerID,
+	}
+	if err := pb.subtitleService.HandleTranscribeComplete(ctx, subtitleID, req); err != nil {
+		logger.Error("Failed to handle transcribe complete", "subtitle_id", update.SubtitleID, "error", err)
+		return
+	}
+
+	// 2. Auto-trigger translate (ย้ายจาก worker → API orchestrate)
+	// ภาษาไทย → แปลเป็นอังกฤษ, ภาษาอื่น → แปลเป็นไทย
+	videoID, err := uuid.Parse(update.VideoID)
+	if err != nil {
+		logger.Warn("Invalid video ID for auto-translate", "video_id", update.VideoID)
+		return
+	}
+
+	// กำหนด target language จาก source language
+	resolvedLang := language
+	if resolvedLang == "" {
+		resolvedLang = update.CurrentLanguage
+	}
+	var targetLang string
+	if resolvedLang == "th" {
+		targetLang = "en"
+	} else {
+		targetLang = "th"
+	}
+
+	logger.Info("Auto-triggering translation after transcribe",
+		"video_id", update.VideoID,
+		"source_language", resolvedLang,
+		"target_language", targetLang,
+	)
+
+	translateReq := &dto.TranslateRequest{
+		TargetLanguages: []string{targetLang},
+	}
+	_, err = pb.subtitleService.TriggerTranslation(ctx, videoID, translateReq)
+	if err != nil {
+		logger.Warn("Auto-translate after transcribe failed (non-critical)",
+			"video_id", update.VideoID,
+			"target_language", targetLang,
+			"error", err,
+		)
+	} else {
+		logger.Info("Auto-translate triggered successfully",
+			"video_id", update.VideoID,
+			"target_language", targetLang,
+		)
+	}
+}
+
+// handleTranslateCompleted เมื่อ translate เสร็จ → update translated subtitle records
+func (pb *ProgressBroadcaster) handleTranslateCompleted(ctx context.Context, update *ports.ProgressData) {
+	if update.SubtitleID == "" {
+		logger.Warn("Translate completed but no subtitle_id", "video_id", update.VideoID)
+		return
+	}
+
+	subtitleID, err := uuid.Parse(update.SubtitleID)
+	if err != nil {
+		logger.Warn("Invalid subtitle ID in translate completed", "subtitle_id", update.SubtitleID, "error", err)
+		return
+	}
+
+	srtPath := update.SRTPath
+	if srtPath == "" {
+		srtPath = update.OutputPath
+	}
+
+	logger.Info("Subtitle translate completed, updating subtitle record",
+		"subtitle_id", update.SubtitleID,
+		"video_id", update.VideoID,
+		"srt_path", srtPath,
+		"language", update.CurrentLanguage,
+	)
+
+	// Update translated subtitle record
+	req := &dto.TranslationCompleteRequest{
+		Language: update.CurrentLanguage,
+		SRTPath:  srtPath,
+		WorkerID: update.WorkerID,
+	}
+	if err := pb.subtitleService.HandleTranslationComplete(ctx, subtitleID, req); err != nil {
+		logger.Error("Failed to handle translate complete", "subtitle_id", update.SubtitleID, "error", err)
 	}
 }
 

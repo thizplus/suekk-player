@@ -17,7 +17,6 @@ from shared.config import load_config, validate_config
 from shared.nats_consumer import NATSConsumer
 from shared.progress import ProgressPublisher
 from shared.storage import S3Client
-from shared.job_publisher import JobPublisher
 
 from handler import SubtitleDetectHandler
 
@@ -71,11 +70,8 @@ async def main():
     # Create progress publisher
     progress = ProgressPublisher(consumer.connection(), config.worker_id)
 
-    # Create job publisher
-    job_publisher = JobPublisher(consumer.nc.jetstream())
-
     # Create handler
-    handler = SubtitleDetectHandler(config, storage, progress, job_publisher)
+    handler = SubtitleDetectHandler(config, storage, progress)
 
     # Start consuming
     logger.info("=" * 40)

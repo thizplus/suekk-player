@@ -66,6 +66,16 @@ func (s *Subscriber) handleMessage(msg *nats.Msg) {
 		return
 	}
 
+	// Parse raw output for subtitle jobs (output fields ไม่ตรงกับ TranscodeOutputData)
+	if update.Status == "completed" {
+		var rawMsg map[string]interface{}
+		if err := json.Unmarshal(msg.Data, &rawMsg); err == nil {
+			if outputRaw, ok := rawMsg["output"].(map[string]interface{}); ok {
+				update.RawOutput = outputRaw
+			}
+		}
+	}
+
 	// Normalize: map entity_id/entity_code to video_id/video_code
 	// เพื่อให้ handlers เดิมทำงานได้โดยไม่ต้องแก้ไข
 	if update.EntityID != "" && update.VideoID == "" {

@@ -51,10 +51,17 @@ type ProgressData struct {
 	OutputPath string
 	AudioPath  string // S3 path to extracted audio (WAV)
 	WorkerID   string // Worker ที่ส่ง message นี้
+	JobType    string // subtitle_detect, subtitle_transcribe, subtitle_translate, etc.
 
 	// Subtitle-specific fields
 	SubtitleID      string
 	CurrentLanguage string
+
+	// Subtitle output fields (from worker completed message)
+	DetectedLanguage string
+	Confidence       float64
+	SRTPath          string
+	Segments         int
 
 	// Reel-specific fields
 	ReelID   string

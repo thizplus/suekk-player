@@ -12,7 +12,6 @@ from shared.config import Config
 from shared.nats_consumer import Job, JobMeta
 from shared.progress import ProgressPublisher
 from shared.storage import S3Client
-from shared.job_publisher import JobPublisher, JobMeta as PublishJobMeta
 from shared.adapters import WhisperAdapter
 
 logger = logging.getLogger(__name__)
@@ -35,7 +34,6 @@ def get_whisper_adapter(model: str = "turbo", device: str = "cuda") -> WhisperAd
 STAGE_INITIALIZING = "initializing"
 STAGE_DOWNLOADING = "downloading"
 STAGE_DETECTING = "detecting"
-STAGE_PUBLISHING = "publishing"
 STAGE_COMPLETED = "completed"
 STAGE_FAILED = "failed"
 
@@ -48,12 +46,10 @@ class SubtitleDetectHandler:
         config: Config,
         storage: S3Client,
         progress: ProgressPublisher,
-        job_publisher: JobPublisher,
     ):
         self.config = config
         self.storage = storage
         self.progress = progress
-        self.job_publisher = job_publisher
 
     async def handle(self, job: Job) -> dict:
         """
@@ -103,28 +99,7 @@ class SubtitleDetectHandler:
 
             await self._publish_progress(meta, STAGE_DETECTING, 70, f"ตรวจพบภาษา: {language}")
 
-            # 4. Publish transcribe job
-            await self._publish_progress(meta, STAGE_PUBLISHING, 80, "กำลังส่งงานถอดเสียง...")
-
-            publish_meta = PublishJobMeta(
-                job_id=meta.job_id,
-                job_type=meta.job_type,
-                entity_type=meta.entity_type,
-                entity_id=meta.entity_id,
-                entity_code=meta.entity_code,
-                priority=meta.priority,
-            )
-
-            await self.job_publisher.publish_subtitle_transcribe(
-                parent_meta=publish_meta,
-                audio_path=audio_path,
-                language=language,
-                output_path=output_path,
-            )
-
-            logger.info("Published subtitle_transcribe job")
-
-            # 5. Complete
+            # 4. Complete
             duration_sec = time.time() - start_time
             output = {
                 "language": language,

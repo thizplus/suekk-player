@@ -157,7 +157,7 @@ func (s *SubtitleServiceImpl) SetLanguage(ctx context.Context, videoID uuid.UUID
 }
 
 // TriggerTranscribe สร้าง original subtitle record และส่ง transcribe job
-// ถ้ายังไม่ได้ตรวจจับภาษา worker จะ auto-detect ให้
+// ต้องผ่าน detect language ก่อน (API orchestrate chain: detect → transcribe → translate)
 func (s *SubtitleServiceImpl) TriggerTranscribe(ctx context.Context, videoID uuid.UUID) (*dto.TranscribeResponse, error) {
 	logger.InfoContext(ctx, "Triggering transcription", "video_id", videoID)
 
@@ -190,16 +190,16 @@ func (s *SubtitleServiceImpl) TriggerTranscribe(ctx context.Context, videoID uui
 		}
 	}
 
-	// 4. กำหนดภาษา - ถ้ายังไม่ได้ detect ให้ใช้ "auto" แล้ว worker จะ detect ให้
+	// 4. กำหนดภาษา - ต้องผ่าน detect ก่อน (API orchestrate: detect → transcribe → translate)
 	language := video.DetectedLanguage
 	if language == "" {
-		language = "auto"
+		return nil, errors.New("language not detected yet, please run detect first")
 	}
 
 	// 5. สร้าง subtitle record ใหม่ (status = queued รอ worker มารับ)
 	subtitle := &models.Subtitle{
 		VideoID:    videoID,
-		Language:   language, // อาจเป็น "auto" ซึ่ง worker จะอัปเดตภายหลัง
+		Language:   language, // ภาษาที่ detect ได้แล้ว
 		Type:       models.SubtitleTypeOriginal,
 		Confidence: 0,
 		Status:     models.SubtitleStatusQueued, // รอใน queue จนกว่า worker จะหยิบไปทำ
@@ -211,7 +211,6 @@ func (s *SubtitleServiceImpl) TriggerTranscribe(ctx context.Context, videoID uui
 
 	// 6. ส่ง transcribe job
 	if s.jobPublisher != nil {
-		// ถ้า language เป็น "auto" output_path จะใช้ชั่วคราว - worker จะอัปเดตให้ถูกต้อง
 		outputPath := fmt.Sprintf("subtitles/%s/%s.srt", video.Code, language)
 
 		job := &services.TranscribeJob{
@@ -438,43 +437,8 @@ func (s *SubtitleServiceImpl) HandleTranscribeComplete(ctx context.Context, subt
 
 	logger.InfoContext(ctx, "Transcription completed", "subtitle_id", subtitleID, "language", subtitle.Language)
 
-	// === Auto-translate ===
-	// หลัง transcribe เสร็จ → trigger translate อัตโนมัติ
-	// ภาษาไทย → แปลเป็นอังกฤษ, ภาษาอื่น → แปลเป็นไทย
-	go func() {
-		autoCtx := context.Background()
-		var targetLang string
-		if subtitle.Language == "th" {
-			targetLang = "en"
-		} else {
-			targetLang = "th"
-		}
-
-		logger.InfoContext(autoCtx, "Auto-triggering translation",
-			"video_id", subtitle.VideoID,
-			"source_language", subtitle.Language,
-			"target_language", targetLang,
-		)
-
-		translateReq := &dto.TranslateRequest{
-			TargetLanguages: []string{targetLang},
-		}
-
-		_, err := s.TriggerTranslation(autoCtx, subtitle.VideoID, translateReq)
-		if err != nil {
-			logger.WarnContext(autoCtx, "Auto-translate failed (non-critical)",
-				"video_id", subtitle.VideoID,
-				"target_language", targetLang,
-				"error", err,
-			)
-		} else {
-			logger.InfoContext(autoCtx, "Auto-translate triggered successfully",
-				"video_id", subtitle.VideoID,
-				"target_language", targetLang,
-			)
-		}
-	}()
-
+	// NOTE: Auto-translate ถูกย้ายไป orchestrate ที่ ProgressBroadcaster
+	// เพื่อให้ตาม best practice: worker ทำ 1 job → ส่งผลกลับ → API orchestrate chain
 	return nil
 }
 

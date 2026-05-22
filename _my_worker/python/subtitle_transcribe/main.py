@@ -14,7 +14,6 @@ from shared.config import load_config, validate_config
 from shared.nats_consumer import NATSConsumer
 from shared.progress import ProgressPublisher
 from shared.storage import S3Client
-from shared.job_publisher import JobPublisher
 
 from handler import SubtitleTranscribeHandler
 
@@ -54,9 +53,8 @@ async def main():
     await consumer.connect()
 
     progress = ProgressPublisher(consumer.connection(), config.worker_id)
-    job_publisher = JobPublisher(consumer.nc.jetstream())
 
-    handler = SubtitleTranscribeHandler(config, storage, progress, job_publisher)
+    handler = SubtitleTranscribeHandler(config, storage, progress)
 
     logger.info("Worker Ready - Waiting for Jobs")
 

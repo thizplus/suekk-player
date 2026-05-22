@@ -30,7 +30,6 @@ from shared.config import Config
 from shared.nats_consumer import Job, JobMeta
 from shared.progress import ProgressPublisher
 from shared.storage import S3Client
-from shared.job_publisher import JobPublisher, JobMeta as PublishJobMeta
 from shared.adapters import WhisperAdapter, SileroVADAdapter, AudioAdapter, GeminiAdapter
 from shared.adapters import SubtitleLine, LanguageCode
 
@@ -118,7 +117,6 @@ STAGE_FIXING = "fixing"
 STAGE_REFINING = "refining"
 STAGE_GENERATING = "generating"
 STAGE_UPLOADING = "uploading"
-STAGE_PUBLISHING = "publishing"
 STAGE_COMPLETED = "completed"
 STAGE_FAILED = "failed"
 
@@ -227,12 +225,10 @@ class SubtitleTranscribeHandler:
         config: Config,
         storage: S3Client,
         progress: ProgressPublisher,
-        job_publisher: JobPublisher,
     ):
         self.config = config
         self.storage = storage
         self.progress = progress
-        self.job_publisher = job_publisher
 
         # Feature flags (จาก config หรือ hardcode)
         self.use_demucs = getattr(config, 'use_demucs', True)
@@ -427,33 +423,7 @@ class SubtitleTranscribeHandler:
             logger.info(f"Uploaded VTT: {remote_vtt}")
 
             # =================================================================
-            # Stage 13: Publish translate job
-            # =================================================================
-            await self._publish_progress(meta, STAGE_PUBLISHING, 97, "กำลังส่งงานแปล...")
-
-            target_languages = self._get_target_languages(language)
-
-            if target_languages:
-                publish_meta = PublishJobMeta(
-                    job_id=meta.job_id,
-                    job_type=meta.job_type,
-                    entity_type=meta.entity_type,
-                    entity_id=meta.entity_id,
-                    entity_code=meta.entity_code,
-                    priority=meta.priority,
-                )
-
-                await self.job_publisher.publish_subtitle_translate(
-                    parent_meta=publish_meta,
-                    srt_path=remote_srt,
-                    source_language=language,
-                    target_languages=target_languages,
-                    output_path=output_path,
-                )
-                logger.info(f"Published translate job: {target_languages}")
-
-            # =================================================================
-            # Stage 14: Complete
+            # Stage 13: Complete
             # =================================================================
             duration_sec = time.time() - start_time
             audio_duration = self._get_audio_duration(local_audio)
@@ -631,16 +601,6 @@ class SubtitleTranscribeHandler:
             if text and len(text) > 1:
                 result.append(seg)
         return result
-
-    def _get_target_languages(self, source_lang: str) -> List[str]:
-        """Get target languages for translation based on source"""
-        # Always translate to Thai and English if not already
-        targets = []
-        if source_lang != "th":
-            targets.append("th")
-        if source_lang != "en":
-            targets.append("en")
-        return targets
 
     def _get_audio_duration(self, audio_path: Path) -> float:
         """Get audio duration in seconds"""

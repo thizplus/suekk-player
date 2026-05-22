@@ -54,6 +54,7 @@ func (s *NATSProgressSubscriber) Subscribe(ctx context.Context, handler ports.Pr
 			OutputPath:      update.OutputPath,
 			AudioPath:       update.AudioPath,
 			WorkerID:        update.WorkerID,
+			JobType:         update.JobType,
 			SubtitleID:      update.SubtitleID,
 			CurrentLanguage: update.CurrentLanguage,
 			// Reel-specific fields
@@ -66,6 +67,23 @@ func (s *NATSProgressSubscriber) Subscribe(ctx context.Context, handler ports.Pr
 			data.Duration = update.Output.Duration
 			data.DiskUsage = update.Output.DiskUsage
 			data.QualitySizes = update.Output.QualitySizes
+		}
+
+		// Parse subtitle-specific output fields from RawOutput
+		// Python workers send: {"output": {"language": "ja", "confidence": 0.95, "srt_path": "...", ...}}
+		if update.RawOutput != nil {
+			if lang, ok := update.RawOutput["language"].(string); ok {
+				data.DetectedLanguage = lang
+			}
+			if conf, ok := update.RawOutput["confidence"].(float64); ok {
+				data.Confidence = conf
+			}
+			if srtPath, ok := update.RawOutput["srt_path"].(string); ok {
+				data.SRTPath = srtPath
+			}
+			if segments, ok := update.RawOutput["segments"].(float64); ok {
+				data.Segments = int(segments)
+			}
 		}
 
 		handler(data)

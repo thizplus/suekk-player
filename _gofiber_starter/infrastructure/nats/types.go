@@ -225,6 +225,7 @@ type ProgressUpdate struct {
 	EntityID   string `json:"entity_id,omitempty"`
 	EntityCode string `json:"entity_code,omitempty"`
 	EntityType string `json:"entity_type,omitempty"` // transcode, gallery, warmcache, etc.
+	JobType    string `json:"job_type,omitempty"`    // subtitle_detect, subtitle_transcribe, subtitle_translate, etc.
 
 	// Legacy format (for backward compatibility)
 	VideoID   string `json:"video_id,omitempty"`
@@ -252,6 +253,11 @@ type ProgressUpdate struct {
 
 	// Transcode output fields (from new worker - nested in "output" object)
 	Output *TranscodeOutputData `json:"output,omitempty"`
+
+	// Raw output for non-transcode jobs (subtitle detect/transcribe/translate)
+	// Go จะ parse output เป็น TranscodeOutputData ก่อน แต่ถ้าเป็น subtitle job
+	// ให้ใช้ RawOutput แทน (populated ใน handleMessage)
+	RawOutput map[string]interface{} `json:"-"` // ไม่ serialize - populated manually
 }
 
 // TranscodeOutputData contains detailed output from transcode worker

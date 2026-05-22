@@ -658,6 +658,11 @@ func (c *Container) injectNotifierToProgressBroadcaster() {
 	if c.ProgressBroadcaster != nil && c.WorkerJobService != nil {
 		c.ProgressBroadcaster.SetWorkerJobService(c.WorkerJobService)
 	}
+
+	// Inject SubtitleService for subtitle chain orchestration
+	if c.ProgressBroadcaster != nil && c.SubtitleService != nil {
+		c.ProgressBroadcaster.SetSubtitleService(c.SubtitleService)
+	}
 }
 
 func (c *Container) initNotifications() error {
