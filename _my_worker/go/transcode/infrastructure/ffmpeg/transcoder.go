@@ -207,37 +207,49 @@ func (t *Transcoder) buildFFmpegArgs(inputPath, outputDir string, qualities []do
 }
 
 // parseProgress parses FFmpeg stderr for progress updates from -stats output
-// Format: frame=123 fps=30 q=25.0 size=1234kB time=00:00:12.34 bitrate=1234.5kbits/s speed=1.5x
+// FFmpeg -stats uses \r (carriage return) to overwrite the same line
+// So we must read raw bytes and split by \r or \n (not use bufio.Scanner which only splits by \n)
 func (t *Transcoder) parseProgress(stderr io.Reader, duration float64, onProgress ports.ProgressCallback) {
-	scanner := bufio.NewScanner(stderr)
+	reader := bufio.NewReader(stderr)
 	timeRegex := regexp.MustCompile(`time=(\d+):(\d+):(\d+)\.(\d+)`)
+	buf := make([]byte, 4096)
 
 	var lastPercent float64
 
-	for scanner.Scan() {
-		line := scanner.Text()
+	for {
+		n, err := reader.Read(buf)
+		if n > 0 {
+			chunk := string(buf[:n])
+			// FFmpeg uses \r to overwrite lines — split by both \r and \n
+			lines := strings.FieldsFunc(chunk, func(r rune) bool {
+				return r == '\r' || r == '\n'
+			})
 
-		matches := timeRegex.FindStringSubmatch(line)
-		if len(matches) == 5 {
-			hours, _ := strconv.Atoi(matches[1])
-			minutes, _ := strconv.Atoi(matches[2])
-			seconds, _ := strconv.Atoi(matches[3])
-			// Include fractional seconds for more accurate progress
-			ms, _ := strconv.Atoi(matches[4])
+			for _, line := range lines {
+				matches := timeRegex.FindStringSubmatch(line)
+				if len(matches) == 5 {
+					hours, _ := strconv.Atoi(matches[1])
+					minutes, _ := strconv.Atoi(matches[2])
+					seconds, _ := strconv.Atoi(matches[3])
+					ms, _ := strconv.Atoi(matches[4])
 
-			currentTime := float64(hours*3600+minutes*60+seconds) + float64(ms)/100.0
+					currentTime := float64(hours*3600+minutes*60+seconds) + float64(ms)/100.0
 
-			if duration > 0 && onProgress != nil {
-				percent := (currentTime / duration) * 100
-				if percent > 100 {
-					percent = 100
-				}
-				// Send update every 1% change to avoid flooding
-				if percent-lastPercent >= 1.0 || percent >= 99 {
-					lastPercent = percent
-					onProgress("", percent, fmt.Sprintf("แปลงวิดีโอ: %.1f%%", percent))
+					if duration > 0 && onProgress != nil {
+						percent := (currentTime / duration) * 100
+						if percent > 100 {
+							percent = 100
+						}
+						if percent-lastPercent >= 1.0 || percent >= 99 {
+							lastPercent = percent
+							onProgress("", percent, fmt.Sprintf("แปลงวิดีโอ: %.1f%%", percent))
+						}
+					}
 				}
 			}
+		}
+		if err != nil {
+			break
 		}
 	}
 }
