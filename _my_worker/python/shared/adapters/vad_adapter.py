@@ -7,11 +7,12 @@ from pathlib import Path
 from typing import List, Optional
 
 from .entities import VoiceSegment
+from ..ports.vad_port import VADPort
 
 logger = logging.getLogger(__name__)
 
 
-class SileroVADAdapter:
+class SileroVADAdapter(VADPort):
     """
     Silero VAD adapter for detecting voice activity in audio.
 

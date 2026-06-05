@@ -14,11 +14,12 @@ from typing import List, Tuple, Optional, Callable
 
 from .entities import SubtitleLine, LanguageCode, TranscriptionResult
 from ..config import WHISPER_MODELS, HALLUCINATION_PATTERNS
+from ..ports.stt_port import STTPort
 
 logger = logging.getLogger(__name__)
 
 
-class WhisperAdapter:
+class WhisperAdapter(STTPort):
     """
     Whisper Speech-to-Text adapter.
 

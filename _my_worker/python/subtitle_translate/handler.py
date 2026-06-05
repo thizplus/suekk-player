@@ -17,7 +17,9 @@ from shared.config import Config
 from shared.nats_consumer import Job, JobMeta
 from shared.progress import ProgressPublisher
 from shared.storage import S3Client
-from shared.adapters import GeminiAdapter, SubtitleLine, LanguageCode
+from shared.adapters import SubtitleLine, LanguageCode
+from shared.adapters.llm_factory import create_llm
+from shared.ports.llm_port import LLMPort
 
 logger = logging.getLogger(__name__)
 
@@ -25,12 +27,14 @@ logger = logging.getLogger(__name__)
 _gemini_adapter = None
 
 
-def get_gemini_adapter() -> GeminiAdapter:
-    """Get singleton GeminiAdapter"""
+def get_llm() -> LLMPort:
+    """Get LLM instance via Port/Adapter pattern"""
     global _gemini_adapter
     if _gemini_adapter is None:
-        logger.info("Loading GeminiAdapter for translation")
-        _gemini_adapter = GeminiAdapter()
+        import os
+        provider = os.getenv("SUBTITLE_LLM_PROVIDER")
+        _gemini_adapter = create_llm(provider)
+        logger.info(f"LLM loaded: {_gemini_adapter.get_provider_name()} / {_gemini_adapter.get_model_name()}")
     return _gemini_adapter
 
 
@@ -250,7 +254,7 @@ class SubtitleTranslateHandler:
             vtt_paths = {}
             total_targets = len(target_langs)
 
-            gemini = get_gemini_adapter()
+            llm = get_llm()
 
             for i, target_lang in enumerate(target_langs):
                 progress_base = 10 + int((i / total_targets) * 70)
@@ -269,7 +273,7 @@ class SubtitleTranslateHandler:
                     source_lang=LanguageCode(source_lang),
                     target_lang=target,
                     context=context,
-                    gemini=gemini,
+                    llm=llm,
                 )
 
                 logger.info(f"Translated {len(translated)} segments to {target_lang}")
@@ -376,16 +380,19 @@ class SubtitleTranslateHandler:
         source_lang: LanguageCode,
         target_lang: LanguageCode,
         context: str,
-        gemini: GeminiAdapter,
+        llm: LLMPort,
     ) -> List[SubtitleLine]:
         """
         Translate using cluster-based approach with dynamic summary.
 
         Groups nearby segments and translates them together for better context.
         Passes summary to next cluster for continuity.
+        Uses LLMPort so any provider (Gemini, OpenAI, etc.) can be used.
         """
         if not segments:
             return []
+
+        from subtitle_translate.prompts import translate_cluster
 
         # Split into clusters
         clusters = self._split_into_clusters(segments)
@@ -404,8 +411,9 @@ class SubtitleTranslateHandler:
                     is_scene_change = True
                     previous_summary = None
 
-            # Translate cluster
-            cluster_result, new_summary = gemini.translate_cluster(
+            # Translate cluster via Port (any LLM provider)
+            cluster_result, new_summary = translate_cluster(
+                llm=llm,
                 lines=cluster,
                 previous_summary=previous_summary,
                 source_lang=source_lang,

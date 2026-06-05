@@ -1,19 +1,19 @@
 """
-Shared adapters for subtitle workers.
+Shared adapters for workers.
 
-Provides adapters for:
-- Whisper (STT)
-- Gemini (LLM)
-- Silero VAD
-- Demucs (Audio processing)
+Port/Adapter pattern:
+- Ports (interfaces):  shared/ports/  — define WHAT the system needs
+- Adapters (impl):     shared/adapters/ — define HOW it's done
 
-Provides domain entities for:
-- SubtitleLine - Single subtitle line with timing
-- LanguageCode - Language code wrapper
-- VoiceSegment - VAD segment
-- TranscriptionResult - Result of transcription
-- SpeakerSegment - Speaker diarization segment
-- DiarizationResult - Speaker diarization result
+Adapters implement Ports:
+- WhisperAdapter  implements STTPort   (Speech-to-Text)
+- GeminiLLM       implements LLMPort   (Large Language Model)
+- SileroVADAdapter implements VADPort  (Voice Activity Detection)
+- AudioAdapter    implements AudioPort (Audio Processing)
+
+To swap models, use Factory:
+    from shared.adapters.llm_factory import create_llm
+    llm = create_llm("gemini")  # or "openai", "local"
 """
 
 from .entities import (
@@ -25,7 +25,7 @@ from .entities import (
     DiarizationResult,
 )
 from .whisper_adapter import WhisperAdapter
-from .gemini_adapter import GeminiAdapter
+from .gemini_adapter import GeminiAdapter  # Legacy — use LLMPort + create_llm() instead
 from .vad_adapter import SileroVADAdapter
 from .audio_adapter import AudioAdapter
 
@@ -37,9 +37,9 @@ __all__ = [
     "TranscriptionResult",
     "SpeakerSegment",
     "DiarizationResult",
-    # Adapters
-    "WhisperAdapter",
-    "GeminiAdapter",
-    "SileroVADAdapter",
-    "AudioAdapter",
+    # Adapters (implement Ports)
+    "WhisperAdapter",    # implements STTPort
+    "GeminiAdapter",     # Legacy — use create_llm() instead
+    "SileroVADAdapter",  # implements VADPort
+    "AudioAdapter",      # implements AudioPort
 ]

@@ -30,8 +30,9 @@ from shared.config import Config
 from shared.nats_consumer import Job, JobMeta
 from shared.progress import ProgressPublisher
 from shared.storage import S3Client
-from shared.adapters import WhisperAdapter, SileroVADAdapter, AudioAdapter, GeminiAdapter
+from shared.adapters import WhisperAdapter, SileroVADAdapter, AudioAdapter
 from shared.adapters import SubtitleLine, LanguageCode
+from shared.adapters.llm_factory import create_llm
 
 logger = logging.getLogger(__name__)
 
@@ -92,12 +93,14 @@ def get_audio_adapter(temp_dir: Path) -> AudioAdapter:
     return _audio_adapter
 
 
-def get_gemini_adapter() -> GeminiAdapter:
-    """LLM for refinement"""
+def get_llm():
+    """Get LLM instance via Port/Adapter pattern"""
     global _gemini_adapter
     if _gemini_adapter is None:
-        logger.info("Loading GeminiAdapter")
-        _gemini_adapter = GeminiAdapter()
+        import os
+        provider = os.getenv("SUBTITLE_LLM_PROVIDER")
+        _gemini_adapter = create_llm(provider)
+        logger.info(f"LLM loaded: {_gemini_adapter.get_provider_name()} / {_gemini_adapter.get_model_name()}")
     return _gemini_adapter
 
 
@@ -369,8 +372,9 @@ class SubtitleTranscribeHandler:
                 await self._publish_progress(meta, STAGE_REFINING, 82, "กำลังปรับปรุงข้อความ (LLM)")
 
                 try:
-                    gemini = get_gemini_adapter()
-                    segments = gemini.refine_batch(segments, lang_code, context="Video subtitle")
+                    from subtitle_transcribe.prompts import refine_subtitles
+                    llm = get_llm()
+                    segments = refine_subtitles(llm, segments, lang_code, context="Video subtitle")
                     logger.info(f"Refinement completed: {len(segments)} segments")
                 except Exception as e:
                     logger.warning(f"Refinement failed: {e}, using original text")

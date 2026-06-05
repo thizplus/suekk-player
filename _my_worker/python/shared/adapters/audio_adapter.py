@@ -8,10 +8,12 @@ import subprocess
 from pathlib import Path
 from typing import Optional
 
+from ..ports.audio_port import AudioPort
+
 logger = logging.getLogger(__name__)
 
 
-class AudioAdapter:
+class AudioAdapter(AudioPort):
     """
     Audio processing adapter using Demucs and FFmpeg.
 
