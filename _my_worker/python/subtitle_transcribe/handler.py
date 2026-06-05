@@ -258,6 +258,9 @@ class SubtitleTranscribeHandler:
         audio_path = input_data.get("audio_path", "")
         language = input_data.get("language", "ja")
         output_path = input_data.get("output_path", "").rstrip("/")
+        # video_id/video_code from input for progress routing (entity_id is subtitle_id)
+        self._video_id = input_data.get("video_id", "")
+        self._video_code = input_data.get("video_code", "")
 
         logger.info(f"Starting transcription: {meta.job_id}")
         logger.info(f"  Audio: {audio_path}")
@@ -439,17 +442,30 @@ class SubtitleTranscribeHandler:
                 "segments": len(segments),
                 "duration": audio_duration,
                 "language": language,
+                "video_id": self._video_id,
             }
 
-            await self.progress.publish_completed(
+            from shared.progress import ProgressUpdate
+            completed_update = ProgressUpdate(
                 job_id=meta.job_id,
                 job_type=meta.job_type,
                 entity_type=meta.entity_type,
                 entity_id=meta.entity_id,
                 entity_code=meta.entity_code,
+                worker_id=self.progress.worker_id,
+                status="completed",
+                progress=100.0,
+                stage="completed",
+                message="สำเร็จ",
                 duration_sec=duration_sec,
                 output=output,
+                video_id=self._video_id,
+                video_code=self._video_code,
+                subtitle_id=meta.entity_id if meta.entity_type == "subtitle" else None,
+                current_language=language,
             )
+            self.progress.throttler.cleanup(meta.job_id)
+            await self.progress.publish(completed_update)
 
             logger.info(f"Transcription completed in {duration_sec:.1f}s")
             return output
@@ -623,17 +639,25 @@ class SubtitleTranscribeHandler:
         progress: float,
         message: str,
     ):
-        """Publish progress update"""
-        await self.progress.publish_processing(
+        """Publish progress update with video_id and subtitle_id for API routing"""
+        from shared.progress import ProgressUpdate
+        update = ProgressUpdate(
             job_id=meta.job_id,
             job_type=meta.job_type,
             entity_type=meta.entity_type,
             entity_id=meta.entity_id,
             entity_code=meta.entity_code,
-            stage=stage,
+            worker_id=self.progress.worker_id,
+            status="processing",
             progress=progress,
+            stage=stage,
             message=message,
+            video_id=getattr(self, '_video_id', None),
+            video_code=getattr(self, '_video_code', None),
+            subtitle_id=meta.entity_id if meta.entity_type == "subtitle" else None,
         )
+        if self.progress.throttler.should_send(meta.job_id, progress, "processing"):
+            await self.progress.publish(update)
 
     def _cleanup(self, job_dir: Path, temp_files: List[Path], temp_dirs: List[Path]):
         """Remove temporary files and directories"""

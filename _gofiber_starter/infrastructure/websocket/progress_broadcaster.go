@@ -571,21 +571,12 @@ func (pb *ProgressBroadcaster) handleDetectCompleted(ctx context.Context, update
 		return
 	}
 
-	// 2. Auto-trigger transcribe
-	logger.Info("Auto-triggering transcribe after detect",
+	// NOTE: Auto-trigger removed — each step is independent
+	// User triggers transcribe manually via UI after checking detected language
+	logger.Info("Detect completed, waiting for user to trigger transcribe",
 		"video_id", update.VideoID,
 		"language", language,
 	)
-
-	_, err = pb.subtitleService.TriggerTranscribe(ctx, videoID)
-	if err != nil {
-		logger.Warn("Auto-transcribe after detect failed (non-critical)",
-			"video_id", update.VideoID,
-			"error", err,
-		)
-	} else {
-		logger.Info("Auto-transcribe triggered successfully", "video_id", update.VideoID)
-	}
 }
 
 // handleTranscribeCompleted เมื่อ transcribe เสร็จ → update subtitle record + auto-trigger translate
@@ -626,48 +617,12 @@ func (pb *ProgressBroadcaster) handleTranscribeCompleted(ctx context.Context, up
 		return
 	}
 
-	// 2. Auto-trigger translate (ย้ายจาก worker → API orchestrate)
-	// ภาษาไทย → แปลเป็นอังกฤษ, ภาษาอื่น → แปลเป็นไทย
-	videoID, err := uuid.Parse(update.VideoID)
-	if err != nil {
-		logger.Warn("Invalid video ID for auto-translate", "video_id", update.VideoID)
-		return
-	}
-
-	// กำหนด target language จาก source language
-	resolvedLang := language
-	if resolvedLang == "" {
-		resolvedLang = update.CurrentLanguage
-	}
-	var targetLang string
-	if resolvedLang == "th" {
-		targetLang = "en"
-	} else {
-		targetLang = "th"
-	}
-
-	logger.Info("Auto-triggering translation after transcribe",
+	// NOTE: Auto-trigger removed — each step is independent
+	// User triggers translate manually via UI after checking transcription quality
+	logger.Info("Transcribe completed, waiting for user to trigger translate",
+		"subtitle_id", update.SubtitleID,
 		"video_id", update.VideoID,
-		"source_language", resolvedLang,
-		"target_language", targetLang,
 	)
-
-	translateReq := &dto.TranslateRequest{
-		TargetLanguages: []string{targetLang},
-	}
-	_, err = pb.subtitleService.TriggerTranslation(ctx, videoID, translateReq)
-	if err != nil {
-		logger.Warn("Auto-translate after transcribe failed (non-critical)",
-			"video_id", update.VideoID,
-			"target_language", targetLang,
-			"error", err,
-		)
-	} else {
-		logger.Info("Auto-translate triggered successfully",
-			"video_id", update.VideoID,
-			"target_language", targetLang,
-		)
-	}
 }
 
 // handleTranslateCompleted เมื่อ translate เสร็จ → update translated subtitle records

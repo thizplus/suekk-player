@@ -89,6 +89,10 @@ class ProgressUpdate:
     updated_at: str = ""
 
     # Optional fields
+    video_id: Optional[str] = None
+    video_code: Optional[str] = None
+    subtitle_id: Optional[str] = None
+    current_language: Optional[str] = None
     duration_sec: Optional[float] = None
     output: Optional[dict] = None
     error: Optional[str] = None
@@ -114,6 +118,14 @@ class ProgressUpdate:
             "updated_at": self.updated_at,
         }
 
+        if self.video_id is not None:
+            result["video_id"] = self.video_id
+        if self.video_code is not None:
+            result["video_code"] = self.video_code
+        if self.subtitle_id is not None:
+            result["subtitle_id"] = self.subtitle_id
+        if self.current_language is not None:
+            result["current_language"] = self.current_language
         if self.duration_sec is not None:
             result["duration_sec"] = self.duration_sec
         if self.output is not None:

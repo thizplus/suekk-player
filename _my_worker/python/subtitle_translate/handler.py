@@ -178,12 +178,16 @@ class SubtitleTranslateHandler:
         meta = job.meta
         input_data = job.input
 
-        srt_path = input_data.get("srt_path", "")
+        srt_path = input_data.get("source_srt_path", "") or input_data.get("srt_path", "")
         source_lang = input_data.get("source_language", "ja")
         target_langs = input_data.get("target_languages", [])
         output_path = input_data.get("output_path", "").rstrip("/")
         speaker_info_path = input_data.get("speaker_info_path", "")
         context = input_data.get("context", "Video subtitle")
+        # Store video_id and subtitle_ids for progress routing
+        self._video_id = input_data.get("video_id", "")
+        self._video_code = input_data.get("video_code", "")
+        self._subtitle_ids = input_data.get("subtitle_ids", [])
 
         # Validate source language
         valid_languages = ["ja", "en", "zh", "ko", "th"]
@@ -312,17 +316,33 @@ class SubtitleTranslateHandler:
                 "vtt_paths": vtt_paths,
                 "source_language": source_lang,
                 "segments_count": len(segments),
+                "video_id": self._video_id,
             }
 
-            await self.progress.publish_completed(
-                job_id=meta.job_id,
-                job_type=meta.job_type,
-                entity_type=meta.entity_type,
-                entity_id=meta.entity_id,
-                entity_code=meta.entity_code,
-                duration_sec=duration_sec,
-                output=output,
-            )
+            # Send per-language completion with subtitle_id for each target
+            from shared.progress import ProgressUpdate
+            for i, target_lang in enumerate(translations.keys()):
+                sub_id = self._subtitle_ids[i] if i < len(self._subtitle_ids) else ""
+                completed_update = ProgressUpdate(
+                    job_id=meta.job_id,
+                    job_type=meta.job_type,
+                    entity_type=meta.entity_type,
+                    entity_id=meta.entity_id,
+                    entity_code=meta.entity_code,
+                    worker_id=self.progress.worker_id,
+                    status="completed",
+                    progress=100.0,
+                    stage="completed",
+                    message="สำเร็จ",
+                    duration_sec=duration_sec,
+                    output=output,
+                    video_id=self._video_id,
+                    video_code=self._video_code,
+                    subtitle_id=sub_id,
+                    current_language=target_lang,
+                )
+                self.progress.throttler.cleanup(meta.job_id)
+                await self.progress.publish(completed_update)
 
             logger.info(f"Translation completed in {duration_sec:.1f}s")
             return output
@@ -513,17 +533,24 @@ class SubtitleTranslateHandler:
         return result
 
     async def _publish_progress(self, meta: JobMeta, stage: str, progress: float, message: str):
-        """Publish progress update"""
-        await self.progress.publish_processing(
+        """Publish progress update with video_id for API routing"""
+        from shared.progress import ProgressUpdate
+        update = ProgressUpdate(
             job_id=meta.job_id,
             job_type=meta.job_type,
             entity_type=meta.entity_type,
             entity_id=meta.entity_id,
             entity_code=meta.entity_code,
-            stage=stage,
+            worker_id=self.progress.worker_id,
+            status="processing",
             progress=progress,
+            stage=stage,
             message=message,
+            video_id=getattr(self, '_video_id', None),
+            video_code=getattr(self, '_video_code', None),
         )
+        if self.progress.throttler.should_send(meta.job_id, progress, "processing"):
+            await self.progress.publish(update)
 
     def _cleanup(self, job_dir: Path, temp_files: List[Path]):
         """Remove temporary files"""

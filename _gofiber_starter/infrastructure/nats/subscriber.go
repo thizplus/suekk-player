@@ -76,13 +76,26 @@ func (s *Subscriber) handleMessage(msg *nats.Msg) {
 		}
 	}
 
-	// Normalize: map entity_id/entity_code to video_id/video_code
-	// เพื่อให้ handlers เดิมทำงานได้โดยไม่ต้องแก้ไข
-	if update.EntityID != "" && update.VideoID == "" {
-		update.VideoID = update.EntityID
-	}
-	if update.EntityCode != "" && update.VideoCode == "" {
-		update.VideoCode = update.EntityCode
+	// Normalize: map entity_id/entity_code based on entity_type
+	// subtitle entity → SubtitleID, video/other entity → VideoID
+	if update.EntityID != "" {
+		switch update.EntityType {
+		case "subtitle":
+			// Transcribe jobs: entity_id = subtitle UUID
+			if update.SubtitleID == "" {
+				update.SubtitleID = update.EntityID
+			}
+			// VideoID ต้องมาจาก field อื่น (video_id ที่ worker ส่งมา)
+			// ถ้าไม่มี video_id ให้ใช้ entity_code สำหรับ lookup
+		default:
+			// video, reel, etc: entity_id = video UUID
+			if update.VideoID == "" {
+				update.VideoID = update.EntityID
+			}
+			if update.EntityCode != "" && update.VideoCode == "" {
+				update.VideoCode = update.EntityCode
+			}
+		}
 	}
 
 	// Call handlers

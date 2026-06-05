@@ -62,6 +62,15 @@ func (s *NATSProgressSubscriber) Subscribe(ctx context.Context, handler ports.Pr
 			FileSize: update.FileSize,
 		}
 
+		// For subtitle entity_type: entity_id was mapped to SubtitleID in subscriber
+		// VideoID may still be empty — try to get from EntityCode or RawOutput
+		if update.EntityType == "subtitle" && data.VideoID == "" {
+			// VideoCode is usable for WebSocket broadcast even without VideoID
+			if update.EntityCode != "" {
+				data.VideoCode = update.EntityCode
+			}
+		}
+
 		// Extract output data from new worker format
 		if update.Output != nil {
 			data.Duration = update.Output.Duration
@@ -84,6 +93,35 @@ func (s *NATSProgressSubscriber) Subscribe(ctx context.Context, handler ports.Pr
 			if segments, ok := update.RawOutput["segments"].(float64); ok {
 				data.Segments = int(segments)
 			}
+
+			// Translate worker sends {"translations": {"th": "subtitles/code/th.srt"}}
+			// Extract first translation path as SRTPath
+			if data.SRTPath == "" {
+				if translations, ok := update.RawOutput["translations"].(map[string]interface{}); ok {
+					for lang, path := range translations {
+						if pathStr, ok := path.(string); ok {
+							data.SRTPath = pathStr
+							if data.CurrentLanguage == "" {
+								data.CurrentLanguage = lang
+							}
+							break
+						}
+					}
+				}
+			}
+
+			// For subtitle entity: try to get video_id from output
+			if data.VideoID == "" {
+				if vid, ok := update.RawOutput["video_id"].(string); ok {
+					data.VideoID = vid
+				}
+			}
+		}
+
+		// For transcribe jobs: video_id is in the input, worker sends it back in progress
+		// Ensure VideoID is populated for WebSocket broadcast routing
+		if data.VideoID == "" && update.VideoID != "" {
+			data.VideoID = update.VideoID
 		}
 
 		handler(data)

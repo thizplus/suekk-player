@@ -5,13 +5,14 @@ import {
   AlertCircle,
   CheckCircle2,
   Loader2,
-  Sparkles,
   FileText,
-  Plus,
   Clock,
   Trash2,
   RefreshCw,
   Pencil,
+  Search,
+  Mic,
+  Globe,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -52,8 +53,6 @@ interface SubtitlePanelProps {
 export function SubtitlePanel({ videoId, videoCode, videoStatus }: SubtitlePanelProps) {
   const [targetLanguage, setTargetLanguage] = useState<string>('')
   const [isJobPending, setIsJobPending] = useState(false)
-  const [pendingAutoTranslate, setPendingAutoTranslate] = useState(false)
-  const [currentStep, setCurrentStep] = useState<'idle' | 'transcribing' | 'translating'>('idle')
 
   // Queries
   const { data: subtitleData, isLoading } = useVideoSubtitles(videoId, {
@@ -77,42 +76,14 @@ export function SubtitlePanel({ videoId, videoCode, videoStatus }: SubtitlePanel
   const originalSubtitle = subtitles.find((s) => s.type === 'original')
   const translatedSubtitles = subtitles.filter((s) => s.type === 'translated')
 
-  // Auto-translate: เมื่อ transcribe เสร็จ และยังไม่มี translation
-  useEffect(() => {
-    if (
-      pendingAutoTranslate &&
-      originalSubtitle?.status === 'ready' &&
-      translatedSubtitles.length === 0
-    ) {
-      // หา target language อัตโนมัติ: th → en, อื่นๆ → th
-      const targetLang = originalSubtitle.language === 'th' ? 'en' : 'th'
-
-      setPendingAutoTranslate(false)
-      setCurrentStep('translating')
-      setIsJobPending(true)
-
-      translate.mutate({ videoId, targetLanguages: [targetLang] }, {
-        onError: () => {
-          setIsJobPending(false)
-          setCurrentStep('idle')
-        },
-      })
-    }
-  }, [pendingAutoTranslate, originalSubtitle, translatedSubtitles.length, videoId, translate])
-
   // Clear pending state when progress completes/fails
   useEffect(() => {
     if (activeProgress) {
       if (activeProgress.status === 'completed' || activeProgress.status === 'failed') {
         setIsJobPending(false)
-        // ถ้า transcribe เสร็จแล้ว และ pendingAutoTranslate ยังเป็น true
-        // useEffect ด้านบนจะ trigger translate
-        if (activeProgress.status === 'completed' && currentStep === 'translating') {
-          setCurrentStep('idle')
-        }
       }
     }
-  }, [activeProgress, currentStep])
+  }, [activeProgress])
 
   const isProcessing = isJobPending || !!activeProgress
 
@@ -141,31 +112,20 @@ export function SubtitlePanel({ videoId, videoCode, videoStatus }: SubtitlePanel
     (lang) => !translatedLanguages.includes(lang)
   )
 
-  const handleCreateSubtitle = () => {
-    setIsJobPending(true)
-    setPendingAutoTranslate(true)
+  // === Handlers (แต่ละ step เป็นอิสระ) ===
 
-    if (!detectedLanguage) {
-      // ยังไม่ detect → detect ก่อน → API จะ auto-trigger transcribe → translate
-      setCurrentStep('transcribing')
-      detectLanguage.mutate(videoId, {
-        onError: () => {
-          setIsJobPending(false)
-          setPendingAutoTranslate(false)
-          setCurrentStep('idle')
-        },
-      })
-    } else {
-      // detect แล้ว → transcribe เลย
-      setCurrentStep('transcribing')
-      transcribe.mutate(videoId, {
-        onError: () => {
-          setIsJobPending(false)
-          setPendingAutoTranslate(false)
-          setCurrentStep('idle')
-        },
-      })
-    }
+  const handleDetect = () => {
+    setIsJobPending(true)
+    detectLanguage.mutate(videoId, {
+      onError: () => setIsJobPending(false),
+    })
+  }
+
+  const handleTranscribe = () => {
+    setIsJobPending(true)
+    transcribe.mutate(videoId, {
+      onError: () => setIsJobPending(false),
+    })
   }
 
   const handleTranslate = () => {
@@ -178,21 +138,15 @@ export function SubtitlePanel({ videoId, videoCode, videoStatus }: SubtitlePanel
     }
   }
 
-  // ลองใหม่ original subtitle (ลบแล้วสร้างใหม่)
   const handleRetryOriginal = (subtitleId: string) => {
     deleteSubtitle.mutate({ subtitleId, videoId }, {
-      onSuccess: () => {
-        // หลังลบสำเร็จ ให้สร้างใหม่อัตโนมัติ
-        handleCreateSubtitle()
-      },
+      onSuccess: () => handleTranscribe(),
     })
   }
 
-  // ลองใหม่ translated subtitle (ลบแล้วแปลใหม่)
   const handleRetryTranslation = (subtitleId: string, language: string) => {
     deleteSubtitle.mutate({ subtitleId, videoId }, {
       onSuccess: () => {
-        // หลังลบสำเร็จ ให้แปลใหม่อัตโนมัติ
         setIsJobPending(true)
         translate.mutate({ videoId, targetLanguages: [language] }, {
           onError: () => setIsJobPending(false),
@@ -201,7 +155,6 @@ export function SubtitlePanel({ videoId, videoCode, videoStatus }: SubtitlePanel
     })
   }
 
-  // ลบ subtitle
   const handleDelete = (subtitleId: string) => {
     deleteSubtitle.mutate({ subtitleId, videoId })
   }
@@ -246,48 +199,76 @@ export function SubtitlePanel({ videoId, videoCode, videoStatus }: SubtitlePanel
   return (
     <div className="space-y-3">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <Languages className="size-4 text-muted-foreground" />
-          <span className="text-sm font-medium">Subtitle</span>
-        </div>
-        <div className="flex items-center gap-1.5">
+      <div className="flex items-center gap-2">
+        <Languages className="size-4 text-muted-foreground" />
+        <span className="text-sm font-medium">Subtitle</span>
+      </div>
+
+      {/* Step 1: Detect Language */}
+      <div className="rounded-lg border p-3 space-y-2">
+        <div className="flex items-center justify-between">
+          <span className="text-xs font-medium text-muted-foreground">1. ตรวจจับภาษา</span>
           {detectedLanguage ? (
-            <>
-              <Badge variant="outline" className="text-xs">
-                {LANGUAGE_FLAGS[detectedLanguage]} {LANGUAGE_LABELS[detectedLanguage]}
-              </Badge>
-              <Button
-                size="icon"
-                variant="ghost"
-                className="size-6"
-                onClick={() => detectLanguage.mutate(videoId)}
-                disabled={detectLanguage.isPending || isProcessing}
-                title="ตรวจจับภาษาใหม่"
-              >
-                <RefreshCw className={`size-3 ${detectLanguage.isPending ? 'animate-spin' : ''}`} />
-              </Button>
-            </>
+            <Badge variant="outline" className="text-xs">
+              {LANGUAGE_FLAGS[detectedLanguage]} {LANGUAGE_LABELS[detectedLanguage]}
+            </Badge>
           ) : (
-            <Select
-              value=""
-              onValueChange={(lang) => setLanguage.mutate({ videoId, language: lang })}
-              disabled={setLanguage.isPending || isProcessing}
-            >
-              <SelectTrigger className="h-7 w-[140px] text-xs">
-                <SelectValue placeholder="ตั้งค่าภาษา..." />
-              </SelectTrigger>
-              <SelectContent>
-                {languages?.sourceLanguages.map((lang) => (
-                  <SelectItem key={lang.code} value={lang.code}>
-                    {LANGUAGE_FLAGS[lang.code]} {LANGUAGE_LABELS[lang.code] || lang.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <Badge variant="secondary" className="text-xs">ยังไม่ตรวจจับ</Badge>
           )}
         </div>
+        <div className="flex items-center gap-2">
+          <Button
+            size="sm"
+            variant={detectedLanguage ? 'outline' : 'default'}
+            onClick={handleDetect}
+            disabled={detectLanguage.isPending || isProcessing}
+            className="gap-1.5 flex-1"
+          >
+            {detectLanguage.isPending ? (
+              <Loader2 className="size-3.5 animate-spin" />
+            ) : (
+              <Search className="size-3.5" />
+            )}
+            {detectedLanguage ? 'ตรวจจับใหม่' : 'ตรวจจับภาษา'}
+          </Button>
+          <Select
+            value=""
+            onValueChange={(lang) => setLanguage.mutate({ videoId, language: lang })}
+            disabled={setLanguage.isPending || isProcessing}
+          >
+            <SelectTrigger className="h-8 w-[130px] text-xs">
+              <SelectValue placeholder="ตั้งค่าเอง..." />
+            </SelectTrigger>
+            <SelectContent>
+              {languages?.sourceLanguages.map((lang) => (
+                <SelectItem key={lang.code} value={lang.code}>
+                  {LANGUAGE_FLAGS[lang.code]} {LANGUAGE_LABELS[lang.code] || lang.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
       </div>
+
+      {/* Step 2: Transcribe */}
+      {detectedLanguage && !originalSubtitle && (
+        <div className="rounded-lg border p-3 space-y-2">
+          <span className="text-xs font-medium text-muted-foreground">2. ถอดเสียงเป็นข้อความ</span>
+          <Button
+            size="sm"
+            onClick={handleTranscribe}
+            disabled={transcribe.isPending || isProcessing}
+            className="gap-1.5 w-full"
+          >
+            {transcribe.isPending ? (
+              <Loader2 className="size-3.5 animate-spin" />
+            ) : (
+              <Mic className="size-3.5" />
+            )}
+            ถอดเสียง ({LANGUAGE_FLAGS[detectedLanguage]} {LANGUAGE_LABELS[detectedLanguage]})
+          </Button>
+        </div>
+      )}
 
       {/* Progress */}
       {isProcessing && (
@@ -295,11 +276,7 @@ export function SubtitlePanel({ videoId, videoCode, videoStatus }: SubtitlePanel
           <div className="flex items-center justify-between">
             <span className="text-sm font-medium text-primary flex items-center gap-1.5">
               <Loader2 className="size-3.5 animate-spin" />
-              {activeProgress?.currentStep || (
-                currentStep === 'transcribing' ? 'กำลังถอดเสียง...' :
-                currentStep === 'translating' ? 'กำลังแปลภาษา...' :
-                'กำลังเริ่มต้น...'
-              )}
+              {activeProgress?.currentStep || 'กำลังเริ่มต้น...'}
             </span>
             <span className="text-xs text-muted-foreground tabular-nums">
               {activeProgress ? `${Math.round(activeProgress.progress)}%` : ''}
@@ -309,24 +286,13 @@ export function SubtitlePanel({ videoId, videoCode, videoStatus }: SubtitlePanel
           {activeProgress?.message && (
             <p className="text-xs text-muted-foreground truncate">{activeProgress.message}</p>
           )}
-          {/* Step indicator */}
-          {pendingAutoTranslate && currentStep === 'transcribing' && (
-            <p className="text-xs text-muted-foreground">
-              ขั้นตอน 1/2: ถอดเสียง → จะแปลอัตโนมัติเมื่อเสร็จ
-            </p>
-          )}
-          {currentStep === 'translating' && (
-            <p className="text-xs text-muted-foreground">
-              ขั้นตอน 2/2: กำลังแปลภาษา
-            </p>
-          )}
         </div>
       )}
 
       {/* Subtitle List */}
       <div className="space-y-1">
         {/* Original Subtitle */}
-        {originalSubtitle ? (
+        {originalSubtitle && (
           <div className="flex items-center gap-3 px-3 py-2 rounded-lg border hover:bg-accent/50 transition-colors">
             {getStatusIcon(originalSubtitle.status)}
             <div className="flex-1 min-w-0">
@@ -342,7 +308,6 @@ export function SubtitlePanel({ videoId, videoCode, videoStatus }: SubtitlePanel
                 <p className="text-xs text-destructive truncate mt-0.5">{originalSubtitle.error}</p>
               )}
             </div>
-            {/* Download button - only when ready */}
             {originalSubtitle.status === 'ready' && originalSubtitle.srtPath && (
               <>
                 <Button size="icon" variant="ghost" className="size-8 shrink-0" asChild>
@@ -359,7 +324,6 @@ export function SubtitlePanel({ videoId, videoCode, videoStatus }: SubtitlePanel
                 )}
               </>
             )}
-            {/* Retry button - for queued, failed, ready */}
             {['queued', 'failed', 'ready'].includes(originalSubtitle.status) && (
               <Button
                 size="icon"
@@ -367,12 +331,11 @@ export function SubtitlePanel({ videoId, videoCode, videoStatus }: SubtitlePanel
                 className="size-8 shrink-0"
                 onClick={() => handleRetryOriginal(originalSubtitle.id)}
                 disabled={deleteSubtitle.isPending || isProcessing}
-                title={originalSubtitle.status === 'queued' ? 'Queue ใหม่' : 'ลองใหม่'}
+                title="ลองใหม่"
               >
                 <RefreshCw className="size-4" />
               </Button>
             )}
-            {/* Delete button - for queued, failed */}
             {['queued', 'failed'].includes(originalSubtitle.status) && (
               <Button
                 size="icon"
@@ -388,34 +351,6 @@ export function SubtitlePanel({ videoId, videoCode, videoStatus }: SubtitlePanel
             <Badge className={SUBTITLE_STATUS_STYLES[originalSubtitle.status]}>
               {SUBTITLE_STATUS_LABELS[originalSubtitle.status]}
             </Badge>
-          </div>
-        ) : (
-          // ยังไม่มี Subtitle - แสดงปุ่มสร้าง
-          <div className="rounded-lg border border-dashed p-4">
-            <div className="flex flex-col items-center gap-3 text-center">
-              <div className="size-10 rounded-full bg-primary/10 flex items-center justify-center">
-                <Sparkles className="size-5 text-primary" />
-              </div>
-              <div>
-                <p className="text-sm font-medium">สร้าง Subtitle อัตโนมัติ</p>
-                <p className="text-xs text-muted-foreground mt-0.5">
-                  ถอดเสียง → แปลเป็นไทย (หรืออังกฤษถ้าต้นฉบับเป็นไทย)
-                </p>
-              </div>
-              <Button
-                size="sm"
-                onClick={handleCreateSubtitle}
-                disabled={transcribe.isPending || isProcessing}
-                className="gap-1.5"
-              >
-                {transcribe.isPending || isProcessing ? (
-                  <Loader2 className="size-4 animate-spin" />
-                ) : (
-                  <Sparkles className="size-4" />
-                )}
-                สร้าง Subtitle
-              </Button>
-            </div>
           </div>
         )}
 
@@ -439,7 +374,6 @@ export function SubtitlePanel({ videoId, videoCode, videoStatus }: SubtitlePanel
                 <p className="text-xs text-destructive truncate mt-0.5">{sub.error}</p>
               )}
             </div>
-            {/* Download button - only when ready */}
             {sub.status === 'ready' && sub.srtPath && (
               <>
                 <Button size="icon" variant="ghost" className="size-8 shrink-0" asChild>
@@ -456,7 +390,6 @@ export function SubtitlePanel({ videoId, videoCode, videoStatus }: SubtitlePanel
                 )}
               </>
             )}
-            {/* Retry button - for queued, failed, ready */}
             {['queued', 'failed', 'ready'].includes(sub.status) && (
               <Button
                 size="icon"
@@ -464,12 +397,11 @@ export function SubtitlePanel({ videoId, videoCode, videoStatus }: SubtitlePanel
                 className="size-8 shrink-0"
                 onClick={() => handleRetryTranslation(sub.id, sub.language)}
                 disabled={deleteSubtitle.isPending || isProcessing}
-                title={sub.status === 'queued' ? 'Queue ใหม่' : 'ลองใหม่'}
+                title="ลองใหม่"
               >
                 <RefreshCw className="size-4" />
               </Button>
             )}
-            {/* Delete button - for queued, failed */}
             {['queued', 'failed'].includes(sub.status) && (
               <Button
                 size="icon"
@@ -488,34 +420,38 @@ export function SubtitlePanel({ videoId, videoCode, videoStatus }: SubtitlePanel
           </div>
         ))}
 
-        {/* Add Translation */}
+        {/* Step 3: Add Translation */}
         {originalSubtitle?.status === 'ready' && untranslatedLanguages.length > 0 && (
-          <div className="flex items-center gap-2 px-3 py-2 rounded-lg border border-dashed">
-            <Plus className="size-4 text-muted-foreground" />
-            <Select value={targetLanguage} onValueChange={setTargetLanguage}>
-              <SelectTrigger className="h-8 flex-1 text-sm">
-                <SelectValue placeholder="เพิ่มการแปล..." />
-              </SelectTrigger>
-              <SelectContent>
-                {untranslatedLanguages.map((lang) => (
-                  <SelectItem key={lang} value={lang}>
-                    {LANGUAGE_FLAGS[lang]} {LANGUAGE_LABELS[lang]}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Button
-              size="sm"
-              onClick={handleTranslate}
-              disabled={!targetLanguage || translate.isPending || isProcessing}
-              className="shrink-0"
-            >
-              {translate.isPending ? (
-                <Loader2 className="size-4 animate-spin" />
-              ) : (
-                'แปล'
-              )}
-            </Button>
+          <div className="rounded-lg border border-dashed p-3 space-y-2">
+            <span className="text-xs font-medium text-muted-foreground">3. แปลภาษา</span>
+            <div className="flex items-center gap-2">
+              <Globe className="size-4 text-muted-foreground shrink-0" />
+              <Select value={targetLanguage} onValueChange={setTargetLanguage}>
+                <SelectTrigger className="h-8 flex-1 text-sm">
+                  <SelectValue placeholder="เลือกภาษา..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {untranslatedLanguages.map((lang) => (
+                    <SelectItem key={lang} value={lang}>
+                      {LANGUAGE_FLAGS[lang]} {LANGUAGE_LABELS[lang]}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Button
+                size="sm"
+                onClick={handleTranslate}
+                disabled={!targetLanguage || translate.isPending || isProcessing}
+                className="shrink-0 gap-1.5"
+              >
+                {translate.isPending ? (
+                  <Loader2 className="size-3.5 animate-spin" />
+                ) : (
+                  <Globe className="size-3.5" />
+                )}
+                แปล
+              </Button>
+            </div>
           </div>
         )}
       </div>
