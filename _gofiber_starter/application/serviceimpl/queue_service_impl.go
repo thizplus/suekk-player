@@ -957,3 +957,139 @@ func (s *QueueServiceImpl) RetryReelAll(ctx context.Context) (*dto.RetryResponse
 
 	return response, nil
 }
+
+// === Batch Subtitle Actions ===
+
+// GetSubtitleStats ดึงสถิติ subtitle แยกตาม step
+func (s *QueueServiceImpl) GetSubtitleStats(ctx context.Context, categoryID string) (*dto.SubtitleStatsResponse, error) {
+	videos, err := s.videoRepo.GetByStatus(ctx, models.VideoStatusReady, 0, 5000)
+	if err != nil {
+		return nil, err
+	}
+
+	stats := &dto.SubtitleStatsResponse{}
+
+	for _, v := range videos {
+		if v.AudioPath == "" {
+			continue
+		}
+		if categoryID != "" && v.CategoryID != nil && v.CategoryID.String() != categoryID {
+			continue
+		}
+
+		stats.TotalVideos++
+
+		if v.DetectedLanguage == "" {
+			stats.NotDetected++
+			continue
+		}
+		stats.Detected++
+
+		subs, _ := s.subtitleRepo.GetByVideoID(ctx, v.ID)
+		hasOriginal := false
+		hasTranslation := false
+		for _, sub := range subs {
+			if sub.Type == models.SubtitleTypeOriginal && sub.Status == models.SubtitleStatusReady {
+				hasOriginal = true
+			}
+			if sub.Type == models.SubtitleTypeTranslated && sub.Status == models.SubtitleStatusReady {
+				hasTranslation = true
+			}
+		}
+
+		if hasOriginal {
+			stats.Transcribed++
+		} else {
+			stats.NotTranscribed++
+		}
+		if hasTranslation {
+			stats.Translated++
+		} else {
+			stats.NotTranslated++
+		}
+	}
+
+	return stats, nil
+}
+
+// BatchDetectAll detect language ให้ video ที่ยังไม่ detect
+func (s *QueueServiceImpl) BatchDetectAll(ctx context.Context, categoryID string, limit int) (*dto.BatchActionResponse, error) {
+	videos, err := s.videoRepo.GetByStatus(ctx, models.VideoStatusReady, 0, 5000)
+	if err != nil {
+		return nil, err
+	}
+
+	resp := &dto.BatchActionResponse{Message: "Batch detect completed"}
+	for _, v := range videos {
+		if resp.Queued >= limit {
+			break
+		}
+		if v.AudioPath == "" || v.DetectedLanguage != "" {
+			continue
+		}
+		if categoryID != "" && v.CategoryID != nil && v.CategoryID.String() != categoryID {
+			continue
+		}
+
+		if _, err := s.subtitleService.TriggerDetectLanguage(ctx, v.ID); err != nil {
+			resp.Skipped++
+		} else {
+			resp.Queued++
+		}
+	}
+	return resp, nil
+}
+
+// BatchTranscribeAll transcribe ให้ video ที่ detect แล้วแต่ยังไม่มี SRT
+func (s *QueueServiceImpl) BatchTranscribeAll(ctx context.Context, categoryID string, limit int) (*dto.BatchActionResponse, error) {
+	videos, err := s.videoRepo.GetByStatus(ctx, models.VideoStatusReady, 0, 5000)
+	if err != nil {
+		return nil, err
+	}
+
+	resp := &dto.BatchActionResponse{Message: "Batch transcribe completed"}
+	for _, v := range videos {
+		if resp.Queued >= limit {
+			break
+		}
+		if v.AudioPath == "" || v.DetectedLanguage == "" {
+			continue
+		}
+		if categoryID != "" && v.CategoryID != nil && v.CategoryID.String() != categoryID {
+			continue
+		}
+
+		if _, err := s.subtitleService.TriggerTranscribe(ctx, v.ID); err != nil {
+			resp.Skipped++
+		} else {
+			resp.Queued++
+		}
+	}
+	return resp, nil
+}
+
+// BatchTranslateAll translate ให้ video ที่มี SRT แล้วแต่ยังไม่แปล
+func (s *QueueServiceImpl) BatchTranslateAll(ctx context.Context, categoryID string, targetLang string, limit int) (*dto.BatchActionResponse, error) {
+	videos, err := s.videoRepo.GetByStatus(ctx, models.VideoStatusReady, 0, 5000)
+	if err != nil {
+		return nil, err
+	}
+
+	resp := &dto.BatchActionResponse{Message: "Batch translate completed", TargetLanguage: targetLang}
+	for _, v := range videos {
+		if resp.Queued >= limit {
+			break
+		}
+		if categoryID != "" && v.CategoryID != nil && v.CategoryID.String() != categoryID {
+			continue
+		}
+
+		req := &dto.TranslateRequest{TargetLanguages: []string{targetLang}}
+		if _, err := s.subtitleService.TriggerTranslation(ctx, v.ID, req); err != nil {
+			resp.Skipped++
+		} else {
+			resp.Queued++
+		}
+	}
+	return resp, nil
+}

@@ -446,3 +446,69 @@ func (h *QueueHandler) PurgeTranscodeStream(c *fiber.Ctx) error {
 		"message": "Transcode stream purged successfully",
 	})
 }
+
+// === Batch Subtitle Actions ===
+
+// GetSubtitleStats ดึงสถิติ subtitle แยกตาม step + filter by category
+// GET /api/v1/admin/queues/subtitle/stats?category=xxx
+func (h *QueueHandler) GetSubtitleStats(c *fiber.Ctx) error {
+	ctx := c.UserContext()
+	categoryID := c.Query("category", "")
+
+	stats, err := h.queueService.GetSubtitleStats(ctx, categoryID)
+	if err != nil {
+		logger.ErrorContext(ctx, "Failed to get subtitle stats", "error", err)
+		return utils.InternalServerErrorResponse(c)
+	}
+
+	return utils.SuccessResponse(c, stats)
+}
+
+// BatchDetectAll detect language ให้ video ที่ยังไม่ detect
+// POST /api/v1/admin/queues/subtitle/detect-all?category=xxx&limit=50
+func (h *QueueHandler) BatchDetectAll(c *fiber.Ctx) error {
+	ctx := c.UserContext()
+	categoryID := c.Query("category", "")
+	limit, _ := strconv.Atoi(c.Query("limit", "50"))
+
+	result, err := h.queueService.BatchDetectAll(ctx, categoryID, limit)
+	if err != nil {
+		logger.ErrorContext(ctx, "Batch detect failed", "error", err)
+		return utils.InternalServerErrorResponse(c)
+	}
+
+	return utils.SuccessResponse(c, result)
+}
+
+// BatchTranscribeAll transcribe ให้ video ที่ detect แล้วแต่ยังไม่มี SRT
+// POST /api/v1/admin/queues/subtitle/transcribe-all?category=xxx&limit=50
+func (h *QueueHandler) BatchTranscribeAll(c *fiber.Ctx) error {
+	ctx := c.UserContext()
+	categoryID := c.Query("category", "")
+	limit, _ := strconv.Atoi(c.Query("limit", "50"))
+
+	result, err := h.queueService.BatchTranscribeAll(ctx, categoryID, limit)
+	if err != nil {
+		logger.ErrorContext(ctx, "Batch transcribe failed", "error", err)
+		return utils.InternalServerErrorResponse(c)
+	}
+
+	return utils.SuccessResponse(c, result)
+}
+
+// BatchTranslateAll translate ให้ video ที่มี SRT แล้วแต่ยังไม่แปล
+// POST /api/v1/admin/queues/subtitle/translate-all?category=xxx&limit=50&target=th
+func (h *QueueHandler) BatchTranslateAll(c *fiber.Ctx) error {
+	ctx := c.UserContext()
+	categoryID := c.Query("category", "")
+	limit, _ := strconv.Atoi(c.Query("limit", "50"))
+	targetLang := c.Query("target", "th")
+
+	result, err := h.queueService.BatchTranslateAll(ctx, categoryID, targetLang, limit)
+	if err != nil {
+		logger.ErrorContext(ctx, "Batch translate failed", "error", err)
+		return utils.InternalServerErrorResponse(c)
+	}
+
+	return utils.SuccessResponse(c, result)
+}

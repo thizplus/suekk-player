@@ -201,3 +201,25 @@ type QueueMissingResponse struct {
 	Skipped        int    `json:"skipped"`        // จำนวนที่ skip (ไม่มี audio, etc.)
 	Message        string `json:"message"`
 }
+
+// === Batch Subtitle Actions ===
+
+// SubtitleStatsResponse สถิติ subtitle แยกตาม step
+type SubtitleStatsResponse struct {
+	TotalVideos    int `json:"totalVideos"`
+	Detected       int `json:"detected"`
+	NotDetected    int `json:"notDetected"`
+	Transcribed    int `json:"transcribed"`
+	NotTranscribed int `json:"notTranscribed"`
+	Translated     int `json:"translated"`
+	NotTranslated  int `json:"notTranslated"`
+}
+
+// BatchActionResponse ผลลัพธ์ batch action
+type BatchActionResponse struct {
+	Message        string   `json:"message"`
+	Queued         int      `json:"queued"`
+	Skipped        int      `json:"skipped"`
+	TargetLanguage string   `json:"targetLanguage,omitempty"`
+	Errors         []string `json:"errors,omitempty"`
+}

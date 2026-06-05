@@ -42,6 +42,18 @@ type QueueService interface {
 	// QueueMissingSubtitles สแกน videos ที่ยังไม่มี subtitle แล้ว queue ใหม่
 	QueueMissingSubtitles(ctx context.Context) (*dto.QueueMissingResponse, error)
 
+	// GetSubtitleStats ดึงสถิติ subtitle แยกตาม step (detect/transcribe/translate)
+	GetSubtitleStats(ctx context.Context, categoryID string) (*dto.SubtitleStatsResponse, error)
+
+	// BatchDetectAll detect language ให้ video ที่ยังไม่ detect (filter by category)
+	BatchDetectAll(ctx context.Context, categoryID string, limit int) (*dto.BatchActionResponse, error)
+
+	// BatchTranscribeAll transcribe ให้ video ที่ detect แล้วแต่ยังไม่มี SRT
+	BatchTranscribeAll(ctx context.Context, categoryID string, limit int) (*dto.BatchActionResponse, error)
+
+	// BatchTranslateAll translate ให้ video ที่มี SRT แล้วแต่ยังไม่แปล
+	BatchTranslateAll(ctx context.Context, categoryID string, targetLang string, limit int) (*dto.BatchActionResponse, error)
+
 	// === Warm Cache Queue ===
 
 	// GetWarmCachePending ดึงรายการ video ที่ยังไม่ได้ warm cache
