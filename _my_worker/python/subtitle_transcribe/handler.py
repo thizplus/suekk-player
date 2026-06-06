@@ -311,7 +311,9 @@ class SubtitleTranscribeHandler:
 
                 try:
                     audio_adapter = get_audio_adapter(job_dir)
-                    success = audio_adapter.separate_vocals(local_audio, local_audio_clean)
+                    success = await asyncio.to_thread(
+                        audio_adapter.separate_vocals, local_audio, local_audio_clean
+                    )
 
                     if success and local_audio_clean.exists():
                         audio_for_whisper = local_audio_clean
@@ -340,7 +342,7 @@ class SubtitleTranscribeHandler:
 
             lang_code = LanguageCode(language)
 
-            segments = whisper.transcribe(audio_for_whisper, lang_code)
+            segments = await asyncio.to_thread(whisper.transcribe, audio_for_whisper, lang_code)
             logger.info(f"Whisper completed: {len(segments)} segments")
 
             await self._publish_progress(meta, STAGE_TRANSCRIBING, 50, f"ถอดเสียงได้ {len(segments)} บรรทัด")
@@ -377,7 +379,12 @@ class SubtitleTranscribeHandler:
                 try:
                     from subtitle_transcribe.prompts import refine_subtitles
                     llm = get_llm()
-                    segments = refine_subtitles(llm, segments, lang_code, context="Video subtitle")
+                    # ต้องรันใน thread แยก! ไม่งั้น block asyncio event loop
+                    # → NATS ping ส่งไม่ได้ → connection timeout → disconnect
+                    import asyncio
+                    segments = await asyncio.to_thread(
+                        refine_subtitles, llm, segments, lang_code, "Video subtitle"
+                    )
                     logger.info(f"Refinement completed: {len(segments)} segments")
                 except Exception as e:
                     logger.warning(f"Refinement failed: {e}, using original text")
