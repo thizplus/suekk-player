@@ -472,18 +472,24 @@ class SubtitleTranscribeHandler:
                 current_language=language,
             )
             self.progress.throttler.cleanup(meta.job_id)
+
+            # NATS publish completed
+            logger.info(f"Publishing completed via NATS: entity_id={meta.entity_id}, entity_type={meta.entity_type}")
+            logger.info(f"  NATS connected: {self.progress.nc.is_connected}")
             await self.progress.publish(completed_update)
+            logger.info(f"  NATS publish done")
 
             # HTTP callback backup — NATS Pub/Sub ไม่มี persistence
-            # ถ้า NATS disconnect ตอน publish, completed message หาย
-            # HTTP callback เป็น backup ที่เชื่อถือได้
             subtitle_id = meta.entity_id if meta.entity_type == "subtitle" else ""
+            logger.info(f"Sending HTTP callback: subtitle_id={subtitle_id}, api_url={self.config.api_base_url}")
             if subtitle_id and self.config.api_base_url:
                 await self._send_complete_callback(
                     subtitle_id=subtitle_id,
-                    srt_path=srt_path,
+                    srt_path=remote_srt,
                     language=language,
                 )
+            else:
+                logger.warning(f"HTTP callback SKIPPED: subtitle_id={subtitle_id}, api_base_url={self.config.api_base_url}")
 
             logger.info(f"Transcription completed in {duration_sec:.1f}s")
             return output
