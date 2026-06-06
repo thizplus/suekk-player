@@ -60,11 +60,28 @@ func (s *Subscriber) Start() error {
 
 // handleMessage จัดการ message ที่ได้รับ
 func (s *Subscriber) handleMessage(msg *nats.Msg) {
+	// Debug: log every message received (subject + status)
+	logger.Info("NATS message received",
+		"subject", msg.Subject,
+		"data_size", len(msg.Data),
+	)
+
 	var update ProgressUpdate
 	if err := json.Unmarshal(msg.Data, &update); err != nil {
-		logger.Error("Failed to parse progress update", "error", err)
+		logger.Error("Failed to parse progress update", "error", err, "raw", string(msg.Data[:min(200, len(msg.Data))]))
 		return
 	}
+
+	// Debug: log parsed message
+	logger.Info("NATS message parsed",
+		"subject", msg.Subject,
+		"entity_type", update.EntityType,
+		"entity_id", update.EntityID,
+		"status", update.Status,
+		"job_type", update.JobType,
+		"video_id", update.VideoID,
+		"subtitle_id", update.SubtitleID,
+	)
 
 	// Parse raw output for subtitle jobs (output fields ไม่ตรงกับ TranscodeOutputData)
 	if update.Status == "completed" {
