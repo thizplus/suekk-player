@@ -74,7 +74,7 @@ def refine_subtitles(
         batch = lines[i:i + batch_size]
         prompt = build_refine_prompt(batch, language, context)
 
-        response = llm.generate(prompt)
+        response = llm.generate_unsafe(prompt)
         if response.success:
             batch_results = parse_refine_response(response.text, batch)
             results.update(batch_results)

@@ -155,7 +155,7 @@ def translate_cluster(
         lines, previous_summary, source_lang, target_lang, context, is_scene_change
     )
 
-    response = llm.generate(prompt)
+    response = llm.generate_unsafe(prompt)
 
     if not response.success:
         return lines, previous_summary or ""

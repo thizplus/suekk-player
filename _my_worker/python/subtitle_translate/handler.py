@@ -23,19 +23,13 @@ from shared.ports.llm_port import LLMPort
 
 logger = logging.getLogger(__name__)
 
-# Lazy loaded adapter
-_gemini_adapter = None
-
-
 def get_llm() -> LLMPort:
-    """Get LLM instance via Port/Adapter pattern"""
-    global _gemini_adapter
-    if _gemini_adapter is None:
-        import os
-        provider = os.getenv("SUBTITLE_LLM_PROVIDER")
-        _gemini_adapter = create_llm(provider)
-        logger.info(f"LLM loaded: {_gemini_adapter.get_provider_name()} / {_gemini_adapter.get_model_name()}")
-    return _gemini_adapter
+    """Get LLM instance via Port/Adapter pattern — สร้างใหม่ทุกครั้งเพื่อโหลด key ล่าสุดจาก env"""
+    import os
+    provider = os.getenv("SUBTITLE_LLM_PROVIDER")
+    llm = create_llm(provider)
+    logger.info(f"LLM loaded: {llm.get_provider_name()} / {llm.get_model_name()}")
+    return llm
 
 
 # =============================================================================
