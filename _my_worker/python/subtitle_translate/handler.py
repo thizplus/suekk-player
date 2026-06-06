@@ -401,8 +401,9 @@ class SubtitleTranslateHandler:
 
         translated = []
         previous_summary = None
+        total_clusters = len(clusters)
 
-        for cluster in clusters:
+        for ci, cluster in enumerate(clusters):
             # Check if scene change (large time gap)
             is_scene_change = False
             if translated and cluster:
@@ -413,6 +414,7 @@ class SubtitleTranslateHandler:
                     previous_summary = None
 
             # Translate cluster via Port (any LLM provider)
+            logger.info(f"Translating cluster {ci+1}/{total_clusters} ({len(cluster)} lines)")
             cluster_result, new_summary = translate_cluster(
                 llm=llm,
                 lines=cluster,
@@ -425,15 +427,17 @@ class SubtitleTranslateHandler:
 
             translated.extend(cluster_result)
             previous_summary = new_summary
+            logger.info(f"Cluster {ci+1}/{total_clusters} done, translated {len(cluster_result)} lines")
 
         return translated
 
     def _split_into_clusters(self, segments: List[SubtitleLine]) -> List[List[SubtitleLine]]:
-        """Split segments into clusters based on time gaps"""
+        """Split segments into clusters based on time gaps, then merge small ones"""
         if not segments:
             return []
 
-        clusters = []
+        # Step 1: Split by time gap or max size
+        raw_clusters = []
         current_cluster = []
 
         for seg in segments:
@@ -443,19 +447,41 @@ class SubtitleTranslateHandler:
                 last = current_cluster[-1]
                 gap = seg.start_sec - last.end_sec
 
-                # Start new cluster if:
-                # - Large time gap (scene change)
-                # - Cluster reached max size
                 if gap > self.cluster_gap_sec or len(current_cluster) >= self.cluster_size:
-                    clusters.append(current_cluster)
+                    raw_clusters.append(current_cluster)
                     current_cluster = [seg]
                 else:
                     current_cluster.append(seg)
 
         if current_cluster:
-            clusters.append(current_cluster)
+            raw_clusters.append(current_cluster)
 
-        return clusters
+        # Step 2: Merge small clusters (< min_size) with neighbors
+        # ไม่ merge ข้าม scene change (gap > 10s)
+        min_cluster_size = 5
+        scene_change_gap = 10.0
+        merged = []
+
+        for cluster in raw_clusters:
+            if not merged:
+                merged.append(cluster)
+                continue
+
+            prev = merged[-1]
+            gap_between = cluster[0].start_sec - prev[-1].end_sec
+            combined_size = len(prev) + len(cluster)
+
+            # Merge ถ้า: cluster ก่อนหน้าเล็ก + รวมกันไม่เกิน max + ไม่ใช่ scene change
+            if len(prev) < min_cluster_size and combined_size <= self.cluster_size and gap_between < scene_change_gap:
+                merged[-1] = prev + cluster
+            # Merge ถ้า: cluster ปัจจุบันเล็ก + รวมกันไม่เกิน max + ไม่ใช่ scene change
+            elif len(cluster) < min_cluster_size and combined_size <= self.cluster_size and gap_between < scene_change_gap:
+                merged[-1] = prev + cluster
+            else:
+                merged.append(cluster)
+
+        logger.info(f"Clustering: {len(raw_clusters)} raw → {len(merged)} merged (min_size={min_cluster_size})")
+        return merged
 
     # =========================================================================
     # Helper Methods

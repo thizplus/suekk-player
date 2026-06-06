@@ -46,7 +46,7 @@ func NewSubtitleStuckDetectorService(
 		service.config.CheckInterval = 30 * time.Second
 	}
 	if service.config.ProcessingTimeout == 0 {
-		service.config.ProcessingTimeout = 10 * time.Minute // ถ้า worker ไม่ respond 10 นาที = crash
+		service.config.ProcessingTimeout = 60 * time.Minute // Transcribe อาจใช้เวลา 30-45 นาที (Demucs+Whisper+Refine)
 	}
 
 	return service
@@ -104,7 +104,7 @@ func (s *SubtitleStuckDetectorService) detectStuckProcessing(ctx context.Context
 		)
 
 		// Mark WorkerJob as failed
-		errorMsg := "Processing timeout: worker not responding for more than 10 minutes"
+		errorMsg := "Processing timeout: worker not responding for more than 60 minutes"
 		if err := s.workerJobService.MarkAsFailed(ctx, job.ID, errorMsg, "WORKER_TIMEOUT", "processing", false); err != nil {
 			logger.ErrorContext(ctx, "Failed to mark job as failed", "job_id", job.ID, "error", err)
 			continue
