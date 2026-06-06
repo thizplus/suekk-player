@@ -203,10 +203,34 @@ def pre_translate_moaning(text: str) -> Optional[str]:
 
 
 # =============================================================================
-# Post-process: แทนคำทางการด้วยคำหยาบ (หลัง LLM translate)
+# AV Vocabulary Normalizer — แปลง JP แสลง → JP ปกติ ก่อนส่ง LLM
+# LLM ไม่รู้จักศัพท์ AV บางคำ ต้อง normalize ก่อน
+# =============================================================================
+
+AV_JP_NORMALIZE = {
+    'ワンコ': 'まんこ',           # AV slang for vagina (ไม่ใช่ "หมา")
+    'わんこ': 'まんこ',
+    '仲出し': '中出し',            # Whisper มักแกะผิด 中→仲
+    'なかだし': '中出し',
+    'ハメ撮り': 'セックス撮影',     # POV filming
+    'おちんちん': 'ちんこ',
+    'オチンチン': 'チンコ',
+}
+
+
+def normalize_av_text(text: str) -> str:
+    """แปลง AV slang → คำปกติ ก่อนส่ง LLM (JP→JP)"""
+    for slang, normal in AV_JP_NORMALIZE.items():
+        text = text.replace(slang, normal)
+    return text
+
+
+# =============================================================================
+# Post-process: แทนคำทางการด้วยคำหยาบ (หลัง LLM translate, TH→TH)
 # =============================================================================
 
 FORMAL_TO_CASUAL = {
+    # คำที่ Gemini มักใช้ → คำที่ธรรมชาติกว่า
     'เซ็กซ์': 'เย็ด',
     'เซ็กส์': 'เย็ด',
     'เพศสัมพันธ์': 'เย็ด',
@@ -220,6 +244,17 @@ FORMAL_TO_CASUAL = {
     'ตัวนาง': 'น้อง',
     'อวัยวะเพศ': 'จู๋',
     'สำเร็จความใคร่': 'ชักว่าว',
+    'น้องหมา': 'หี',              # ワンコ mistranslation
+    'ไอ้จ้อน': 'ควย',             # チンコ mistranslation
+    'องคชาต': 'ควย',
+    'ช่องคลอด': 'หี',
+    'ทวารหนัก': 'ตูด',
+    'หลั่งน้ำอสุจิ': 'แตกใน',
+    'น้ำอสุจิ': 'น้ำ',
+    'ถุงยางอนามัย': 'ถุงยาง',
+    'ค่ะ': 'จ้ะ',
+    'คะ': 'จ๊ะ',
+    'ครับ': 'นะ',
 }
 
 
@@ -473,7 +508,18 @@ def translate_cluster(
     if moaning_results:
         logger.info(f"Pre-translated {len(moaning_results)} moaning sounds")
 
-    # Step 2: ถ้าทุกบรรทัดเป็นเสียงคราง → ไม่ต้องเรียก LLM
+    # Step 2: Normalize AV slang (JP→JP) ก่อนส่ง LLM
+    normalized_lines = []
+    for line in lines_for_llm:
+        normalized_text = normalize_av_text(line.text)
+        if normalized_text != line.text:
+            logger.debug(f"AV normalize: {line.text} → {normalized_text}")
+            normalized_lines.append(line.with_text(normalized_text))
+        else:
+            normalized_lines.append(line)
+    lines_for_llm = normalized_lines
+
+    # Step 3: ถ้าทุกบรรทัดเป็นเสียงคราง → ไม่ต้องเรียก LLM
     if not lines_for_llm:
         translated = []
         for line in lines:
