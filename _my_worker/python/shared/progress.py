@@ -157,12 +157,21 @@ class ProgressPublisher:
         # Subject format: progress.{entity_type}.{entity_id}
         subject = f"progress.{update.entity_type}.{update.entity_id}"
 
-        # Retry for critical messages (completed/failed)
-        max_retries = 3 if update.status in ("completed", "failed") else 1
+        # Retry for all messages (wait reconnect if disconnected)
+        max_retries = 5 if update.status in ("completed", "failed") else 2
         for attempt in range(max_retries):
             try:
+                # Wait for reconnect if disconnected
+                if not self.nc.is_connected:
+                    logger.warning(f"NATS not connected, waiting for reconnect...")
+                    import asyncio
+                    for _ in range(10):  # wait up to 10 seconds
+                        await asyncio.sleep(1)
+                        if self.nc.is_connected:
+                            break
+
                 await self.nc.publish(subject, data)
-                await self.nc.flush()
+                await self.nc.flush(timeout=10)
                 if update.status in ("completed", "failed"):
                     logger.info(f"Progress published: {subject} - {update.status}")
                 else:
@@ -172,7 +181,7 @@ class ProgressPublisher:
                 logger.error(f"Progress publish failed (attempt {attempt+1}/{max_retries}): {e}")
                 if attempt < max_retries - 1:
                     import asyncio
-                    await asyncio.sleep(1)
+                    await asyncio.sleep(2)
 
         logger.error(f"Progress publish FAILED after {max_retries} attempts: {subject} - {update.status}")
 
