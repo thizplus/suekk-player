@@ -265,7 +265,7 @@ type TranscodeOutputData struct {
 	HLSPath       string           `json:"hls_path,omitempty"`
 	ThumbnailPath string           `json:"thumbnail_path,omitempty"`
 	AudioPath     string           `json:"audio_path,omitempty"`
-	Duration      int              `json:"duration,omitempty"`
+	Duration      float64          `json:"duration,omitempty"`
 	DiskUsage     int64            `json:"disk_usage,omitempty"`
 	QualitySizes  map[string]int64 `json:"quality_sizes,omitempty"`
 	SegmentCounts map[string]int   `json:"segment_counts,omitempty"`

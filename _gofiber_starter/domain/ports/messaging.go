@@ -68,7 +68,7 @@ type ProgressData struct {
 	FileSize int64
 
 	// Transcode output (from new worker completed message)
-	Duration     int
+	Duration     float64
 	DiskUsage    int64
 	QualitySizes map[string]int64
 }
