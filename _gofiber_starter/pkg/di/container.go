@@ -602,8 +602,7 @@ func (c *Container) initStuckDetector() error {
 	// === Subtitle Stuck Detector ===
 	subtitleDetectorConfig := serviceimpl.SubtitleStuckDetectorConfig{
 		CheckInterval:     30 * time.Second, // ตรวจสอบทุก 30 วินาที
-		ProcessingTimeout: 10 * time.Minute, // ถ้า processing > 10 นาที = stuck (worker crash)
-		// ไม่มี QueuedTimeout - jobs รอใน queue ได้นานเท่าที่ต้องการ
+		ProcessingTimeout: 60 * time.Minute, // Transcribe อาจใช้เวลา 30-45 นาที (Demucs+Whisper+Refine)
 	}
 
 	subtitleStuckDetector := serviceimpl.NewSubtitleStuckDetectorService(
