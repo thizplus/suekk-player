@@ -159,8 +159,8 @@ class SubtitleDetectHandler:
 
         except Exception as e:
             logger.error(f"Language detection error: {e}")
-            # Fallback to Japanese (most common in this system)
-            return "ja", 0.0
+            # Re-raise instead of returning bad data — ป้องกัน overwrite language ที่ถูกต้อง
+            raise RuntimeError(f"Language detection failed: {e}")
 
     async def _publish_progress(
         self,

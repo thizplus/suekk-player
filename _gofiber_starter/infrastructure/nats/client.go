@@ -183,7 +183,7 @@ func (c *Client) setupStream(ctx context.Context) error {
 			Durable:       name,
 			FilterSubject: filterSubject,
 			AckPolicy:     jetstream.AckExplicitPolicy,
-			AckWait:       5 * time.Minute,
+			AckWait:       30 * time.Minute,
 			MaxDeliver:    5,
 			MaxAckPending: 1000,
 		}

@@ -13,6 +13,7 @@ from ..ports.audio_port import AudioPort
 logger = logging.getLogger(__name__)
 
 
+
 class AudioAdapter(AudioPort):
     """
     Audio processing adapter using Demucs and FFmpeg.
@@ -63,6 +64,7 @@ class AudioAdapter(AudioPort):
             # Run demucs
             cmd = [
                 "demucs",
+                "-d", "cuda",
                 "-n", model,
                 "--two-stems", "vocals",
                 "-o", str(demucs_out),
@@ -75,7 +77,7 @@ class AudioAdapter(AudioPort):
                 cmd,
                 capture_output=True,
                 text=True,
-                timeout=600,  # 10 minute timeout
+                timeout=1800,  # 30 min — GPU ใช้ ~3-5 นาที แต่เผื่อ audio ยาวมาก
             )
 
             if result.returncode != 0:

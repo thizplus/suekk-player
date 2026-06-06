@@ -44,8 +44,6 @@ _whisper_turbo = None
 _whisper_gap_ja = None
 _whisper_gap_other = None
 _vad_adapter = None
-_audio_adapter = None
-_gemini_adapter = None
 
 
 def get_whisper_turbo(device: str = "cuda") -> WhisperAdapter:
@@ -85,23 +83,18 @@ def get_vad_adapter() -> SileroVADAdapter:
 
 
 def get_audio_adapter(temp_dir: Path) -> AudioAdapter:
-    """Audio processing (Demucs, FFmpeg)"""
-    global _audio_adapter
-    if _audio_adapter is None:
-        logger.info("Loading AudioAdapter")
-        _audio_adapter = AudioAdapter(temp_dir=temp_dir)
-    return _audio_adapter
+    """Audio processing (Demucs, FFmpeg) — สร้างใหม่ทุก job เพราะ temp_dir ต่างกัน"""
+    logger.info("Loading AudioAdapter")
+    return AudioAdapter(temp_dir=temp_dir)
 
 
 def get_llm():
-    """Get LLM instance via Port/Adapter pattern"""
-    global _gemini_adapter
-    if _gemini_adapter is None:
-        import os
-        provider = os.getenv("SUBTITLE_LLM_PROVIDER")
-        _gemini_adapter = create_llm(provider)
-        logger.info(f"LLM loaded: {_gemini_adapter.get_provider_name()} / {_gemini_adapter.get_model_name()}")
-    return _gemini_adapter
+    """Get LLM instance via Port/Adapter pattern — สร้างใหม่ทุกครั้งเพื่อโหลด key ล่าสุดจาก env"""
+    import os
+    provider = os.getenv("SUBTITLE_LLM_PROVIDER")
+    llm = create_llm(provider)
+    logger.info(f"LLM loaded: {llm.get_provider_name()} / {llm.get_model_name()}")
+    return llm
 
 
 # =============================================================================
