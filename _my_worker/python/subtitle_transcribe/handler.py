@@ -381,7 +381,6 @@ class SubtitleTranscribeHandler:
                     llm = get_llm()
                     # ต้องรันใน thread แยก! ไม่งั้น block asyncio event loop
                     # → NATS ping ส่งไม่ได้ → connection timeout → disconnect
-                    import asyncio
                     segments = await asyncio.to_thread(
                         refine_subtitles, llm, segments, lang_code, "Video subtitle"
                     )
