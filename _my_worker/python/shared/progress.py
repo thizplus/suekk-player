@@ -147,7 +147,7 @@ class ProgressPublisher:
         self.throttler = throttler or ProgressThrottler()
 
     async def publish(self, update: ProgressUpdate):
-        """Publish a progress update"""
+        """Publish a progress update with retry for completed/failed status"""
         # Ensure worker_id is set
         update.worker_id = self.worker_id
 
@@ -157,10 +157,24 @@ class ProgressPublisher:
         # Subject format: progress.{entity_type}.{entity_id}
         subject = f"progress.{update.entity_type}.{update.entity_id}"
 
-        # Publish
-        await self.nc.publish(subject, data)
+        # Retry for critical messages (completed/failed)
+        max_retries = 3 if update.status in ("completed", "failed") else 1
+        for attempt in range(max_retries):
+            try:
+                await self.nc.publish(subject, data)
+                await self.nc.flush()
+                if update.status in ("completed", "failed"):
+                    logger.info(f"Progress published: {subject} - {update.status}")
+                else:
+                    logger.debug(f"Progress published: {subject} - {update.status} {update.progress}%")
+                return
+            except Exception as e:
+                logger.error(f"Progress publish failed (attempt {attempt+1}/{max_retries}): {e}")
+                if attempt < max_retries - 1:
+                    import asyncio
+                    await asyncio.sleep(1)
 
-        logger.debug(f"Progress published: {subject} - {update.status} {update.progress}%")
+        logger.error(f"Progress publish FAILED after {max_retries} attempts: {subject} - {update.status}")
 
     async def publish_processing(
         self,

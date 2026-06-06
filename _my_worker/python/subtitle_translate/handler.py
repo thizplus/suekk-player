@@ -318,14 +318,16 @@ class SubtitleTranslateHandler:
             }
 
             # Send per-language completion with subtitle_id for each target
+            # ต้อง override entity_type/entity_id เป็น subtitle เพื่อให้ API route ถูก
             from shared.progress import ProgressUpdate
             for i, target_lang in enumerate(translations.keys()):
                 sub_id = self._subtitle_ids[i] if i < len(self._subtitle_ids) else ""
+                srt_path = translations.get(target_lang, "")
                 completed_update = ProgressUpdate(
                     job_id=meta.job_id,
                     job_type=meta.job_type,
-                    entity_type=meta.entity_type,
-                    entity_id=meta.entity_id,
+                    entity_type="subtitle",
+                    entity_id=sub_id or meta.entity_id,
                     entity_code=meta.entity_code,
                     worker_id=self.progress.worker_id,
                     status="completed",
@@ -333,7 +335,12 @@ class SubtitleTranslateHandler:
                     stage="completed",
                     message="สำเร็จ",
                     duration_sec=duration_sec,
-                    output=output,
+                    output={
+                        "translations": translations,
+                        "srt_path": srt_path,
+                        "language": target_lang,
+                        "video_id": self._video_id,
+                    },
                     video_id=self._video_id,
                     video_code=self._video_code,
                     subtitle_id=sub_id,
