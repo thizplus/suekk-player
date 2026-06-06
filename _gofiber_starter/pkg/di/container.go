@@ -593,9 +593,9 @@ func (c *Container) initStuckDetector() error {
 		logger.Warn("Failed to register stuck detector job", "error", err)
 	} else {
 		logger.Info("Video stuck detector job registered",
-			"check_interval", "30s",
-			"processing_timeout", "10m",
-			"pending_timeout", "5m",
+			"check_interval", detectorConfig.CheckInterval,
+			"processing_timeout", detectorConfig.ProcessingTimeout,
+			"pending_timeout", detectorConfig.PendingTimeout,
 		)
 	}
 
@@ -617,8 +617,8 @@ func (c *Container) initStuckDetector() error {
 		logger.Warn("Failed to register subtitle stuck detector job", "error", err)
 	} else {
 		logger.Info("Subtitle stuck detector job registered",
-			"check_interval", "30s",
-			"processing_timeout", "10m",
+			"check_interval", subtitleDetectorConfig.CheckInterval,
+			"processing_timeout", subtitleDetectorConfig.ProcessingTimeout,
 		)
 	}
 
