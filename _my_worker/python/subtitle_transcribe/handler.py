@@ -474,6 +474,17 @@ class SubtitleTranscribeHandler:
             self.progress.throttler.cleanup(meta.job_id)
             await self.progress.publish(completed_update)
 
+            # HTTP callback backup — NATS Pub/Sub ไม่มี persistence
+            # ถ้า NATS disconnect ตอน publish, completed message หาย
+            # HTTP callback เป็น backup ที่เชื่อถือได้
+            subtitle_id = meta.entity_id if meta.entity_type == "subtitle" else ""
+            if subtitle_id and self.config.api_base_url:
+                await self._send_complete_callback(
+                    subtitle_id=subtitle_id,
+                    srt_path=srt_path,
+                    language=language,
+                )
+
             logger.info(f"Transcription completed in {duration_sec:.1f}s")
             return output
 
@@ -642,6 +653,37 @@ class SubtitleTranscribeHandler:
             return duration or 0.0
         except Exception:
             return 0.0
+
+    async def _send_complete_callback(self, subtitle_id: str, srt_path: str, language: str):
+        """HTTP callback ไป API เพื่อ update subtitle status = ready (backup for NATS)"""
+        import aiohttp
+        url = f"{self.config.api_base_url}/api/v1/internal/subtitles/{subtitle_id}/callback/transcribe"
+        payload = {
+            "srt_path": srt_path,
+            "language": language,
+            "worker_id": self.progress.worker_id,
+        }
+        headers = {}
+        if self.config.api_internal_key:
+            headers["X-Internal-Key"] = self.config.api_internal_key
+
+        for attempt in range(3):
+            try:
+                async with aiohttp.ClientSession() as session:
+                    async with session.post(url, json=payload, headers=headers, timeout=aiohttp.ClientTimeout(total=10)) as resp:
+                        if resp.status == 200:
+                            logger.info(f"HTTP callback success: {url}")
+                            return
+                        else:
+                            body = await resp.text()
+                            logger.warning(f"HTTP callback failed ({resp.status}): {body}")
+            except Exception as e:
+                logger.warning(f"HTTP callback error (attempt {attempt+1}/3): {e}")
+                if attempt < 2:
+                    import asyncio
+                    await asyncio.sleep(2)
+
+        logger.error(f"HTTP callback FAILED after 3 attempts: {url}")
 
     async def _publish_progress(
         self,
