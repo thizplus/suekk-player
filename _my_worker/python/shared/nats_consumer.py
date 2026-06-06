@@ -87,6 +87,8 @@ class NATSConsumer:
             name=self.config.worker_id,
             reconnect_time_wait=2,
             max_reconnect_attempts=-1,
+            ping_interval=20,           # Ping ทุก 20 วินาที (ป้องกัน idle disconnect)
+            max_outstanding_pings=5,    # ยอม miss 5 ครั้งก่อนตัด
             disconnected_cb=self._on_disconnect,
             reconnected_cb=self._on_reconnect,
             error_cb=self._on_error,
