@@ -272,6 +272,9 @@ class SubtitleTranslateHandler:
 
                 logger.info(f"Translated {len(translated)} segments to {target_lang}")
 
+                # Post-translate report: สรุปบรรทัดที่มีปัญหา
+                self._log_translation_report(translated, source_lang, target_lang)
+
                 # Fix overlaps
                 translated = fix_segment_overlaps(translated)
 
@@ -566,6 +569,47 @@ class SubtitleTranslateHandler:
             ))
 
         return result
+
+    def _log_translation_report(self, translated: List[SubtitleLine], source_lang: str, target_lang: str):
+        """สรุปบรรทัดที่มีปัญหาหลัง translate — เพื่อนำไปแก้มือหรือเพิ่ม dict"""
+        import re
+        jp_pattern = re.compile(r'[\u3040-\u309f\u30a0-\u30ff\u4e00-\u9fff]')
+
+        still_jp = []
+        empty = []
+
+        for seg in translated:
+            text = seg.text.strip()
+            if not text:
+                empty.append(seg.index)
+            elif jp_pattern.search(text) and target_lang == "th":
+                still_jp.append((seg.index, text))
+
+        if still_jp or empty:
+            logger.warning(f"=== Translation Report ({source_lang}→{target_lang}) ===")
+            if still_jp:
+                logger.warning(f"  Still JP (not translated): {len(still_jp)} lines")
+                for idx, text in still_jp[:20]:
+                    logger.warning(f"    [{idx}] {text}")
+                if len(still_jp) > 20:
+                    logger.warning(f"    ... +{len(still_jp)-20} more")
+
+                # บันทึกลงไฟล์ needs_translation.txt
+                try:
+                    needs_file = Path(self.config.temp_dir) / "needs_translation.txt"
+                    with open(needs_file, "a", encoding="utf-8") as f:
+                        f.write(f"\n# === {source_lang}→{target_lang} ===\n")
+                        f.write(f"# เพิ่มคำแปลลง shared/translation_dict.json\n")
+                        for idx, text in still_jp:
+                            f.write(f"{text}\t→\t\n")
+                    logger.info(f"  Saved to: {needs_file}")
+                except Exception as e:
+                    logger.warning(f"  Failed to save needs_translation.txt: {e}")
+
+            if empty:
+                logger.warning(f"  Empty lines: {len(empty)}")
+        else:
+            logger.info(f"Translation report: ALL lines translated successfully ({len(translated)} segments)")
 
     async def _publish_progress(self, meta: JobMeta, stage: str, progress: float, message: str):
         """Publish progress update with video_id for API routing"""

@@ -66,7 +66,7 @@ def refine_subtitles(
     language: LanguageCode,
     context: str = "",
     batch_size: int = 30,
-    confidence_threshold: float = 0.9,
+    confidence_threshold: float = -0.3,
 ) -> List[SubtitleLine]:
     """
     Refine subtitles using LLM (any provider).
@@ -79,7 +79,7 @@ def refine_subtitles(
         language: Language code
         context: Video context
         batch_size: Lines per API call
-        confidence_threshold: ข้ามถ้า confidence >= threshold (default 0.9)
+        confidence_threshold: ข้ามถ้า avg_logprob >= threshold (default -0.3, higher = more confident)
     """
     if not lines:
         return []
