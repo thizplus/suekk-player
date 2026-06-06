@@ -289,7 +289,7 @@ func (pb *ProgressBroadcaster) updateVideoStatus(update *ports.ProgressData) {
 
 		// Update fields from worker output (เหมือน worker เก่าที่ update DB ตรง)
 		if update.Duration > 0 {
-			video.Duration = update.Duration
+			video.Duration = int(update.Duration)
 		}
 		if update.DiskUsage > 0 {
 			video.DiskUsage = update.DiskUsage
