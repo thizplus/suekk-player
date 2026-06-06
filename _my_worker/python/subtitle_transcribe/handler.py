@@ -258,7 +258,17 @@ class SubtitleTranscribeHandler:
         self._video_id = input_data.get("video_id", "")
         self._video_code = input_data.get("video_code", "")
 
+        # Per-job log file — บันทึก log แยกต่อ job
+        from datetime import datetime
+        job_log_dir = Path(self.config.temp_dir).parent / "logs" / "transcribe_jobs"
+        job_log_dir.mkdir(parents=True, exist_ok=True)
+        job_log_file = job_log_dir / f"{meta.entity_code}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
+        job_log_handler = logging.FileHandler(job_log_file, encoding="utf-8")
+        job_log_handler.setFormatter(logging.Formatter('%(asctime)s | %(levelname)-5s | %(name)s | %(message)s', datefmt='%H:%M:%S'))
+        logging.getLogger().addHandler(job_log_handler)
+
         logger.info(f"Starting transcription: {meta.job_id}")
+        logger.info(f"  Job log: {job_log_file}")
         logger.info(f"  Audio: {audio_path}")
         logger.info(f"  Language: {language}")
         logger.info(f"  Output: {output_path}")
@@ -484,6 +494,10 @@ class SubtitleTranscribeHandler:
             raise
 
         finally:
+            # Remove per-job log handler
+            if 'job_log_handler' in dir():
+                logging.getLogger().removeHandler(job_log_handler)
+                job_log_handler.close()
             self._cleanup(job_dir, temp_files, temp_dirs)
 
     # =========================================================================
