@@ -55,7 +55,8 @@ class GeminiLLM(LLMPort):
                 config={
                     'thinking_config': {'thinking_budget': 0},
                     'temperature': 0.3,
-                    'http_options': {'timeout': 60000},  # 60 seconds timeout
+                    'max_output_tokens': 2048,  # ป้องกัน hallucination ยาว
+                    'http_options': {'timeout': 60000},
                 },
             )
             if not response.text:
@@ -75,13 +76,14 @@ class GeminiLLM(LLMPort):
                 config={
                     'thinking_config': {'thinking_budget': 0},
                     'temperature': 0.3,
+                    'max_output_tokens': 2048,  # ป้องกัน hallucination ยาว
                     'safety_settings': [
                         {'category': 'HARM_CATEGORY_SEXUALLY_EXPLICIT', 'threshold': 'BLOCK_NONE'},
                         {'category': 'HARM_CATEGORY_HARASSMENT', 'threshold': 'BLOCK_NONE'},
                         {'category': 'HARM_CATEGORY_DANGEROUS_CONTENT', 'threshold': 'BLOCK_NONE'},
                         {'category': 'HARM_CATEGORY_HATE_SPEECH', 'threshold': 'BLOCK_NONE'},
                     ],
-                    'http_options': {'timeout': 60000},  # 60 seconds timeout
+                    'http_options': {'timeout': 60000},
                 },
             )
             if not response.text:
