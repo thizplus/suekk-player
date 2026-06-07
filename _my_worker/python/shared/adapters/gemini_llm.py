@@ -108,7 +108,7 @@ class GeminiLLM(LLMPort):
         if thinking_tokens > 0:
             logger.warning(f"THINKING ON! tokens: input={input_tokens}, output={output_tokens}, thinking={thinking_tokens} ($$)")
         else:
-            logger.debug(f"Tokens: input={input_tokens}, output={output_tokens}, thinking=0")
+            logger.info(f"Tokens: input={input_tokens}, output={output_tokens}, thinking=0")
 
         return LLMResponse(text=response.text.strip(), success=True, model=self._model_name)
 
