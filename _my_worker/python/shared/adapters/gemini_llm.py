@@ -1,7 +1,8 @@
 """
 Gemini LLM Adapter — implements LLMPort.
 
-ทำแค่ส่ง prompt และรับ text กลับ ไม่มี business logic
+ใช้ google-genai SDK ใหม่ (ไม่ใช่ google-generativeai ที่ deprecated)
+รองรับ thinking_budget=0 เพื่อปิด thinking tokens ($3.50/1M)
 """
 
 import os
@@ -16,6 +17,7 @@ logger = logging.getLogger(__name__)
 class GeminiLLM(LLMPort):
     """
     Google Gemini implementation of LLMPort.
+    ใช้ google.genai SDK (ใหม่) พร้อม thinking_budget=0
 
     Usage:
         llm = GeminiLLM(api_key="xxx", model="gemini-2.5-flash")
@@ -30,72 +32,61 @@ class GeminiLLM(LLMPort):
         self._api_key = api_key or os.getenv("GEMINI_API_KEY", "")
         self._model_name = model or os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
         self._client = None
-        self._client_unsafe = None
 
         if not self._api_key:
             logger.warning("GEMINI_API_KEY not set")
 
     def _get_client(self):
-        """Lazy load Gemini client (with default safety)"""
+        """Lazy load genai client"""
         if self._client is None:
-            import google.generativeai as genai
-            genai.configure(api_key=self._api_key)
-            self._client = genai.GenerativeModel(self._model_name)
+            from google import genai
+            self._client = genai.Client(api_key=self._api_key)
             logger.info(f"Gemini client initialized: {self._model_name}")
         return self._client
 
-    def _get_client_unsafe(self):
-        """Lazy load Gemini client with safety filters disabled"""
-        if self._client_unsafe is None:
-            import google.generativeai as genai
-            genai.configure(api_key=self._api_key)
-            safety_settings = [
-                {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"},
-                {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
-                {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
-                {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
-            ]
-            self._client_unsafe = genai.GenerativeModel(
-                self._model_name,
-                safety_settings=safety_settings,
-            )
-            logger.info(f"Gemini client (unsafe) initialized: {self._model_name}")
-        return self._client_unsafe
-
-    def _get_generation_config(self):
-        """Generation config — ปิด thinking เพื่อลดค่าใช้จ่าย"""
-        try:
-            from google.generativeai.types import GenerationConfig
-            return GenerationConfig(
-                thinking_config={"thinking_budget": 0},  # ปิด thinking ($3.50/1M → $0)
-                temperature=0.3,
-            )
-        except Exception:
-            return None
-
     def generate(self, prompt: str) -> LLMResponse:
-        """Send prompt to Gemini with default safety settings"""
+        """Send prompt to Gemini with default safety settings, thinking OFF"""
         client = self._get_client()
         try:
-            response = client.generate_content(prompt, generation_config=self._get_generation_config())
-            if not response.candidates:
-                return LLMResponse(text="", success=False, error="Content blocked by safety filter", model=self._model_name)
+            response = client.models.generate_content(
+                model=self._model_name,
+                contents=prompt,
+                config={
+                    'thinking_config': {'thinking_budget': 0},
+                    'temperature': 0.3,
+                },
+            )
+            if not response.text:
+                return LLMResponse(text="", success=False, error="Empty response", model=self._model_name)
             return self._parse_response(response)
         except Exception as e:
             logger.error(f"Gemini generate failed: {e}")
             return LLMResponse(text="", success=False, error=str(e), model=self._model_name)
 
     def generate_unsafe(self, prompt: str) -> LLMResponse:
-        """Send prompt with safety filters disabled, fallback to normal if blocked"""
-        client = self._get_client_unsafe()
+        """Send prompt with safety filters disabled, thinking OFF"""
+        client = self._get_client()
         try:
-            response = client.generate_content(prompt, generation_config=self._get_generation_config())
-            if not response.candidates:
-                logger.warning("Unsafe client blocked, falling back to normal client")
+            response = client.models.generate_content(
+                model=self._model_name,
+                contents=prompt,
+                config={
+                    'thinking_config': {'thinking_budget': 0},
+                    'temperature': 0.3,
+                    'safety_settings': [
+                        {'category': 'HARM_CATEGORY_SEXUALLY_EXPLICIT', 'threshold': 'BLOCK_NONE'},
+                        {'category': 'HARM_CATEGORY_HARASSMENT', 'threshold': 'BLOCK_NONE'},
+                        {'category': 'HARM_CATEGORY_DANGEROUS_CONTENT', 'threshold': 'BLOCK_NONE'},
+                        {'category': 'HARM_CATEGORY_HATE_SPEECH', 'threshold': 'BLOCK_NONE'},
+                    ],
+                },
+            )
+            if not response.text:
+                logger.warning("Unsafe response empty, trying without safety override")
                 return self.generate(prompt)
             return self._parse_response(response)
         except Exception as e:
-            logger.warning(f"Unsafe client failed ({e}), falling back to normal client")
+            logger.warning(f"Unsafe generate failed ({e}), falling back to normal")
             return self.generate(prompt)
 
     def _parse_response(self, response) -> LLMResponse:
