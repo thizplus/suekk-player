@@ -48,12 +48,14 @@ class GeminiLLM(LLMPort):
         """Send prompt to Gemini with default safety settings, thinking OFF"""
         client = self._get_client()
         try:
+            import httpx
             response = client.models.generate_content(
                 model=self._model_name,
                 contents=prompt,
                 config={
                     'thinking_config': {'thinking_budget': 0},
                     'temperature': 0.3,
+                    'http_options': {'timeout': 60000},  # 60 seconds timeout
                 },
             )
             if not response.text:
@@ -64,7 +66,7 @@ class GeminiLLM(LLMPort):
             return LLMResponse(text="", success=False, error=str(e), model=self._model_name)
 
     def generate_unsafe(self, prompt: str) -> LLMResponse:
-        """Send prompt with safety filters disabled, thinking OFF"""
+        """Send prompt with safety filters disabled, thinking OFF, timeout 60s"""
         client = self._get_client()
         try:
             response = client.models.generate_content(
@@ -79,15 +81,16 @@ class GeminiLLM(LLMPort):
                         {'category': 'HARM_CATEGORY_DANGEROUS_CONTENT', 'threshold': 'BLOCK_NONE'},
                         {'category': 'HARM_CATEGORY_HATE_SPEECH', 'threshold': 'BLOCK_NONE'},
                     ],
+                    'http_options': {'timeout': 60000},  # 60 seconds timeout
                 },
             )
             if not response.text:
-                logger.warning("Unsafe response empty, trying without safety override")
-                return self.generate(prompt)
+                logger.warning("Unsafe response empty, skipping this cluster")
+                return LLMResponse(text="", success=False, error="Content blocked", model=self._model_name)
             return self._parse_response(response)
         except Exception as e:
-            logger.warning(f"Unsafe generate failed ({e}), falling back to normal")
-            return self.generate(prompt)
+            logger.warning(f"Unsafe generate failed: {e}")
+            return LLMResponse(text="", success=False, error=str(e), model=self._model_name)
 
     def _parse_response(self, response) -> LLMResponse:
         """Parse response + log token usage"""
