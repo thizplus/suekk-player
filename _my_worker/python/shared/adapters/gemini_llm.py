@@ -62,11 +62,22 @@ class GeminiLLM(LLMPort):
             logger.info(f"Gemini client (unsafe) initialized: {self._model_name}")
         return self._client_unsafe
 
+    def _get_generation_config(self):
+        """Generation config — ปิด thinking เพื่อลดค่าใช้จ่าย"""
+        try:
+            from google.generativeai.types import GenerationConfig
+            return GenerationConfig(
+                thinking_config={"thinking_budget": 0},  # ปิด thinking ($3.50/1M → $0)
+                temperature=0.3,
+            )
+        except Exception:
+            return None
+
     def generate(self, prompt: str) -> LLMResponse:
         """Send prompt to Gemini with default safety settings"""
         client = self._get_client()
         try:
-            response = client.generate_content(prompt)
+            response = client.generate_content(prompt, generation_config=self._get_generation_config())
             if not response.candidates:
                 return LLMResponse(text="", success=False, error="Content blocked by safety filter", model=self._model_name)
             return LLMResponse(text=response.text.strip(), success=True, model=self._model_name)
@@ -76,17 +87,14 @@ class GeminiLLM(LLMPort):
 
     def generate_unsafe(self, prompt: str) -> LLMResponse:
         """Send prompt with safety filters disabled, fallback to normal if blocked"""
-        # Try unsafe client first
         client = self._get_client_unsafe()
         try:
-            response = client.generate_content(prompt)
+            response = client.generate_content(prompt, generation_config=self._get_generation_config())
             if not response.candidates:
-                # Fallback to normal client
                 logger.warning("Unsafe client blocked, falling back to normal client")
                 return self.generate(prompt)
             return LLMResponse(text=response.text.strip(), success=True, model=self._model_name)
         except Exception as e:
-            # Fallback to normal client on any error
             logger.warning(f"Unsafe client failed ({e}), falling back to normal client")
             return self.generate(prompt)
 
