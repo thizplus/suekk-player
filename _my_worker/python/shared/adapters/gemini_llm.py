@@ -80,7 +80,7 @@ class GeminiLLM(LLMPort):
             response = client.generate_content(prompt, generation_config=self._get_generation_config())
             if not response.candidates:
                 return LLMResponse(text="", success=False, error="Content blocked by safety filter", model=self._model_name)
-            return LLMResponse(text=response.text.strip(), success=True, model=self._model_name)
+            return self._parse_response(response)
         except Exception as e:
             logger.error(f"Gemini generate failed: {e}")
             return LLMResponse(text="", success=False, error=str(e), model=self._model_name)
@@ -93,10 +93,24 @@ class GeminiLLM(LLMPort):
             if not response.candidates:
                 logger.warning("Unsafe client blocked, falling back to normal client")
                 return self.generate(prompt)
-            return LLMResponse(text=response.text.strip(), success=True, model=self._model_name)
+            return self._parse_response(response)
         except Exception as e:
             logger.warning(f"Unsafe client failed ({e}), falling back to normal client")
             return self.generate(prompt)
+
+    def _parse_response(self, response) -> LLMResponse:
+        """Parse response + log token usage"""
+        usage = response.usage_metadata
+        thinking_tokens = getattr(usage, 'thoughts_token_count', 0) or 0
+        input_tokens = getattr(usage, 'prompt_token_count', 0) or 0
+        output_tokens = getattr(usage, 'candidates_token_count', 0) or 0
+
+        if thinking_tokens > 0:
+            logger.warning(f"THINKING ON! tokens: input={input_tokens}, output={output_tokens}, thinking={thinking_tokens} ($$)")
+        else:
+            logger.debug(f"Tokens: input={input_tokens}, output={output_tokens}, thinking=0")
+
+        return LLMResponse(text=response.text.strip(), success=True, model=self._model_name)
 
     def get_model_name(self) -> str:
         return self._model_name
