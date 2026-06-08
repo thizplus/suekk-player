@@ -5,7 +5,6 @@ import {
   Search,
   Loader2,
   Star,
-  Play,
   ChevronLeft,
   ChevronRight,
   FolderOpen,
@@ -45,10 +44,10 @@ import type { Series, SeriesFilterParams, SeriesCategory } from '../types'
 import { toast } from 'sonner'
 
 // ═══════════════════════════════════════════
-// Series Card
+// Series Row (list view เหมือน VideoListPage)
 // ═══════════════════════════════════════════
 
-function SeriesCard({
+function SeriesRow({
   series,
   onClick,
 }: {
@@ -57,93 +56,43 @@ function SeriesCard({
 }) {
   return (
     <div
-      className="group cursor-pointer rounded-lg border bg-card overflow-hidden hover:border-primary/50 transition-all"
+      className="flex items-center gap-3 px-3 py-2.5 rounded-lg border border-dashed hover:bg-accent/50 transition-colors cursor-pointer leading-none overflow-hidden"
       onClick={onClick}
     >
-      {/* Poster */}
-      <div className="relative aspect-[2/3] bg-muted overflow-hidden">
-        {series.posterPath ? (
-          <img
-            src={series.posterPath}
-            alt={series.title}
-            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-            loading="lazy"
-          />
-        ) : (
-          <div className="w-full h-full flex items-center justify-center">
-            <Tv className="h-10 w-10 text-muted-foreground/30" />
-          </div>
+      <Tv className="h-4 w-4 text-muted-foreground shrink-0" />
+      <div className="flex-1 min-w-0 overflow-hidden">
+        <p className="font-medium truncate">{series.title}</p>
+        {series.thaiTitle && (
+          <p className="text-xs text-muted-foreground line-clamp-1">{series.thaiTitle}</p>
         )}
-
-        {/* Overlay badges */}
-        <div className="absolute top-2 left-2 flex flex-col gap-1">
-          {series.quality && (
-            <Badge variant="secondary" className="text-[10px] px-1.5 py-0 bg-black/70 text-white border-0">
-              {series.quality}
-            </Badge>
+        <p className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
+          {series.year > 0 && <span>{series.year}</span>}
+          {series.rating > 0 && series.rating < 100 && (
+            <span className="flex items-center gap-0.5">
+              <Star className="h-3 w-3 text-yellow-500 fill-yellow-500" />
+              {series.rating}
+            </span>
           )}
+          <span>{series.totalEpisodes} ตอน</span>
           {series.audioType && (
-            <Badge
-              variant="secondary"
-              className={`text-[10px] px-1.5 py-0 border-0 ${
-                series.audioType === 'Thai'
-                  ? 'bg-sky-600 text-white'
-                  : 'bg-black/70 text-white'
-              }`}
-            >
+            <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4">
               {series.audioType === 'Thai' ? 'พากย์ไทย' : 'ซับไทย'}
             </Badge>
           )}
-        </div>
-
-        {/* Rating */}
-        {series.rating > 0 && (
-          <div className="absolute top-2 right-2 flex items-center gap-0.5 bg-black/70 text-yellow-400 rounded px-1.5 py-0.5 text-xs font-medium">
-            <Star className="h-3 w-3 fill-current" />
-            {series.rating}
-          </div>
-        )}
-
-        {/* Episode count */}
-        <div className="absolute bottom-2 right-2 bg-black/70 text-white rounded px-1.5 py-0.5 text-[10px]">
-          {series.totalEpisodes} ตอน{series.isCompleted ? ' (จบ)' : ''}
-        </div>
-
-        {/* Trailer play icon */}
-        {series.trailerYoutubeId && (
-          <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity bg-black/30">
-            <Play className="h-10 w-10 text-white fill-white/80" />
-          </div>
-        )}
-      </div>
-
-      {/* Info */}
-      <div className="p-2.5">
-        <h3 className="text-sm font-medium truncate" title={series.title}>
-          {series.title}
-        </h3>
-        {series.thaiTitle && (
-          <p className="text-xs text-muted-foreground truncate mt-0.5" title={series.thaiTitle}>
-            {series.thaiTitle}
-          </p>
-        )}
-        <div className="flex items-center gap-2 mt-1.5">
-          {series.year > 0 && (
-            <span className="text-[11px] text-muted-foreground">{series.year}</span>
+          {series.isCompleted && (
+            <Badge className="status-success text-[10px] px-1.5 py-0 h-4">จบ</Badge>
           )}
-          {series.category && (
-            <span className="text-[11px] text-muted-foreground truncate">
-              {series.category.name}
-            </span>
+          {series.platforms && series.platforms.length > 0 && (
+            <span className="text-muted-foreground/60">{series.platforms.join(', ')}</span>
           )}
-        </div>
+        </p>
       </div>
     </div>
   )
 }
 
 // ═══════════════════════════════════════════
-// Series Detail Sheet
+// Series Detail Sheet (ภาพ poster อยู่ในนี้)
 // ═══════════════════════════════════════════
 
 function SeriesDetailSheet({
@@ -160,27 +109,31 @@ function SeriesDetailSheet({
   return (
     <Sheet open={open} onOpenChange={onClose}>
       <SheetContent className="w-full sm:max-w-xl overflow-y-auto">
-        <SheetHeader>
+        <SheetHeader className="pb-4">
           <SheetTitle className="text-left">{series.title}</SheetTitle>
         </SheetHeader>
 
-        <div className="mt-4 space-y-4">
+        <div className="space-y-5 px-1">
           {/* Poster + meta */}
           <div className="flex gap-4">
-            {series.posterPath && (
+            {series.posterPath ? (
               <img
                 src={series.posterPath}
                 alt={series.title}
-                className="w-28 rounded-lg object-cover"
+                className="w-28 rounded-lg object-cover shrink-0"
               />
+            ) : (
+              <div className="w-28 h-40 rounded-lg bg-muted flex items-center justify-center shrink-0">
+                <Tv className="h-8 w-8 text-muted-foreground/30" />
+              </div>
             )}
-            <div className="flex-1 space-y-2">
+            <div className="flex-1 space-y-2 min-w-0">
               {series.thaiTitle && (
                 <p className="text-sm text-muted-foreground">{series.thaiTitle}</p>
               )}
               <div className="flex flex-wrap gap-1.5">
                 {series.year > 0 && <Badge variant="outline">{series.year}</Badge>}
-                {series.rating > 0 && (
+                {series.rating > 0 && series.rating < 100 && (
                   <Badge variant="outline" className="gap-1">
                     <Star className="h-3 w-3 text-yellow-500 fill-yellow-500" />
                     {series.rating}
@@ -198,8 +151,20 @@ function SeriesDetailSheet({
                 )}
                 <Badge variant="outline">{series.totalEpisodes} ตอน</Badge>
               </div>
-              {series.quality && (
-                <p className="text-xs text-muted-foreground">คุณภาพ: {series.quality}</p>
+              {/* Platforms + Genres */}
+              {series.platforms && series.platforms.length > 0 && (
+                <div className="flex flex-wrap gap-1">
+                  {series.platforms.map((p) => (
+                    <Badge key={p} variant="outline" className="text-[10px]">{p}</Badge>
+                  ))}
+                </div>
+              )}
+              {series.genres && series.genres.length > 0 && (
+                <div className="flex flex-wrap gap-1">
+                  {series.genres.map((g) => (
+                    <Badge key={g} variant="secondary" className="text-[10px]">{g}</Badge>
+                  ))}
+                </div>
               )}
             </div>
           </div>
@@ -252,21 +217,18 @@ function SeriesDetailSheet({
               </div>
               <p className="text-[11px] text-muted-foreground mt-1.5">
                 <span className="inline-block w-3 h-3 rounded bg-primary/10 border border-primary/30 align-middle mr-1" />
-                มี video แล้ว
+                มี video
                 <span className="inline-block w-3 h-3 rounded bg-muted align-middle ml-3 mr-1" />
-                ยังไม่มี
+                รอ upload
               </p>
             </div>
           )}
 
-          {/* Source link */}
-          {series.slug && (
-            <div className="pt-2 border-t">
-              <p className="text-xs text-muted-foreground">
-                Code: <span className="font-mono">{series.code}</span>
-              </p>
-            </div>
-          )}
+          {/* Code + source */}
+          <div className="pt-2 border-t text-xs text-muted-foreground space-y-1">
+            <p>Code: <span className="font-mono">{series.code}</span></p>
+            {series.slug && <p>Slug: <span className="font-mono">{series.slug}</span></p>}
+          </div>
         </div>
       </SheetContent>
     </Sheet>
@@ -309,7 +271,6 @@ function CategoryManagerDialog({
         </DialogHeader>
 
         <div className="space-y-4">
-          {/* Add new */}
           <div className="flex gap-2">
             <Input
               placeholder="ชื่อหมวดหมู่ใหม่..."
@@ -329,7 +290,6 @@ function CategoryManagerDialog({
             </Button>
           </div>
 
-          {/* List */}
           {isLoading ? (
             <div className="flex justify-center py-4">
               <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
@@ -367,7 +327,6 @@ function CategoryManagerDialog({
 export function SeriesListPage() {
   const [searchParams, setSearchParams] = useSearchParams()
 
-  // Filters from URL
   const filters: SeriesFilterParams = {
     search: searchParams.get('search') || '',
     categoryId: searchParams.get('categoryId') || '',
@@ -410,7 +369,7 @@ export function SeriesListPage() {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
@@ -493,13 +452,13 @@ export function SeriesListPage() {
         )}
       </div>
 
-      {/* Grid */}
+      {/* List */}
       {isLoading ? (
-        <div className="flex justify-center py-20">
-          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+        <div className="flex justify-center py-12">
+          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
         </div>
       ) : seriesList.length === 0 ? (
-        <Empty className="border py-16">
+        <Empty className="border">
           <EmptyHeader>
             <EmptyMedia variant="icon">
               <Tv className="h-6 w-6" />
@@ -512,9 +471,9 @@ export function SeriesListPage() {
         </Empty>
       ) : (
         <>
-          <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-8 gap-3">
+          <div className="space-y-2">
             {seriesList.map((s) => (
-              <SeriesCard
+              <SeriesRow
                 key={s.id}
                 series={s}
                 onClick={() => setSelectedSeries(s)}
