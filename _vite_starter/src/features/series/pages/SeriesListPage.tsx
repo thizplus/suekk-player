@@ -118,7 +118,7 @@ function SeriesDetailSheet({
           <div className="flex gap-4">
             {series.posterPath ? (
               <img
-                src={`/${series.posterPath.replace(/^series\//, 'series-img/')}`}
+                src={`${import.meta.env.VITE_API_URL || ''}/series-img/${series.code}/poster.jpg`}
                 alt={series.title}
                 className="w-28 rounded-lg object-cover shrink-0"
               />
