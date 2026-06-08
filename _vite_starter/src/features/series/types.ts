@@ -17,6 +17,8 @@ export interface Series {
   trailerYoutubeId: string
   totalEpisodes: number
   isCompleted: boolean
+  platforms: string[]
+  genres: string[]
   status: string
   category: SeriesCategory | null
   episodes: SeriesEpisode[]

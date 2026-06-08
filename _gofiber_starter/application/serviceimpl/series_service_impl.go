@@ -61,6 +61,8 @@ func (s *SeriesServiceImpl) Create(ctx context.Context, req *dto.CreateSeriesReq
 		TotalEpisodes:    req.TotalEpisodes,
 		IsCompleted:      req.IsCompleted,
 		SeriesCategoryID: req.CategoryID,
+		Platforms:        models.StringArray(req.Platforms),
+		Genres:           models.StringArray(req.Genres),
 		Status:           "active",
 		SourceSite:       req.SourceSite,
 		SourceID:         req.SourceID,
@@ -128,6 +130,12 @@ func (s *SeriesServiceImpl) Update(ctx context.Context, id uuid.UUID, req *dto.U
 	}
 	if req.CategoryID != nil {
 		series.SeriesCategoryID = req.CategoryID
+	}
+	if req.Platforms != nil {
+		series.Platforms = models.StringArray(req.Platforms)
+	}
+	if req.Genres != nil {
+		series.Genres = models.StringArray(req.Genres)
 	}
 	if req.Status != nil {
 		series.Status = *req.Status

@@ -24,6 +24,8 @@ type CreateSeriesRequest struct {
 	TotalEpisodes    int        `json:"totalEpisodes"`
 	IsCompleted      bool       `json:"isCompleted"`
 	CategoryID       *uuid.UUID `json:"categoryId"`
+	Platforms        []string   `json:"platforms"`
+	Genres           []string   `json:"genres"`
 	SourceSite       string     `json:"sourceSite"`
 	SourceID         int        `json:"sourceId"`
 	SourceURL        string     `json:"sourceUrl"`
@@ -41,6 +43,8 @@ type UpdateSeriesRequest struct {
 	TotalEpisodes    *int       `json:"totalEpisodes"`
 	IsCompleted      *bool      `json:"isCompleted"`
 	CategoryID       *uuid.UUID `json:"categoryId"`
+	Platforms        []string   `json:"platforms"`
+	Genres           []string   `json:"genres"`
 	Status           *string    `json:"status"`
 	PosterPath       *string    `json:"posterPath"`
 }
@@ -96,6 +100,8 @@ type SeriesResponse struct {
 	TrailerYoutubeID string                   `json:"trailerYoutubeId"`
 	TotalEpisodes    int                      `json:"totalEpisodes"`
 	IsCompleted      bool                     `json:"isCompleted"`
+	Platforms        []string                 `json:"platforms"`
+	Genres           []string                 `json:"genres"`
 	Status           string                   `json:"status"`
 	Category         *SeriesCategoryResponse  `json:"category,omitempty"`
 	Episodes         []SeriesEpisodeResponse  `json:"episodes,omitempty"`
@@ -148,6 +154,8 @@ func SeriesToSeriesResponse(s *models.Series) *SeriesResponse {
 		TrailerYoutubeID: s.TrailerYoutubeID,
 		TotalEpisodes:    s.TotalEpisodes,
 		IsCompleted:      s.IsCompleted,
+		Platforms:        []string(s.Platforms),
+		Genres:           []string(s.Genres),
 		Status:           s.Status,
 		CreatedAt:        s.CreatedAt,
 		UpdatedAt:        s.UpdatedAt,

@@ -1,10 +1,34 @@
 package models
 
 import (
+	"database/sql/driver"
+	"encoding/json"
 	"time"
 
 	"github.com/google/uuid"
 )
+
+// StringArray สำหรับเก็บ JSON array ใน PostgreSQL (JSONB)
+type StringArray []string
+
+func (a StringArray) Value() (driver.Value, error) {
+	if a == nil {
+		return "[]", nil
+	}
+	return json.Marshal(a)
+}
+
+func (a *StringArray) Scan(value interface{}) error {
+	if value == nil {
+		*a = StringArray{}
+		return nil
+	}
+	bytes, ok := value.([]byte)
+	if !ok {
+		return nil
+	}
+	return json.Unmarshal(bytes, a)
+}
 
 type Series struct {
 	ID                uuid.UUID  `gorm:"primaryKey;type:uuid;default:gen_random_uuid()"`
@@ -22,7 +46,9 @@ type Series struct {
 	TotalEpisodes     int        `gorm:"default:0"`
 	IsCompleted       bool       `gorm:"default:false"`
 	SeriesCategoryID  *uuid.UUID `gorm:"type:uuid;index"`
-	Status            string     `gorm:"size:20;default:'active';index"` // active | hidden | draft
+	Platforms         StringArray `gorm:"type:jsonb;default:'[]'"` // ["NETFLIX", "VIU", "HBO"]
+	Genres            StringArray `gorm:"type:jsonb;default:'[]'"` // ["Drama", "Comedy", "Action"]
+	Status            string      `gorm:"size:20;default:'active';index"` // active | hidden | draft
 
 	// Source tracking (Bot ใช้ป้องกันซ้ำ)
 	SourceSite string `gorm:"size:100;default:''"`
