@@ -472,7 +472,7 @@ export function VideoPlayer({
       })
     }
 
-    // Mobile: แสดงเวลา 2 บรรทัด (current / duration) แทนยาวบรรทัดเดียว
+    // Mobile: เวลาสั้นลง — ก่อนเล่นแสดง duration, ตอนเล่นแสดงแค่ current time
     if (/Mobi|Android/i.test(navigator.userAgent)) {
       const formatTime = (s: number) => {
         const h = Math.floor(s / 3600)
@@ -481,17 +481,14 @@ export function VideoPlayer({
         const pad = (n: number) => String(n).padStart(2, '0')
         return h > 0 ? `${h}:${pad(m)}:${pad(sec)}` : `${m}:${pad(sec)}`
       }
-      const timeEl = art.template?.$controlsLeft?.querySelector('.art-control-time') as HTMLElement | null
+      const timeEl = art.template?.$controlsLeft?.querySelector('.art-control-time')
       if (timeEl) {
-        timeEl.style.whiteSpace = 'pre-line'
-        timeEl.style.lineHeight = '1.2'
-        timeEl.style.fontSize = '11px'
-        timeEl.style.textAlign = 'center'
-        const updateTime = () => {
-          timeEl.textContent = `${formatTime(art.currentTime)}\n${formatTime(art.duration)}`
-        }
-        art.on('video:timeupdate', updateTime)
-        art.on('video:loadedmetadata', updateTime)
+        art.on('video:loadedmetadata', () => {
+          timeEl.textContent = formatTime(art.duration)
+        })
+        art.on('video:timeupdate', () => {
+          timeEl.textContent = formatTime(art.currentTime)
+        })
       }
     }
 
