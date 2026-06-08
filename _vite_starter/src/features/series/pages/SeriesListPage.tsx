@@ -6,8 +6,6 @@ import {
   Loader2,
   Star,
   Play,
-  ExternalLink,
-  Filter,
   ChevronLeft,
   ChevronRight,
 } from 'lucide-react'
@@ -286,7 +284,7 @@ export function SeriesListPage() {
   }
 
   const { data, isLoading } = useSeriesList(filters)
-  const { data: categories } = useSeriesCategories()
+  useSeriesCategories() // preload categories
   const [selectedSeries, setSelectedSeries] = useState<Series | null>(null)
   const [searchInput, setSearchInput] = useState(filters.search || '')
 
