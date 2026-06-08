@@ -290,8 +290,8 @@ export function SeriesListPage() {
   const [selectedSeries, setSelectedSeries] = useState<Series | null>(null)
   const [searchInput, setSearchInput] = useState(filters.search || '')
 
-  const seriesList = (data as { data: Series[]; meta: { total: number; totalPages: number } })?.data || []
-  const meta = (data as { data: Series[]; meta: { total: number; totalPages: number; page: number } })?.meta
+  const seriesList = data?.data || []
+  const meta = data?.meta
 
   const updateFilter = (key: string, value: string) => {
     const params = new URLSearchParams(searchParams)

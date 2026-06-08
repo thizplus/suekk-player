@@ -16,7 +16,7 @@ export const seriesService = {
   // ═══ Series ═══
 
   async getList(params?: SeriesFilterParams) {
-    return apiClient.getPaginated<Series[]>(SERIES_ROUTES.LIST, { params })
+    return apiClient.getPaginated<Series>(SERIES_ROUTES.LIST, { params })
   },
 
   async getByCode(code: string): Promise<Series> {
