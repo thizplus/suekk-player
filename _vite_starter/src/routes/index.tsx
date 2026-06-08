@@ -84,6 +84,11 @@ const ReelGeneratorPage = lazyWithReload(() =>
   import('@/features/reel').then((m) => ({ default: m.ReelGeneratorPage }))
 )
 
+// Lazy load series pages
+const SeriesListPage = lazyWithReload(() =>
+  import('@/features/series').then((m) => ({ default: m.SeriesListPage }))
+)
+
 export default function AppRoutes() {
   return (
     <Routes>
@@ -157,6 +162,9 @@ export default function AppRoutes() {
 
             {/* Queue Management routes */}
             <Route path="/queues" element={<QueueManagementPage />} />
+
+            {/* Series routes (แยกจาก Video) */}
+            <Route path="/series" element={<SeriesListPage />} />
 
             {/* Reel Generator routes */}
             <Route path="/reels" element={<ReelListPage />} />

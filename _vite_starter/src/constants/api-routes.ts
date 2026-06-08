@@ -164,6 +164,11 @@ export const QUEUE_ROUTES = {
   SUBTITLE_RETRY_ALL: '/api/v1/admin/queues/subtitle/retry-all',
   SUBTITLE_CLEAR_ALL: '/api/v1/admin/queues/subtitle/clear-all',
   SUBTITLE_QUEUE_MISSING: '/api/v1/admin/queues/subtitle/queue-missing',
+  // Subtitle Batch Actions
+  SUBTITLE_STATS: '/api/v1/admin/queues/subtitle/stats',
+  SUBTITLE_DETECT_ALL: '/api/v1/admin/queues/subtitle/detect-all',
+  SUBTITLE_TRANSCRIBE_ALL: '/api/v1/admin/queues/subtitle/transcribe-all',
+  SUBTITLE_TRANSLATE_ALL: '/api/v1/admin/queues/subtitle/translate-all',
   // Warm Cache Queue (uses Video.CacheStatus, not WorkerJob)
   WARM_CACHE_PENDING: '/api/v1/admin/queues/warm-cache/pending',
   WARM_CACHE_FAILED: '/api/v1/admin/queues/warm-cache/failed',
@@ -226,4 +231,19 @@ export const SUBTITLE_ROUTES = {
   RETRY_STUCK: '/api/v1/admin/subtitles/retry-stuck',
   // Content editing - GET/PUT subtitle content (SRT file)
   CONTENT: (subtitleId: string) => `/api/v1/subtitles/${subtitleId}/content`,
+}
+
+// ═══════════════════════════════════════════
+// Series (แยกจาก Video)
+// ═══════════════════════════════════════════
+
+export const SERIES_ROUTES = {
+  LIST: '/api/v1/series',
+  BY_CODE: (code: string) => `/api/v1/series/code/${code}`,
+  BY_SLUG: (slug: string) => `/api/v1/series/slug/${slug}`,
+  BY_ID: (id: string) => `/api/v1/series/${id}`,
+  UPSERT: '/api/v1/series/upsert',
+  EPISODES: (id: string) => `/api/v1/series/${id}/episodes`,
+  EPISODE: (id: string, ep: number) => `/api/v1/series/${id}/episodes/${ep}`,
+  CATEGORIES: '/api/v1/series/categories',
 }

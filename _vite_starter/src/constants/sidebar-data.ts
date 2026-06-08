@@ -1,4 +1,4 @@
-import { LayoutDashboard, Video, FolderOpen, Settings, UserCircle, Globe, Server, ListChecks, Film, type LucideIcon } from 'lucide-react'
+import { LayoutDashboard, Video, FolderOpen, Settings, UserCircle, Globe, Server, ListChecks, Film, Tv, type LucideIcon } from 'lucide-react'
 
 // Sidebar navigation types
 export interface NavSubItem {
@@ -25,6 +25,11 @@ export const NAV_MAIN: NavItem[] = [
     title: 'วิดีโอ',
     url: '/videos',
     icon: Video,
+  },
+  {
+    title: 'ซีรีส์',
+    url: '/series',
+    icon: Tv,
   },
   {
     title: 'Reel Generator',
