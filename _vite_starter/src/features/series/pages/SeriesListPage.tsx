@@ -8,9 +8,13 @@ import {
   Play,
   ChevronLeft,
   ChevronRight,
+  FolderOpen,
+  Plus,
+  Trash2,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
 import {
   Select,
@@ -26,14 +30,21 @@ import {
   SheetTitle,
 } from '@/components/ui/sheet'
 import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import {
   Empty,
   EmptyHeader,
   EmptyMedia,
   EmptyTitle,
   EmptyDescription,
 } from '@/components/ui/empty'
-import { useSeriesList, useSeriesCategories } from '../hooks'
-import type { Series, SeriesFilterParams } from '../types'
+import { useSeriesList, useSeriesCategories, useCreateSeriesCategory } from '../hooks'
+import type { Series, SeriesFilterParams, SeriesCategory } from '../types'
+import { toast } from 'sonner'
 
 // ═══════════════════════════════════════════
 // Series Card
@@ -265,6 +276,93 @@ function SeriesDetailSheet({
 }
 
 // ═══════════════════════════════════════════
+// Category Manager Dialog
+// ═══════════════════════════════════════════
+
+function CategoryManagerDialog({
+  open,
+  onClose,
+}: {
+  open: boolean
+  onClose: () => void
+}) {
+  const { data: categories = [], isLoading } = useSeriesCategories()
+  const createCategory = useCreateSeriesCategory()
+  const [newName, setNewName] = useState('')
+
+  const handleCreate = async () => {
+    const name = newName.trim()
+    if (!name) return
+    const slug = name.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '')
+    try {
+      await createCategory.mutateAsync({ name, slug })
+      toast.success(`เพิ่มหมวดหมู่ "${name}" สำเร็จ`)
+      setNewName('')
+    } catch {
+      toast.error('เกิดข้อผิดพลาด')
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onClose}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>หมวดหมู่ซีรีส์</DialogTitle>
+        </DialogHeader>
+
+        <div className="space-y-4">
+          {/* Add new */}
+          <div className="flex gap-2">
+            <Input
+              placeholder="ชื่อหมวดหมู่ใหม่..."
+              value={newName}
+              onChange={(e) => setNewName(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handleCreate()}
+              className="h-9"
+            />
+            <Button
+              size="sm"
+              onClick={handleCreate}
+              disabled={!newName.trim() || createCategory.isPending}
+              className="h-9"
+            >
+              <Plus className="h-4 w-4 mr-1" />
+              เพิ่ม
+            </Button>
+          </div>
+
+          {/* List */}
+          {isLoading ? (
+            <div className="flex justify-center py-4">
+              <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+            </div>
+          ) : (categories as SeriesCategory[]).length === 0 ? (
+            <p className="text-sm text-muted-foreground text-center py-4">ยังไม่มีหมวดหมู่</p>
+          ) : (
+            <div className="space-y-1.5">
+              {(categories as SeriesCategory[]).map((cat) => (
+                <div
+                  key={cat.id}
+                  className="flex items-center justify-between px-3 py-2 rounded-lg border"
+                >
+                  <div>
+                    <p className="text-sm font-medium">{cat.name}</p>
+                    <p className="text-xs text-muted-foreground font-mono">/{cat.slug}</p>
+                  </div>
+                  <Badge variant="outline" className="text-xs">
+                    {cat.seriesCount || 0} เรื่อง
+                  </Badge>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+// ═══════════════════════════════════════════
 // Main Page
 // ═══════════════════════════════════════════
 
@@ -284,9 +382,10 @@ export function SeriesListPage() {
   }
 
   const { data, isLoading } = useSeriesList(filters)
-  useSeriesCategories() // preload categories
+  const { data: categories } = useSeriesCategories()
   const [selectedSeries, setSelectedSeries] = useState<Series | null>(null)
   const [searchInput, setSearchInput] = useState(filters.search || '')
+  const [showCategories, setShowCategories] = useState(false)
 
   const seriesList = data?.data || []
   const meta = data?.meta
@@ -322,6 +421,10 @@ export function SeriesListPage() {
             {meta ? `${meta.total} เรื่อง` : 'จัดการซีรีส์ทั้งหมด'}
           </p>
         </div>
+        <Button size="sm" variant="outline" onClick={() => setShowCategories(true)}>
+          <FolderOpen className="h-4 w-4 mr-2" />
+          หมวดหมู่
+        </Button>
       </div>
 
       {/* Filters */}
@@ -338,6 +441,20 @@ export function SeriesListPage() {
             <Search className="h-4 w-4" />
           </Button>
         </div>
+
+        {categories && (categories as SeriesCategory[]).length > 0 && (
+          <Select value={filters.categoryId || 'all'} onValueChange={(v) => updateFilter('categoryId', v === 'all' ? '' : v)}>
+            <SelectTrigger className="w-[160px] h-9">
+              <SelectValue placeholder="หมวดหมู่" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">ทุกหมวดหมู่</SelectItem>
+              {(categories as SeriesCategory[]).map((cat) => (
+                <SelectItem key={cat.id} value={cat.id}>{cat.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
 
         <Select value={filters.audioType || 'all'} onValueChange={(v) => updateFilter('audioType', v === 'all' ? '' : v)}>
           <SelectTrigger className="w-[130px] h-9">
@@ -439,6 +556,12 @@ export function SeriesListPage() {
         series={selectedSeries}
         open={!!selectedSeries}
         onClose={() => setSelectedSeries(null)}
+      />
+
+      {/* Category Manager */}
+      <CategoryManagerDialog
+        open={showCategories}
+        onClose={() => setShowCategories(false)}
       />
     </div>
   )
