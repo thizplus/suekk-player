@@ -42,4 +42,8 @@ func SetupHLSRoutes(app *fiber.App, h *handlers.HLSHandler) {
 	// GET /gallery/:code/001.jpg, /gallery/:code/002.jpg
 	// Storage: gallery/{code}/001.jpg
 	app.Get("/gallery/:code/*", h.ServeGallery)
+
+	// Series poster - Public (ไม่ต้อง token เพราะเป็น metadata)
+	// GET /series-img/{code}/poster.jpg → S3: series/{code}/poster.jpg
+	app.Get("/series-img/:code/*", h.ServeSeriesPoster)
 }

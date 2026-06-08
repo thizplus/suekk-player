@@ -535,6 +535,46 @@ func (h *HLSHandler) ServeGallery(c *fiber.Ctx) error {
 	return nil
 }
 
+// ServeSeriesPoster streams series poster from storage (public, no token needed)
+// GET /series-img/:code/poster.jpg
+func (h *HLSHandler) ServeSeriesPoster(c *fiber.Ctx) error {
+	seriesCode := c.Params("code")
+	filePath := c.Params("*")
+
+	if seriesCode == "" || filePath == "" {
+		return c.Status(fiber.StatusBadRequest).SendString("Invalid path")
+	}
+
+	storagePath := fmt.Sprintf("series/%s/%s", seriesCode, filePath)
+
+	// Content type
+	contentType := "image/jpeg"
+	ext := filepath.Ext(filePath)
+	switch ext {
+	case ".png":
+		contentType = "image/png"
+	case ".webp":
+		contentType = "image/webp"
+	}
+
+	c.Set("Content-Type", contentType)
+	c.Set("Cache-Control", "public, max-age=86400") // 1 day cache
+	c.Set("Access-Control-Allow-Origin", "*")
+
+	reader, _, err := h.storage.GetFileContent(storagePath)
+	if err != nil {
+		return c.Status(fiber.StatusNotFound).SendString("Not found")
+	}
+	defer reader.Close()
+
+	_, err = io.Copy(c.Response().BodyWriter(), reader)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).SendString("Stream error")
+	}
+
+	return nil
+}
+
 // GetGalleryUrls returns presigned URLs for all gallery images (single API call)
 // GET /api/v1/hls/:code/gallery
 func (h *HLSHandler) GetGalleryUrls(c *fiber.Ctx) error {
