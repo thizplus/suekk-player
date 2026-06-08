@@ -108,29 +108,29 @@ function SeriesDetailSheet({
 
   return (
     <Sheet open={open} onOpenChange={onClose}>
-      <SheetContent className="w-full sm:max-w-xl overflow-y-auto">
-        <SheetHeader className="pb-4">
-          <SheetTitle className="text-left">{series.title}</SheetTitle>
+      <SheetContent className="w-full sm:max-w-lg overflow-y-auto p-6">
+        <SheetHeader className="mb-5">
+          <SheetTitle className="text-left text-lg">{series.title}</SheetTitle>
+          {series.thaiTitle && (
+            <p className="text-sm text-muted-foreground">{series.thaiTitle}</p>
+          )}
         </SheetHeader>
 
-        <div className="space-y-5 px-1">
+        <div className="space-y-6">
           {/* Poster + meta */}
-          <div className="flex gap-4">
+          <div className="flex gap-5">
             {series.posterPath ? (
               <img
                 src={`${import.meta.env.VITE_API_URL || ''}/series-img/${series.code}/poster.jpg`}
                 alt={series.title}
-                className="w-28 rounded-lg object-cover shrink-0"
+                className="w-32 rounded-lg object-cover shrink-0 shadow-md"
               />
             ) : (
-              <div className="w-28 h-40 rounded-lg bg-muted flex items-center justify-center shrink-0">
+              <div className="w-32 h-48 rounded-lg bg-muted flex items-center justify-center shrink-0">
                 <Tv className="h-8 w-8 text-muted-foreground/30" />
               </div>
             )}
-            <div className="flex-1 space-y-2 min-w-0">
-              {series.thaiTitle && (
-                <p className="text-sm text-muted-foreground">{series.thaiTitle}</p>
-              )}
+            <div className="flex-1 space-y-3 min-w-0">
               <div className="flex flex-wrap gap-1.5">
                 {series.year > 0 && <Badge variant="outline">{series.year}</Badge>}
                 {series.rating > 0 && series.rating < 100 && (
@@ -149,9 +149,8 @@ function SeriesDetailSheet({
                 ) : (
                   <Badge className="status-processing">กำลังฉาย</Badge>
                 )}
-                <Badge variant="outline">{series.totalEpisodes} ตอน</Badge>
               </div>
-              {/* Platforms + Genres */}
+              <p className="text-sm text-muted-foreground">{series.totalEpisodes} ตอน</p>
               {series.platforms && series.platforms.length > 0 && (
                 <div className="flex flex-wrap gap-1">
                   {series.platforms.map((p) => (
