@@ -369,18 +369,6 @@
     display: none !important;
   }
 
-  /* Time control - 2 บรรทัดแทนยาวๆ */
-  .art-control-time {
-    flex-shrink: 1 !important;
-    min-width: 0 !important;
-    white-space: normal !important;
-    max-width: 70px !important;
-    font-size: 10px !important;
-    line-height: 1.3 !important;
-    padding: 0 3px !important;
-    text-align: center;
-  }
-
   /* ปรับ progress bar ให้สูงขึ้นสำหรับ touch */
   .art-progress {
     height: 4px !important;

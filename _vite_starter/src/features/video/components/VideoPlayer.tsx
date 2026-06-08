@@ -472,6 +472,23 @@ export function VideoPlayer({
       })
     }
 
+    // Mobile: แสดงแค่เวลาปัจจุบัน (ไม่ต้องมี / duration) เพื่อประหยัดที่
+    if (/Mobi|Android/i.test(navigator.userAgent)) {
+      const formatTime = (s: number) => {
+        const h = Math.floor(s / 3600)
+        const m = Math.floor((s % 3600) / 60)
+        const sec = Math.floor(s % 60)
+        const pad = (n: number) => String(n).padStart(2, '0')
+        return h > 0 ? `${h}:${pad(m)}:${pad(sec)}` : `${m}:${pad(sec)}`
+      }
+      const timeEl = art.template?.$controlsLeft?.querySelector('.art-control-time')
+      if (timeEl) {
+        const updateTime = () => { timeEl.textContent = formatTime(art.currentTime) }
+        art.on('video:timeupdate', updateTime)
+        art.on('video:loadedmetadata', updateTime)
+      }
+    }
+
     // Event listeners
     art.on('play', () => onPlay?.())
     art.on('pause', () => onPause?.())
