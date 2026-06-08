@@ -25,7 +25,9 @@ type Services struct {
 	SubtitleService    services.SubtitleService  // Subtitle management
 	QueueService       services.QueueService     // Queue management (transcode/subtitle/warmcache)
 	ReelService        services.ReelService      // Reel Generator
-	WorkerJobService   services.WorkerJobService // Worker job tracking
+	WorkerJobService       services.WorkerJobService    // Worker job tracking
+	SeriesService          services.SeriesService       // Series management
+	SeriesCategoryService  services.SeriesCategoryService
 	VideoRepository    repositories.VideoRepository // สำหรับ SubtitleHandler
 	StreamCookieService     *serviceimpl.StreamCookieService         // Signed cookie สำหรับ CDN access
 	NATSPublisher           *natspkg.Publisher                       // NATS JetStream publisher (แทน AsynqClient)
@@ -59,6 +61,7 @@ type Handlers struct {
 	ReelHandler          *ReelHandler                     // Reel Generator
 	GalleryAdminHandler  *GalleryAdminHandler             // Gallery Manual Selection (Admin)
 	WorkerJobHandler     *WorkerJobHandler                // Worker job tracking
+	SeriesHandler        *SeriesHandler                   // Series management
 	StreamCookieService  *serviceimpl.StreamCookieService // Signed cookie สำหรับ CDN access
 }
 
@@ -85,6 +88,7 @@ func NewHandlers(services *Services) *Handlers {
 		ReelHandler:          NewReelHandler(services.ReelService),
 		GalleryAdminHandler:  NewGalleryAdminHandler(services.VideoService, services.StoragePort),
 		WorkerJobHandler:     NewWorkerJobHandler(services.WorkerJobService),
+		SeriesHandler:        NewSeriesHandler(services.SeriesService, services.SeriesCategoryService),
 		StreamCookieService:  services.StreamCookieService,
 	}
 }

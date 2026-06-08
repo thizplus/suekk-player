@@ -87,6 +87,10 @@ func Migrate(db *gorm.DB) error {
 		&models.Reel{},
 		&models.ReelTemplate{},
 		&models.WorkerJob{},
+		// Series (แยกจาก Video — ไม่กระทบของเดิม)
+		&models.SeriesCategory{},
+		&models.Series{},
+		&models.SeriesEpisode{},
 	}
 
 	for i, model := range models {

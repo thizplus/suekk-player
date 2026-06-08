@@ -30,6 +30,7 @@ func SetupRoutes(app *fiber.App, h *handlers.Handlers) {
 	SetupReelRoutes(api, h)           // Reel Generator
 	SetupGalleryAdminRoutes(api, h)   // Gallery Manual Selection (Admin)
 	SetupWorkerJobRoutes(api, h)      // Worker Job Tracking (Queue Jobs)
+	SetupSeriesRoutes(api, h)         // Series Management (แยกจาก Video)
 
 	// Setup Monitoring routes (needs app for /api/v1/monitoring)
 	SetupMonitoringRoutes(app, h)

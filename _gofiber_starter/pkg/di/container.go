@@ -57,6 +57,10 @@ type Container struct {
 	ReelRepository             repositories.ReelRepository
 	ReelTemplateRepository     repositories.ReelTemplateRepository
 	WorkerJobRepository        repositories.WorkerJobRepository
+	// Series (แยกจาก Video)
+	SeriesRepository           repositories.SeriesRepository
+	SeriesEpisodeRepository    repositories.SeriesEpisodeRepository
+	SeriesCategoryRepository   repositories.SeriesCategoryRepository
 
 	// Services
 	UserService            services.UserService
@@ -73,6 +77,9 @@ type Container struct {
 	QueueService           services.QueueService
 	ReelService            services.ReelService
 	WorkerJobService       services.WorkerJobService
+	// Series
+	SeriesService          services.SeriesService
+	SeriesCategoryService  services.SeriesCategoryService
 
 	// Settings Cache
 	SettingsCache *settings.SettingsCache
@@ -359,6 +366,10 @@ func (c *Container) initRepositories() error {
 	c.ReelTemplateRepository = postgres.NewReelTemplateRepository(c.DB)
 	// Worker Jobs (Queue Jobs Tracking)
 	c.WorkerJobRepository = postgres.NewWorkerJobRepository(c.DB)
+	// Series
+	c.SeriesRepository = postgres.NewSeriesRepository(c.DB)
+	c.SeriesEpisodeRepository = postgres.NewSeriesEpisodeRepository(c.DB)
+	c.SeriesCategoryRepository = postgres.NewSeriesCategoryRepository(c.DB)
 	logger.Info("Repositories initialized")
 	return nil
 }
@@ -444,6 +455,11 @@ func (c *Container) initServices() error {
 	// Worker Job Service (Queue Jobs Tracking)
 	c.WorkerJobService = serviceimpl.NewWorkerJobService(c.WorkerJobRepository)
 	logger.Info("Worker job service initialized")
+
+	// Series
+	c.SeriesService = serviceimpl.NewSeriesService(c.SeriesRepository, c.SeriesEpisodeRepository)
+	c.SeriesCategoryService = serviceimpl.NewSeriesCategoryService(c.SeriesCategoryRepository)
+	logger.Info("Series service initialized")
 
 	// Inject WorkerJobService into NATSPublisher for Dual Write
 	if c.NATSPublisher != nil {
@@ -792,8 +808,10 @@ func (c *Container) GetHandlerServices() *handlers.Services {
 		SubtitleService:     c.SubtitleService,
 		QueueService:        c.QueueService,
 		ReelService:         c.ReelService,
-		WorkerJobService:    c.WorkerJobService,
-		VideoRepository:     c.VideoRepository, // สำหรับ SubtitleHandler
+		WorkerJobService:       c.WorkerJobService,
+		SeriesService:          c.SeriesService,
+		SeriesCategoryService:  c.SeriesCategoryService,
+		VideoRepository:        c.VideoRepository, // สำหรับ SubtitleHandler
 		StreamCookieService: c.StreamCookieService, // Signed cookie สำหรับ CDN access
 		NATSPublisher:       c.NATSPublisher,
 		GoogleConfig:        c.Config.Google,
