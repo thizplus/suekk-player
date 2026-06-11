@@ -15,6 +15,8 @@ import type {
   QueueMissingResponse,
   WarmCacheResponse,
   WarmAllResponse,
+  SubtitleStats,
+  BatchActionResponse,
 } from './types'
 
 interface ListParams {
@@ -213,5 +215,30 @@ export const queueService = {
 
   async purgeTranscodeStream(): Promise<{ message: string }> {
     return apiClient.deleteWithResponse<{ message: string }>(QUEUE_ROUTES.TRANSCODE_PURGE)
+  },
+
+  // ==================== Subtitle Batch Actions ====================
+
+  async getSubtitleStats(category?: string): Promise<SubtitleStats> {
+    const params = category ? { category } : undefined
+    return apiClient.get<SubtitleStats>(QUEUE_ROUTES.SUBTITLE_STATS, { params })
+  },
+
+  async batchDetect(category?: string, limit = 50): Promise<BatchActionResponse> {
+    const params: Record<string, string | number> = { limit }
+    if (category) params.category = category
+    return apiClient.post<BatchActionResponse>(QUEUE_ROUTES.SUBTITLE_DETECT_ALL, {}, { params })
+  },
+
+  async batchTranscribe(category?: string, limit = 50): Promise<BatchActionResponse> {
+    const params: Record<string, string | number> = { limit }
+    if (category) params.category = category
+    return apiClient.post<BatchActionResponse>(QUEUE_ROUTES.SUBTITLE_TRANSCRIBE_ALL, {}, { params })
+  },
+
+  async batchTranslate(category?: string, limit = 50, target = 'th'): Promise<BatchActionResponse> {
+    const params: Record<string, string | number> = { limit, target }
+    if (category) params.category = category
+    return apiClient.post<BatchActionResponse>(QUEUE_ROUTES.SUBTITLE_TRANSLATE_ALL, {}, { params })
   },
 }

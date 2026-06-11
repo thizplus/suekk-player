@@ -304,3 +304,58 @@ export function usePurgeTranscodeStream() {
     },
   })
 }
+
+// ==================== Subtitle Batch Actions ====================
+
+export function useSubtitleStats(category?: string) {
+  return useQuery({
+    queryKey: [...queueKeys.all, 'subtitle-stats', category],
+    queryFn: () => queueService.getSubtitleStats(category),
+    refetchInterval: 10000,
+  })
+}
+
+export function useBatchDetect() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ category, limit }: { category?: string; limit?: number }) =>
+      queueService.batchDetect(category, limit),
+    onSuccess: (data) => {
+      toast.success(data.message || `Detect ${data.queued} วิดีโอสำเร็จ`)
+      queryClient.invalidateQueries({ queryKey: queueKeys.all })
+    },
+    onError: () => {
+      toast.error('Batch detect ไม่สำเร็จ')
+    },
+  })
+}
+
+export function useBatchTranscribe() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ category, limit }: { category?: string; limit?: number }) =>
+      queueService.batchTranscribe(category, limit),
+    onSuccess: (data) => {
+      toast.success(data.message || `Transcribe ${data.queued} วิดีโอสำเร็จ`)
+      queryClient.invalidateQueries({ queryKey: queueKeys.all })
+    },
+    onError: () => {
+      toast.error('Batch transcribe ไม่สำเร็จ')
+    },
+  })
+}
+
+export function useBatchTranslate() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ category, limit, target }: { category?: string; limit?: number; target?: string }) =>
+      queueService.batchTranslate(category, limit, target),
+    onSuccess: (data) => {
+      toast.success(data.message || `Translate ${data.queued} วิดีโอสำเร็จ`)
+      queryClient.invalidateQueries({ queryKey: queueKeys.all })
+    },
+    onError: () => {
+      toast.error('Batch translate ไม่สำเร็จ')
+    },
+  })
+}

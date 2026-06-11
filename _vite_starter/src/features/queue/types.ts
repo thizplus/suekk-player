@@ -174,3 +174,22 @@ export interface WarmAllResponse {
   totalQueued: number
   message: string
 }
+
+// ==================== Subtitle Batch Types ====================
+
+export interface SubtitleStats {
+  totalVideos: number
+  detected: number
+  notDetected: number
+  transcribed: number
+  notTranscribed: number
+  translated: number
+  notTranslated: number
+}
+
+export interface BatchActionResponse {
+  queued: number
+  skipped: number
+  errors: string[]
+  message: string
+}

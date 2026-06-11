@@ -62,8 +62,18 @@ _subtitle/
 # Exclude unnecessary documentation/planning files
 *.txt
 image.png
+image copy*.png
 nul
 nextjs/
+
+# Bot scraper data (DB, debug files)
+_bot_scraper/data/
+
+# Test/experimental
+_test_refine/
+
+# AI dev tools
+.ai_dev/
 
 # Exclude claude files
 .claude/
@@ -75,6 +85,7 @@ docs/
 !README.md
 !CLAUDE.md
 !CODE_REVIEW.md
+!SUMMARY/*.md
 
 # Backup files
 *.backup

@@ -16,6 +16,9 @@ import {
   Film,
   Clock,
   Loader2,
+  Search,
+  FileText,
+  Globe,
 } from 'lucide-react'
 import { Progress } from '@/components/ui/progress'
 import { useWebSocketConnection, useVideoProgress, type VideoProgress } from '@/lib/websocket-provider'
@@ -39,14 +42,27 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip'
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import { useCategories } from '@/features/category/hooks'
+import {
   useLegacyStats,
   useFailedJobs,
   useProcessingJobs,
+  useQueuedJobs,
   useRetryJob,
   useRetryAllTranscode,
   useRetrySubtitleAll,
   useClearSubtitleAll,
   useQueueMissingSubtitles,
+  useSubtitleStats,
+  useBatchDetect,
+  useBatchTranscribe,
+  useBatchTranslate,
   useWarmCachePending,
   useWarmCacheFailed,
   useWarmCacheOne,
@@ -382,55 +398,154 @@ function TranscodeTab() {
 }
 
 function SubtitleTab() {
-  const [view, setView] = useState<'processing' | 'failed'>('failed')
+  const [category, setCategory] = useState<string>('all')
+  const [view, setView] = useState<'failed' | 'processing' | 'queued'>('failed')
   const [page, _setPage] = useState(1)
 
-  const processingQuery = useProcessingJobs('subtitle_transcribe', page)
+  const { data: categories = [] } = useCategories()
+  const categoryId = category === 'all' ? undefined : category
+  const { data: stats, isLoading: statsLoading } = useSubtitleStats(categoryId)
+
   const failedQuery = useFailedJobs('subtitle_transcribe', page)
+  const processingQuery = useProcessingJobs('subtitle_transcribe', page)
+  const queuedQuery = useQueuedJobs('subtitle_transcribe', page)
 
   const retryAll = useRetrySubtitleAll()
   const clearAll = useClearSubtitleAll()
   const queueMissing = useQueueMissingSubtitles()
   const retryJob = useRetryJob()
 
-  const { data, isLoading } = view === 'processing' ? processingQuery : failedQuery
-  const jobs = data?.jobs ?? []
+  const batchDetect = useBatchDetect()
+  const batchTranscribe = useBatchTranscribe()
+  const batchTranslate = useBatchTranslate()
+
+  const currentQuery = view === 'failed' ? failedQuery : view === 'processing' ? processingQuery : queuedQuery
+  const jobs = currentQuery.data?.jobs ?? []
+
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <h3 className="font-medium">ซับไตเติ้ล</h3>
-          <div className="flex gap-1 ml-4">
-            <Button variant={view === 'failed' ? 'secondary' : 'ghost'} size="sm" onClick={() => setView('failed')}>ล้มเหลว</Button>
-            <Button variant={view === 'processing' ? 'secondary' : 'ghost'} size="sm" onClick={() => setView('processing')}>กำลังทำ</Button>
-          </div>
-        </div>
-        <div className="flex gap-2">
-          <Button variant="outline" size="sm" onClick={() => retryAll.mutate()} disabled={retryAll.isPending}>
-            <RotateCcw className={`h-4 w-4 mr-1 ${retryAll.isPending ? 'animate-spin' : ''}`} />
-            Retry All
-          </Button>
-          {view === 'processing' && (
-            <>
-              <Button variant="outline" size="sm" onClick={() => clearAll.mutate()} disabled={clearAll.isPending}>
-                <Trash2 className="h-4 w-4 mr-1" /> Clear
-              </Button>
-              <Button variant="outline" size="sm" onClick={() => queueMissing.mutate()} disabled={queueMissing.isPending}>
-                <Plus className="h-4 w-4 mr-1" /> Queue Missing
-              </Button>
-            </>
-          )}
-        </div>
+    <div className="space-y-6">
+      {/* Category Filter */}
+      <div className="flex items-center gap-3">
+        <span className="text-sm text-muted-foreground">หมวดหมู่:</span>
+        <Select value={category} onValueChange={setCategory}>
+          <SelectTrigger className="w-[200px]">
+            <SelectValue placeholder="ทั้งหมด" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">ทั้งหมด</SelectItem>
+            {categories.map((cat) => (
+              <SelectItem key={cat.id} value={cat.id}>{cat.name}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
 
-      {isLoading ? (
-        <TableSkeleton />
-      ) : jobs.length === 0 ? (
-        <EmptyState message={`ไม่มีซับไตเติ้ลที่${view === 'processing' ? 'กำลังทำ' : 'ล้มเหลว'}`} />
-      ) : (
-        <JobTable jobs={jobs} onRetry={(id) => retryJob.mutate(id)} isRetrying={retryJob.isPending} showJobType />
-      )}
+      {/* Subtitle Stats Panel */}
+      <div className="border rounded-lg p-4 space-y-3">
+        <h3 className="font-medium text-sm text-muted-foreground">สถานะ Subtitle</h3>
+        {statsLoading ? (
+          <div className="space-y-2">
+            {[1, 2, 3].map(i => <Skeleton key={i} className="h-9 w-full" />)}
+          </div>
+        ) : stats ? (
+          <div className="space-y-2">
+            <div className="flex items-center justify-between px-3 py-2 rounded-lg border border-dashed">
+              <div className="flex items-center gap-2 text-sm">
+                <Search className="h-4 w-4 text-muted-foreground" />
+                <span>ยังไม่ detect</span>
+                <Badge variant="secondary" className="text-xs tabular-nums">{stats.notDetected}</Badge>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => batchDetect.mutate({ category: categoryId })}
+                disabled={batchDetect.isPending || stats.notDetected === 0}
+              >
+                {batchDetect.isPending ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Search className="h-4 w-4 mr-1" />}
+                Detect ทั้งหมด
+              </Button>
+            </div>
+
+            <div className="flex items-center justify-between px-3 py-2 rounded-lg border border-dashed">
+              <div className="flex items-center gap-2 text-sm">
+                <FileText className="h-4 w-4 text-muted-foreground" />
+                <span>ยังไม่ transcribe</span>
+                <Badge variant="secondary" className="text-xs tabular-nums">{stats.notTranscribed}</Badge>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => batchTranscribe.mutate({ category: categoryId })}
+                disabled={batchTranscribe.isPending || stats.notTranscribed === 0}
+              >
+                {batchTranscribe.isPending ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <FileText className="h-4 w-4 mr-1" />}
+                Transcribe ทั้งหมด
+              </Button>
+            </div>
+
+            <div className="flex items-center justify-between px-3 py-2 rounded-lg border border-dashed">
+              <div className="flex items-center gap-2 text-sm">
+                <Globe className="h-4 w-4 text-muted-foreground" />
+                <span>ยังไม่ translate</span>
+                <Badge variant="secondary" className="text-xs tabular-nums">{stats.notTranslated}</Badge>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => batchTranslate.mutate({ category: categoryId })}
+                disabled={batchTranslate.isPending || stats.notTranslated === 0}
+              >
+                {batchTranslate.isPending ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Globe className="h-4 w-4 mr-1" />}
+                Translate ทั้งหมด
+              </Button>
+            </div>
+
+            <div className="flex items-center gap-2 px-3 py-2 text-sm text-muted-foreground">
+              <CheckCircle className="h-4 w-4" />
+              <span>ครบแล้ว: {stats.translated}</span>
+              <span className="ml-auto">รวม {stats.totalVideos} วิดีโอ</span>
+            </div>
+          </div>
+        ) : null}
+      </div>
+
+      {/* Sub-tabs: Failed / Processing / Queued */}
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <div className="flex gap-1">
+              <Button variant={view === 'failed' ? 'secondary' : 'ghost'} size="sm" onClick={() => setView('failed')}>ล้มเหลว</Button>
+              <Button variant={view === 'processing' ? 'secondary' : 'ghost'} size="sm" onClick={() => setView('processing')}>กำลังทำ</Button>
+              <Button variant={view === 'queued' ? 'secondary' : 'ghost'} size="sm" onClick={() => setView('queued')}>รอคิว</Button>
+            </div>
+          </div>
+          <div className="flex gap-2">
+            <Button variant="outline" size="sm" onClick={() => retryAll.mutate()} disabled={retryAll.isPending}>
+              <RotateCcw className={`h-4 w-4 mr-1 ${retryAll.isPending ? 'animate-spin' : ''}`} />
+              Retry All
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => clearAll.mutate()} disabled={clearAll.isPending}>
+              <Trash2 className="h-4 w-4 mr-1" /> Clear Stuck
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => queueMissing.mutate()} disabled={queueMissing.isPending}>
+              <Plus className="h-4 w-4 mr-1" /> Queue Missing
+            </Button>
+          </div>
+        </div>
+
+        {currentQuery.isLoading ? (
+          <TableSkeleton />
+        ) : jobs.length === 0 ? (
+          <EmptyState message={
+            view === 'failed' ? 'ไม่มีซับไตเติ้ลที่ล้มเหลว' :
+            view === 'processing' ? 'ไม่มีซับไตเติ้ลที่กำลังทำ' :
+            'ไม่มีซับไตเติ้ลที่รอคิว'
+          } />
+        ) : (
+          <JobTable jobs={jobs} onRetry={(id) => retryJob.mutate(id)} isRetrying={retryJob.isPending} showJobType />
+        )}
+      </div>
     </div>
   )
 }
