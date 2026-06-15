@@ -1,7 +1,16 @@
 """
 Title Translate Service configuration.
 """
+from pathlib import Path
 from pydantic_settings import BaseSettings
+
+# หา .env จาก parent directories (shared กับ worker อื่น)
+_THIS_DIR = Path(__file__).resolve().parent
+_ENV_FILES = []
+for parent in [_THIS_DIR.parent.parent, _THIS_DIR.parent, _THIS_DIR, Path.cwd()]:
+    env_path = parent / ".env"
+    if env_path.exists():
+        _ENV_FILES.append(str(env_path))
 
 
 class TitleTranslateConfig(BaseSettings):
@@ -35,9 +44,10 @@ class TitleTranslateConfig(BaseSettings):
     api_suekk_password: str = ""
 
     class Config:
-        env_file = ".env"
+        env_file = tuple(_ENV_FILES) if _ENV_FILES else ".env"
         env_file_encoding = "utf-8"
         env_prefix = ""
+        extra = "ignore"
 
 
 _settings = None

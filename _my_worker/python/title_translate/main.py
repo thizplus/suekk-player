@@ -9,6 +9,16 @@ Uses LLMPort (Port/Adapter) — เปลี่ยน LLM provider ได้จ�
     TITLE_LLM_PROVIDER=gemini   (default)
     TITLE_LLM_PROVIDER=openai   (backup)
 """
+from pathlib import Path
+from dotenv import load_dotenv
+
+# โหลด shared .env เข้า os.environ ก่อน import อะไรทั้งหมด
+# เพื่อให้ shared LLM factory (อ่าน os.getenv) เห็น GEMINI_API_KEY
+_worker_root = Path(__file__).resolve().parent.parent.parent
+for _env in [_worker_root / ".env", _worker_root / "python" / ".env"]:
+    if _env.exists():
+        load_dotenv(_env, override=False)
+
 import uvicorn
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware

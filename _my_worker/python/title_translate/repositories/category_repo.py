@@ -9,7 +9,7 @@ from title_translate.entities import Category
 
 
 
-class CategoryRepository(ICategoryRepository):
+class CategoryRepository:
     """Category repository implementation"""
 
     def get_untranslated(self, limit: int) -> List[Category]:

@@ -8,7 +8,7 @@ from title_translate.entities import VideoTitle
 
 
 
-class VideoTitleRepository(IVideoTitleRepository):
+class VideoTitleRepository:
     """Video title repository implementation"""
 
     def get_untranslated(self, limit: int) -> List[VideoTitle]:

@@ -9,7 +9,7 @@ from title_translate.entities import Cast
 
 
 
-class CastRepository(ICastRepository):
+class CastRepository:
     """Cast repository implementation"""
 
     def get_untranslated(self, limit: int) -> List[Cast]:

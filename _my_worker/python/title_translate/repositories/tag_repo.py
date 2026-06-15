@@ -9,7 +9,7 @@ from title_translate.entities import Tag
 
 
 
-class TagRepository(ITagRepository):
+class TagRepository:
     """Tag repository implementation"""
 
     def get_untranslated(self, limit: int) -> List[Tag]:

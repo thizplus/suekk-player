@@ -11,6 +11,7 @@ from title_translate.prompts import (
     extract_code,
 )
 from title_translate.dependencies import get_llm
+from title_translate.cast_service import get_cast_service
 
 router = APIRouter()
 
@@ -36,20 +37,26 @@ async def translate_only(request: TitleTranslateRequest):
         llm = get_llm()
         code = extract_code(request.title_en)
         tags = request.tags or []
-        cast_name = request.cast_name or ""
+
+        # จัดการ cast: search/create/transliterate via SubTH API
+        cast_service = get_cast_service()
+        cast_name_formatted = ""
+        if request.cast_name:
+            cast_name_formatted = cast_service.ensure_cast_with_translation(request.cast_name)
 
         if request.source_type == "en":
-            result = translate_title_en(llm, request.title_en, cast_name, request.cast)
+            result = translate_title_en(llm, request.title_en, cast_name_formatted, request.cast)
         elif request.source_type == "cn":
-            result = translate_title_cn(llm, code, request.title_en, tags, cast_name) if code else None
+            result = translate_title_cn(llm, code, request.title_en, tags, cast_name_formatted) if code else None
         else:
-            result = translate_title_klon8(llm, code, request.title_en, tags, cast_name) if code else None
+            result = translate_title_klon8(llm, code, request.title_en, tags, cast_name_formatted) if code else None
 
         if result:
             return TitleResponse(success=True, data={
                 "title_en": request.title_en,
                 "title_th": result,
                 "source_type": request.source_type,
+                "cast_formatted": cast_name_formatted,
             })
         return TitleResponse(success=False, data={"title_en": request.title_en}, error="Translation failed")
 
