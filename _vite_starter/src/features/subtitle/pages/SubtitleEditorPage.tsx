@@ -116,11 +116,15 @@ export function SubtitleEditorPage() {
   )
 
   // === Reset state when language changes ===
+  const prevLanguageRef = useRef(selectedLanguage)
   useEffect(() => {
+    if (prevLanguageRef.current === selectedLanguage) return
+    prevLanguageRef.current = selectedLanguage
     setSegments([])
     setOriginalContent('')
     setSubtitleBlobUrl('')
-    setSubtitleReady(false)
+    // ไม่ set subtitleReady=false เพื่อไม่ให้ player unmount
+    // blob URL จะถูก update ผ่าน fetch effect อัตโนมัติ
   }, [selectedLanguage])
 
   // === Initialize segments from fetched content ===

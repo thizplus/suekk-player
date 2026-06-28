@@ -591,6 +591,11 @@ def translate_cluster(
         else:
             new_text = results.get(line.index, line.text)
             new_text = post_process_translation(new_text)
+            # ป้องกัน LLM สร้าง text ซ้ำยาวเกินไป (เช่น ส...ส...ส... 4000 chars)
+            if len(new_text) > 150:
+                new_text = new_text[:100].rstrip('. ')
+                if not new_text.endswith('...'):
+                    new_text += '...'
             translated.append(line.with_text(new_text))
 
     return translated, new_summary
