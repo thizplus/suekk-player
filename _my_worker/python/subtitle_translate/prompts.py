@@ -505,15 +505,16 @@ def translate_cluster(
     if not lines:
         return [], previous_summary or ""
 
-    # Step 1: Pre-translate moaning sounds (ไม่ต้องเรียก LLM)
+    # Step 1: Pre-translate moaning sounds (เฉพาะ target=TH เท่านั้น — dict เป็นภาษาไทย)
     moaning_results = {}
     lines_for_llm = []
     for line in lines:
-        translated_moaning = pre_translate_moaning(line.text)
-        if translated_moaning:
-            moaning_results[line.index] = translated_moaning
-        else:
-            lines_for_llm.append(line)
+        if target_lang.code == "th":
+            translated_moaning = pre_translate_moaning(line.text)
+            if translated_moaning:
+                moaning_results[line.index] = translated_moaning
+                continue
+        lines_for_llm.append(line)
 
     if moaning_results:
         logger.info(f"Pre-translated {len(moaning_results)} moaning sounds")
@@ -590,7 +591,8 @@ def translate_cluster(
             translated.append(line.with_text(moaning_results[line.index]))
         else:
             new_text = results.get(line.index, line.text)
-            new_text = post_process_translation(new_text)
+            if target_lang.code == "th":
+                new_text = post_process_translation(new_text)
             # ป้องกัน LLM สร้าง text ซ้ำยาวเกินไป (เช่น ส...ส...ส... 4000 chars)
             if len(new_text) > 150:
                 new_text = new_text[:100].rstrip('. ')
