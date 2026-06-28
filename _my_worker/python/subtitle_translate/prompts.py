@@ -429,11 +429,21 @@ def parse_translate_response(response_text: str, lines: List[SubtitleLine]) -> D
             if len(parts) == 2:
                 try:
                     idx = int(parts[0].strip())
-                    text = parts[1].strip()
+                    text = _clean_translated_text(parts[1].strip())
                     results[idx] = text
                 except ValueError:
                     continue
     return results
+
+
+def _clean_translated_text(text: str) -> str:
+    """ลบ speaker/gender tags ที่ LLM เอามาติดใน output เช่น |unknown|, |female|, |SPEAKER_00|"""
+    import re
+    # ลบ |unknown|, |female|, |male|, |SPEAKER_XX| ที่ติดมาท้าย
+    text = re.sub(r'\|(unknown|female|male|SPEAKER_\d+)\|?\s*$', '', text)
+    # ลบ | ที่ค้างท้ายสุด
+    text = text.rstrip('|').strip()
+    return text
 
 
 def parse_cluster_response(
@@ -463,7 +473,7 @@ def parse_cluster_response(
             if len(parts) == 2:
                 try:
                     idx = int(parts[0].strip())
-                    text = parts[1].strip()
+                    text = _clean_translated_text(parts[1].strip())
                     results[idx] = text
                 except ValueError:
                     continue

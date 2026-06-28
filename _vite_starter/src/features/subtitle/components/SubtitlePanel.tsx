@@ -176,9 +176,29 @@ export function SubtitlePanel({ videoId, videoCode, videoStatus }: SubtitlePanel
     }
   }
 
-  const getSrtUrl = (subtitle: Subtitle) => {
-    if (!subtitle.srtPath) return null
-    return `${APP_CONFIG.cdnUrl}/${subtitle.srtPath}`
+  const handleDownloadSrt = async (subtitle: Subtitle) => {
+    if (!subtitle.id) return
+    try {
+      const { apiClient } = await import('@/lib/api-client')
+      const res = await apiClient.get<{ data: { content: string } }>(
+        `/api/v1/subtitles/${subtitle.id}/content`
+      )
+      const content = res.data?.content || res.data
+      const blob = new Blob([typeof content === 'string' ? content : JSON.stringify(content)], {
+        type: 'text/plain; charset=utf-8',
+      })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `${videoCode || 'subtitle'}_${subtitle.language}.srt`
+      a.click()
+      URL.revokeObjectURL(url)
+    } catch {
+      // fallback: เปิด CDN URL ตรง (อาจ fail ถ้า private)
+      if (subtitle.srtPath) {
+        window.open(`${APP_CONFIG.cdnUrl}/${subtitle.srtPath}`, '_blank')
+      }
+    }
   }
 
   // ไม่มี Audio
@@ -310,10 +330,8 @@ export function SubtitlePanel({ videoId, videoCode, videoStatus }: SubtitlePanel
             </div>
             {originalSubtitle.status === 'ready' && originalSubtitle.srtPath && (
               <>
-                <Button size="icon" variant="ghost" className="size-8 shrink-0" asChild>
-                  <a href={getSrtUrl(originalSubtitle)!} download title="ดาวน์โหลด SRT">
-                    <Download className="size-4" />
-                  </a>
+                <Button size="icon" variant="ghost" className="size-8 shrink-0" onClick={() => handleDownloadSrt(originalSubtitle)} title="ดาวน์โหลด SRT">
+                  <Download className="size-4" />
                 </Button>
                 {videoCode && (
                   <Button size="icon" variant="ghost" className="size-8 shrink-0" asChild>
@@ -376,10 +394,8 @@ export function SubtitlePanel({ videoId, videoCode, videoStatus }: SubtitlePanel
             </div>
             {sub.status === 'ready' && sub.srtPath && (
               <>
-                <Button size="icon" variant="ghost" className="size-8 shrink-0" asChild>
-                  <a href={getSrtUrl(sub)!} download title="ดาวน์โหลด SRT">
-                    <Download className="size-4" />
-                  </a>
+                <Button size="icon" variant="ghost" className="size-8 shrink-0" onClick={() => handleDownloadSrt(sub)} title="ดาวน์โหลด SRT">
+                  <Download className="size-4" />
                 </Button>
                 {videoCode && (
                   <Button size="icon" variant="ghost" className="size-8 shrink-0" asChild>

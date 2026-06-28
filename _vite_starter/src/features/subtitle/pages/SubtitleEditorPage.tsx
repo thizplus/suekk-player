@@ -13,8 +13,9 @@ import { parseSRT, generateSRT } from '../utils/srt-parser'
 import type { SubtitleSegment, Subtitle } from '../types'
 import { Loader2, ArrowLeft, ExternalLink } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { APP_CONFIG } from '@/constants/app-config'
-import { LANGUAGE_LABELS } from '@/constants/enums'
+import { LANGUAGE_LABELS, LANGUAGE_FLAGS } from '@/constants/enums'
 import { useStreamAccess } from '@/features/embed/hooks/useStreamAccess'
 
 // Simple debounced callback hook
@@ -49,22 +50,36 @@ export function SubtitleEditorPage() {
     enabled: !!code && !!video && video.status === 'ready',
   })
 
-  // หา Thai subtitle ที่ ready (subtitles มาพร้อมกับ video แล้ว)
-  const thaiSubtitle = useMemo((): Subtitle | undefined => {
-    console.log('[SubtitleEditor] Looking for Thai subtitle:', video?.subtitles)
-    const found = video?.subtitles?.find(
-      (sub) => sub.language === 'th' && sub.status === 'ready' && sub.srtPath
+  // หา subtitle ที่ ready ทั้งหมด
+  const readySubtitles = useMemo(() => {
+    return (video?.subtitles || []).filter(
+      (sub) => sub.status === 'ready' && sub.srtPath
     )
-    console.log('[SubtitleEditor] Found Thai subtitle:', found)
-    return found
   }, [video?.subtitles])
 
-  // ดึง content ของ Thai subtitle
+  // เลือกภาษา — default เป็นตัวแรกที่ ready
+  const [selectedLanguage, setSelectedLanguage] = useState<string>('')
+
+  // Set default language เมื่อ subtitles โหลดเสร็จ
+  useEffect(() => {
+    if (readySubtitles.length > 0 && !selectedLanguage) {
+      // เลือก th ก่อน ถ้าไม่มีเลือกตัวแรก
+      const defaultLang = readySubtitles.find(s => s.language === 'th')?.language
+        || readySubtitles[0].language
+      setSelectedLanguage(defaultLang)
+    }
+  }, [readySubtitles, selectedLanguage])
+
+  const activeSubtitle = useMemo((): Subtitle | undefined => {
+    return readySubtitles.find(s => s.language === selectedLanguage)
+  }, [readySubtitles, selectedLanguage])
+
+  // ดึง content ของ subtitle ที่เลือก
   const {
     data: subtitleContent,
     isLoading: contentLoading,
-  } = useSubtitleContent(thaiSubtitle?.id || '', {
-    enabled: !!thaiSubtitle?.id,
+  } = useSubtitleContent(activeSubtitle?.id || '', {
+    enabled: !!activeSubtitle?.id,
   })
 
   // Mutation สำหรับ save
@@ -100,6 +115,14 @@ export function SubtitleEditorPage() {
     )
   )
 
+  // === Reset state when language changes ===
+  useEffect(() => {
+    setSegments([])
+    setOriginalContent('')
+    setSubtitleBlobUrl('')
+    setSubtitleReady(false)
+  }, [selectedLanguage])
+
   // === Initialize segments from fetched content ===
   useEffect(() => {
     if (subtitleContent?.content) {
@@ -119,12 +142,12 @@ export function SubtitleEditorPage() {
 
     console.log('[SubtitleEditor] Creating blob URL...', {
       hasToken: !!streamAccess?.token,
-      thaiSubtitle,
-      srtPath: thaiSubtitle?.srtPath,
+      activeSubtitle,
+      srtPath: activeSubtitle?.srtPath,
     })
 
-    // ถ้าไม่มี thaiSubtitle → mark as ready (จะไปแสดง error page)
-    if (!thaiSubtitle?.srtPath) {
+    // ถ้าไม่มี activeSubtitle → mark as ready (จะไปแสดง error page)
+    if (!activeSubtitle?.srtPath) {
       console.log('[SubtitleEditor] No Thai subtitle found')
       setSubtitleReady(true)
       return
@@ -140,7 +163,7 @@ export function SubtitleEditorPage() {
 
     const fetchSubtitle = async () => {
       try {
-        const url = `${APP_CONFIG.cdnUrl}/${thaiSubtitle.srtPath}`
+        const url = `${APP_CONFIG.cdnUrl}/${activeSubtitle.srtPath}`
         console.log('[SubtitleEditor] Fetching subtitle from:', url)
         const response = await fetch(url, {
           headers: { 'X-Stream-Token': streamAccess.token },
@@ -168,7 +191,7 @@ export function SubtitleEditorPage() {
     return () => {
       if (blobUrl) URL.revokeObjectURL(blobUrl)
     }
-  }, [video, streamAccess?.token, thaiSubtitle?.srtPath])
+  }, [video, streamAccess?.token, activeSubtitle?.srtPath])
 
   // === Fetch thumbnail ===
   useEffect(() => {
@@ -278,17 +301,17 @@ export function SubtitleEditorPage() {
   }, [])
 
   const handleSave = useCallback(async () => {
-    if (!thaiSubtitle?.id) return
+    if (!activeSubtitle?.id) return
 
     const content = generateSRT(segments)
     await updateSubtitleMutation.mutateAsync({
-      subtitleId: thaiSubtitle.id,
+      subtitleId: activeSubtitle.id,
       content,
     })
 
     // Update original content to mark as saved
     setOriginalContent(content)
-  }, [thaiSubtitle?.id, segments, updateSubtitleMutation])
+  }, [activeSubtitle?.id, segments, updateSubtitleMutation])
 
   const handleReset = useCallback(() => {
     if (subtitleContent?.content) {
@@ -313,16 +336,16 @@ export function SubtitleEditorPage() {
 
   // === Build subtitle options for player ===
   const subtitleOptions = useMemo(() => {
-    if (!subtitleBlobUrl) return []
+    if (!subtitleBlobUrl || !selectedLanguage) return []
     return [
       {
         url: subtitleBlobUrl,
-        name: LANGUAGE_LABELS['th'] || 'ไทย',
-        language: 'th',
+        name: LANGUAGE_LABELS[selectedLanguage] || selectedLanguage,
+        language: selectedLanguage,
         default: true,
       },
     ]
-  }, [subtitleBlobUrl])
+  }, [subtitleBlobUrl, selectedLanguage])
 
   // === Loading states ===
   // รอให้ subtitle blob พร้อมก่อน mount player เพื่อให้ subtitle แสดงตั้งแต่แรก
@@ -357,10 +380,10 @@ export function SubtitleEditorPage() {
     )
   }
 
-  if (!thaiSubtitle) {
+  if (!activeSubtitle) {
     return (
       <div className="flex h-screen flex-col items-center justify-center gap-4 bg-background">
-        <p className="text-lg text-muted-foreground">ไม่พบ Thai subtitle สำหรับวิดีโอนี้</p>
+        <p className="text-lg text-muted-foreground">ไม่พบ subtitle สำหรับวิดีโอนี้</p>
         <Button variant="outline" onClick={() => navigate(-1)}>
           <ArrowLeft className="mr-2 h-4 w-4" />
           กลับ
@@ -392,12 +415,28 @@ export function SubtitleEditorPage() {
             <p className="text-xs text-muted-foreground">{video.code}</p>
           </div>
         </div>
-        <Button variant="outline" size="sm" asChild>
-          <a href={`/preview/${code}`} target="_blank" rel="noopener noreferrer">
-            <ExternalLink className="mr-1.5 h-4 w-4" />
-            Preview
-          </a>
-        </Button>
+        <div className="flex items-center gap-2">
+          {readySubtitles.length > 1 && (
+            <Select value={selectedLanguage} onValueChange={setSelectedLanguage}>
+              <SelectTrigger className="h-8 w-[160px] text-sm">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {readySubtitles.map((sub) => (
+                  <SelectItem key={sub.language} value={sub.language}>
+                    {LANGUAGE_FLAGS[sub.language]} {LANGUAGE_LABELS[sub.language] || sub.language}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+          <Button variant="outline" size="sm" asChild>
+            <a href={`/preview/${code}`} target="_blank" rel="noopener noreferrer">
+              <ExternalLink className="mr-1.5 h-4 w-4" />
+              Preview
+            </a>
+          </Button>
+        </div>
       </header>
 
       {/* Main content */}
@@ -430,7 +469,7 @@ export function SubtitleEditorPage() {
             isDirty={isDirty}
             isSaving={updateSubtitleMutation.isPending}
             isLoading={contentLoading}
-            language="th"
+            language={selectedLanguage}
           />
         </div>
       </div>
