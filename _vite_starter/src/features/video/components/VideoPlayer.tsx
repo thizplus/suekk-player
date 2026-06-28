@@ -423,7 +423,7 @@ export function VideoPlayer({
         // Add subtitle to settings (only if subtitles exist)
         if (subtitles.length > 0 && plugin) {
           const subtitleSelector = [
-            { html: 'ปิด', value: '', default: !activeSubtitleLang },
+            { html: navigator.language.startsWith('th') ? 'ปิด' : 'Off', value: '', default: !activeSubtitleLang },
             ...subtitles.map(sub => ({
               html: sub.name,
               value: sub.language,

@@ -231,6 +231,16 @@ export const LANGUAGE_LABELS: Record<string, string> = {
   ru: 'รัสเซีย',
 }
 
+// Native language names (สำหรับ player — ทุกชาติอ่านได้)
+export const LANGUAGE_NATIVE_LABELS: Record<string, string> = {
+  ja: '日本語',
+  en: 'English',
+  th: 'ไทย',
+  zh: '中文',
+  ko: '한국어',
+  ru: 'Русский',
+}
+
 export const LANGUAGE_FLAGS: Record<string, string> = {
   ja: '🇯🇵',
   en: '🇬🇧',

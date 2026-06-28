@@ -3,7 +3,7 @@ import { useParams } from 'react-router-dom'
 import { useVideoByCode, VideoPlayer } from '@/features/video'
 import { Loader2 } from 'lucide-react'
 import { APP_CONFIG } from '@/constants/app-config'
-import { LANGUAGE_LABELS } from '@/constants/enums'
+import { LANGUAGE_NATIVE_LABELS } from '@/constants/enums'
 import { useStreamAccess } from '../hooks/useStreamAccess'
 import './embed.css'
 
@@ -126,7 +126,7 @@ export function PreviewPage() {
       .map(sub => ({
         url: subtitleBlobUrls[sub.language],
         cdnUrl: `${APP_CONFIG.cdnUrl}/${sub.srtPath}`, // CDN URL สำหรับ Chromecast
-        name: LANGUAGE_LABELS[sub.language] || sub.language,
+        name: LANGUAGE_NATIVE_LABELS[sub.language] || sub.language,
         language: sub.language,
         default: sub.language === 'th',
       }))

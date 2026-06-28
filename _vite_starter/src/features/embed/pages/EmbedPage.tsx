@@ -3,7 +3,7 @@ import { useParams } from 'react-router-dom'
 import { useVideoByCode, VideoPlayer } from '@/features/video'
 import { Loader2 } from 'lucide-react'
 import { APP_CONFIG } from '@/constants/app-config'
-import { LANGUAGE_LABELS } from '@/constants/enums'
+import { LANGUAGE_NATIVE_LABELS } from '@/constants/enums'
 import { Watermark } from '../components/Watermark'
 import { PrerollPlayer } from '../components/PrerollPlayer'
 import { useEmbedConfig } from '../hooks/useEmbedConfig'
@@ -162,7 +162,7 @@ export function EmbedPage() {
       .map(sub => ({
         url: subtitleBlobUrls[sub.language], // Blob URL สำหรับ local player
         cdnUrl: `${APP_CONFIG.cdnUrl}/${sub.srtPath}`, // CDN URL สำหรับ Chromecast
-        name: LANGUAGE_LABELS[sub.language] || sub.language,
+        name: LANGUAGE_NATIVE_LABELS[sub.language] || sub.language,
         language: sub.language,
         default: sub.language === 'th', // ใช้ภาษาไทยเป็น default ถ้ามี
       }))
