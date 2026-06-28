@@ -371,6 +371,13 @@ class SubtitleTranscribeHandler:
             segments = self._smart_fix(segments)
 
             # =================================================================
+            # Stage 9.5: Truncate repetitive text from Whisper hallucination
+            # =================================================================
+            for i, seg in enumerate(segments):
+                if len(seg.text) > 100:
+                    segments[i] = seg.with_text(seg.text[:80].rstrip(' ,、') + '...')
+
+            # =================================================================
             # Stage 10: LLM refine (82%)
             # =================================================================
             if self.use_refine:
