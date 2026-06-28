@@ -205,13 +205,16 @@ func GetSupportedLanguages() *SupportedLanguagesResponse {
 	}
 
 	// สร้าง translation pairs แบบ dynamic
-	// ภาษาอื่น → ไทย, ไทย → อังกฤษ
 	translationPairs := make(map[string][]string)
 	for _, lang := range sourceLanguages {
-		if lang.Code == "th" {
+		switch lang.Code {
+		case "th":
 			translationPairs[lang.Code] = []string{"en"}
-		} else {
+		case "en":
 			translationPairs[lang.Code] = []string{"th"}
+		default:
+			// ja, zh, ko, ru → แปลเป็นทั้งไทยและอังกฤษ
+			translationPairs[lang.Code] = []string{"th", "en"}
 		}
 	}
 

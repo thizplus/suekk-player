@@ -16,7 +16,7 @@ for parent in [_THIS_DIR.parent.parent, _THIS_DIR.parent, _THIS_DIR, Path.cwd()]
 class TitleTranslateConfig(BaseSettings):
     # Server
     host: str = "0.0.0.0"
-    port: int = 8002
+    port: int = 8003
     debug: bool = False
 
     # Database (subth — separate from SUEKK)

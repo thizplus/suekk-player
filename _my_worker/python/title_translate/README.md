@@ -6,63 +6,66 @@
 
 ```bash
 cd _my_worker/python
+
+# 1. รัน service
 python -m title_translate.main
 # Server: http://localhost:8002
+
+# 2. แปล batch (ทดสอบก่อน)
+python batch_translate.py --limit 5 --dry-run
+
+# 3. แปลจริง (save กลับ SubTH)
+python batch_translate.py --limit 50
 ```
 
-ต้องมี `GEMINI_API_KEY` ใน `_my_worker/.env` (shared กับ worker อื่น)
+ต้องมี `GEMINI_API_KEY`, `API_EMAIL`, `API_PASSWORD` ใน `_my_worker/.env`
 
 ---
 
-## วิธีแปล video จาก SubTH (ใช้ Python script)
+## Batch Translate Script (แนะนำ)
+
+ใช้ `batch_translate.py` สำหรับแปลหลายรายการ — โหลด credentials จาก `.env` อัตโนมัติ
+
+```bash
+cd _my_worker/python
+
+# แปลทั้งหมดที่รอ (default 50 รายการ)
+python batch_translate.py
+
+# กำหนดจำนวน
+python batch_translate.py --limit 100
+
+# เฉพาะ category
+python batch_translate.py --category censored-jav
+python batch_translate.py --category uncensored-jav
+
+# ทดสอบ (ไม่ save กลับ SubTH)
+python batch_translate.py --dry-run
+
+# ปรับ delay ระหว่างรายการ (default 0.5 วินาที)
+python batch_translate.py --delay 1.0
+```
+
+### ตัวอย่างผลลัพธ์
+
+```
+[LOGIN] OK - admin@subth.com
+[QUERY] พบ 8 รายการรอแปล (ดึงมา 8)
+[1/8] [OK] SNOS-256 ซับไทย เมียพี่มีชู้หนูขอรุมรัก Hana Kuraki (ฮานะ คุรากิ)
+[2/8] [OK] DSOD-008 ซับไทย ยาปลุกฤทธิ์แรง แฉะแข่งเหงื่อไหล Mei Itsukaichi (เมอิ อิตสึกะอิจิ)
+...
+[SUMMARY] Total: 8 | Success: 8 | Failed: 0
+```
+
+---
+
+## แปลทีละเรื่อง (API ตรง)
 
 **สำคัญ: ห้ามใช้ curl ส่งภาษาไทยจาก bash บน Windows — ต้องใช้ Python requests เท่านั้น**
 
-### แปลทั้งหมดที่ยังไม่มีไทย (batch)
-
 ```python
-import requests, time
+import requests
 
-API = "https://api.subth.com/api/v1"
-TRANSLATE = "http://localhost:8002/api/klon8/translate-only"
-
-# Login
-token = requests.post(f"{API}/auth/login", json={
-    "email": "admin@subth.com",
-    "password": "..."
-}).json()["data"]["token"]
-headers = {"Authorization": f"Bearer {token}"}
-
-# ดึง video ที่ยังไม่มีไทย
-videos = requests.get(f"{API}/videos", params={
-    "missing_th": "true",
-    "category": "censored-jav",
-    "limit": 50,
-}).json()["data"]
-
-for v in videos:
-    # แปล (service จะทับศัพท์ cast ให้อัตโนมัติ)
-    resp = requests.post(TRANSLATE, json={
-        "title_en": v["title"],
-        "tags": [t["name"] for t in v.get("tags", [])],
-        "cast_name": v["casts"][0]["name"] if v.get("casts") else "",
-        "source_type": "jav",
-    }).json()
-
-    if resp["success"]:
-        # Save กลับ SubTH
-        requests.put(f"{API}/videos/{v['id']}",
-            json={"titles": {"th": resp["data"]["title_th"]}},
-            headers=headers,
-        )
-        print(f"[OK] {resp['data']['title_th']}")
-
-    time.sleep(0.5)
-```
-
-### แปลทีละเรื่อง (ไม่ save)
-
-```python
 resp = requests.post("http://localhost:8002/api/klon8/translate-only", json={
     "title_en": "SQTE-694 This Girl Is Insane...",
     "tags": ["beautiful girl", "creampie"],
@@ -84,8 +87,8 @@ resp = requests.post("http://localhost:8002/api/klon8/translate-only", json={
 ```
 
 ตัวอย่าง:
-- `SQTE-694 ซับไทย สาวสวยขาอ่อน อมก่อนแล้วแตกใน Hikari Tomoe (ฮิคาริ โทโมเอะ)`
-- `FNS-229 ซับไทย น้องสาวนมโตโดนพี่ชายขยี้ Sonoka Misaki (โซโนกะ มิซากิ)`
+- `SNOS-275 ซับไทย หน้าสวยใสใจอยากคลุกวงใน Saika Kawakita (ไซกะ คาวาคิตะ)`
+- `FNS-222 ซับไทย ฟิตเนสสุดหื่น คลึงคลิตจนคราง Ranran Fujii (รันรัน ฟูจิอิ)`
 
 ---
 
@@ -111,6 +114,23 @@ resp = requests.post("http://localhost:8002/api/klon8/translate-only", json={
 
 ---
 
+## API Endpoints
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/` | Service info (provider, model) |
+| `GET` | `/health` | Health check |
+| `POST` | `/api/klon8/translate-only` | แปล title 1 รายการ (ไม่ต้องต่อ DB) |
+| `POST` | `/api/translate/tags/pending` | แปล tags ที่ยังไม่มี TH (ต้องต่อ subth DB) |
+| `POST` | `/api/translate/casts/pending` | แปล casts ที่ยังไม่มี TH (ต้องต่อ subth DB) |
+| `POST` | `/api/translate/categories/pending` | แปล categories (ต้องต่อ subth DB) |
+| `POST` | `/api/translate/sync-all` | แปลทั้งหมด (ต้องต่อ subth DB) |
+| `POST` | `/api/translate/direct/tags` | แปล tags ตรง (ไม่ save DB) |
+| `POST` | `/api/translate/direct/casts` | แปล casts ตรง (ไม่ save DB) |
+| `POST` | `/api/query/translate` | แปล search query ไทย→อังกฤษ |
+
+---
+
 ## SubTH API — Save Format
 
 ```python
@@ -126,13 +146,13 @@ requests.put(f"https://api.subth.com/api/v1/videos/{video_id}",
 
 โหลดจาก `_my_worker/.env` อัตโนมัติ ตัวที่ใช้:
 
-| Variable | Description |
-|----------|-------------|
-| `GEMINI_API_KEY` | **required** |
-| `GEMINI_MODEL` | default `gemini-2.5-flash` |
-| `API_SUBTH_URL` | default `https://api.subth.com/api/v1` |
-| `API_EMAIL` | SubTH admin email |
-| `API_PASSWORD` | SubTH admin password |
+| Variable | Description | Required |
+|----------|-------------|----------|
+| `GEMINI_API_KEY` | Gemini API key | **Yes** |
+| `GEMINI_MODEL` | default `gemini-2.5-flash` | No |
+| `API_SUBTH_URL` | default `https://api.subth.com/api/v1` | No |
+| `API_EMAIL` | SubTH admin email | Yes (batch) |
+| `API_PASSWORD` | SubTH admin password | Yes (batch) |
 
 ---
 
@@ -141,4 +161,7 @@ requests.put(f"https://api.subth.com/api/v1/videos/{video_id}",
 ```bash
 # มี video รอแปลกี่รายการ?
 curl "https://api.subth.com/api/v1/videos?limit=1&missing_th=true" | python -m json.tool | grep total
+
+# service รันอยู่ไหม?
+curl http://localhost:8002/health
 ```

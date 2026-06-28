@@ -18,13 +18,15 @@ import (
 )
 
 // getTranslationTargets คืนค่าภาษาที่สามารถแปลได้จากภาษาต้นทาง
-// กฎ: ถ้าไม่ใช่ไทย → แปลเป็นไทยได้ / ถ้าเป็นไทย → แปลเป็นอังกฤษได้
 func getTranslationTargets(sourceLanguage string) []string {
 	if sourceLanguage == "th" {
 		return []string{"en"}
 	}
-	// ภาษาอื่นทั้งหมด → แปลเป็นไทยได้
-	return []string{"th"}
+	if sourceLanguage == "en" {
+		return []string{"th"}
+	}
+	// ภาษาอื่น (ja, zh, ko, ru) → แปลเป็นทั้งไทยและอังกฤษได้
+	return []string{"th", "en"}
 }
 
 type SubtitleServiceImpl struct {
