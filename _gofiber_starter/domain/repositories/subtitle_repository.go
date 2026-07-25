@@ -51,6 +51,9 @@ type SubtitleRepository interface {
 	// GetByStatus ดึง subtitles ตาม status
 	GetByStatus(ctx context.Context, status models.SubtitleStatus) ([]*models.Subtitle, error)
 
+	// GetByStatusWithLimit ดึง subtitles ตาม status + language โดยจำกัดจำนวน
+	GetByStatusWithLimit(ctx context.Context, status models.SubtitleStatus, language string, limit int) ([]*models.Subtitle, error)
+
 	// GetStuckProcessing หา subtitles ที่ processing นานเกินไป (worker crash)
 	GetStuckProcessing(ctx context.Context, threshold time.Time) ([]*models.Subtitle, error)
 

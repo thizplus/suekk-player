@@ -354,7 +354,7 @@ func (s *QueueServiceImpl) GetSubtitleFailed(ctx context.Context, page, limit in
 
 func (s *QueueServiceImpl) RetrySubtitleStuck(ctx context.Context) (*dto.RetryResponse, error) {
 	// Reuse existing subtitle service method
-	result, err := s.subtitleService.RetryStuckSubtitles(ctx)
+	result, err := s.subtitleService.RetryStuckSubtitles(ctx, "", 0)
 	if err != nil {
 		return nil, err
 	}

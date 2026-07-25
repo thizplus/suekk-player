@@ -127,6 +127,22 @@ func (r *subtitleRepository) GetByStatus(ctx context.Context, status models.Subt
 	return subtitles, nil
 }
 
+// GetByStatusWithLimit ดึง subtitles ตาม status + language โดยจำกัดจำนวน
+func (r *subtitleRepository) GetByStatusWithLimit(ctx context.Context, status models.SubtitleStatus, language string, limit int) ([]*models.Subtitle, error) {
+	var subtitles []*models.Subtitle
+	q := r.db.WithContext(ctx).Where("status = ?", status)
+	if language != "" {
+		q = q.Where("language = ?", language)
+	}
+	if err := q.Preload("Video").
+		Order("created_at ASC").
+		Limit(limit).
+		Find(&subtitles).Error; err != nil {
+		return nil, err
+	}
+	return subtitles, nil
+}
+
 // GetStuckProcessing หา subtitles ที่ processing/translating/detecting นานเกินไป (worker crash)
 func (r *subtitleRepository) GetStuckProcessing(ctx context.Context, threshold time.Time) ([]*models.Subtitle, error) {
 	var subtitles []*models.Subtitle

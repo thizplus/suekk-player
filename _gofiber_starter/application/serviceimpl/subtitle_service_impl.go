@@ -678,11 +678,20 @@ func (s *SubtitleServiceImpl) DeleteAllSubtitlesByVideo(ctx context.Context, vid
 
 // RetryStuckSubtitles retry subtitles ที่ค้างอยู่ใน queue (status = queued)
 // สำหรับกรณีที่ worker ตายและ NATS job หายไป
-func (s *SubtitleServiceImpl) RetryStuckSubtitles(ctx context.Context) (*dto.RetryStuckResponse, error) {
-	logger.InfoContext(ctx, "Starting retry stuck subtitles")
+func (s *SubtitleServiceImpl) RetryStuckSubtitles(ctx context.Context, language string, limit int) (*dto.RetryStuckResponse, error) {
+	logger.InfoContext(ctx, "Starting retry stuck subtitles", "language", language, "limit", limit)
 
-	// 1. ดึง subtitles ที่ status = queued
-	stuckSubtitles, err := s.subtitleRepo.GetByStatus(ctx, models.SubtitleStatusQueued)
+	// 1. ดึง subtitles ที่ status = queued (พร้อม limit + language filter)
+	var stuckSubtitles []*models.Subtitle
+	var err error
+	if limit > 0 || language != "" {
+		if limit <= 0 {
+			limit = 9999
+		}
+		stuckSubtitles, err = s.subtitleRepo.GetByStatusWithLimit(ctx, models.SubtitleStatusQueued, language, limit)
+	} else {
+		stuckSubtitles, err = s.subtitleRepo.GetByStatus(ctx, models.SubtitleStatusQueued)
+	}
 	if err != nil {
 		logger.ErrorContext(ctx, "Failed to get stuck subtitles", "error", err)
 		return nil, err

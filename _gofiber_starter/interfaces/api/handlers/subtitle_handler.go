@@ -470,13 +470,16 @@ func (h *SubtitleHandler) DeleteSubtitle(c *fiber.Ctx) error {
 }
 
 // RetryStuckSubtitles retry subtitles ที่ค้างอยู่ใน queue (status = queued)
-// POST /api/v1/admin/subtitles/retry-stuck
+// POST /api/v1/admin/subtitles/retry-stuck?limit=50&language=en
 func (h *SubtitleHandler) RetryStuckSubtitles(c *fiber.Ctx) error {
 	ctx := c.UserContext()
 
-	logger.InfoContext(ctx, "Retry stuck subtitles request")
+	limit := c.QueryInt("limit", 0)
+	language := c.Query("language", "")
 
-	response, err := h.subtitleService.RetryStuckSubtitles(ctx)
+	logger.InfoContext(ctx, "Retry stuck subtitles request", "limit", limit, "language", language)
+
+	response, err := h.subtitleService.RetryStuckSubtitles(ctx, language, limit)
 	if err != nil {
 		logger.ErrorContext(ctx, "Failed to retry stuck subtitles", "error", err)
 		return utils.InternalServerErrorResponse(c)
