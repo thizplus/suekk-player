@@ -224,6 +224,12 @@ export const queueService = {
     return apiClient.get<SubtitleStats>(QUEUE_ROUTES.SUBTITLE_STATS, { params })
   },
 
+  async batchSetLanguage(category?: string, language = 'ja', limit = 0): Promise<BatchActionResponse> {
+    const params: Record<string, string | number> = { language, limit }
+    if (category) params.category = category
+    return apiClient.post<BatchActionResponse>(QUEUE_ROUTES.SUBTITLE_SET_LANGUAGE, {}, { params })
+  },
+
   async batchDetect(category?: string, limit = 50): Promise<BatchActionResponse> {
     const params: Record<string, string | number> = { limit }
     if (category) params.category = category

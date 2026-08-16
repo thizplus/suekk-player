@@ -166,6 +166,7 @@ export const QUEUE_ROUTES = {
   SUBTITLE_QUEUE_MISSING: '/api/v1/admin/queues/subtitle/queue-missing',
   // Subtitle Batch Actions
   SUBTITLE_STATS: '/api/v1/admin/queues/subtitle/stats',
+  SUBTITLE_SET_LANGUAGE: '/api/v1/admin/queues/subtitle/set-language',
   SUBTITLE_DETECT_ALL: '/api/v1/admin/queues/subtitle/detect-all',
   SUBTITLE_TRANSCRIBE_ALL: '/api/v1/admin/queues/subtitle/transcribe-all',
   SUBTITLE_TRANSLATE_ALL: '/api/v1/admin/queues/subtitle/translate-all',

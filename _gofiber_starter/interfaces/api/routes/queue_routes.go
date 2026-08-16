@@ -33,6 +33,7 @@ func SetupQueueRoutes(api fiber.Router, h *handlers.Handlers) {
 	subtitle.Post("/queue-missing", h.QueueHandler.QueueMissingSubtitles)
 	// Batch subtitle actions (with category filter)
 	subtitle.Get("/stats", h.QueueHandler.GetSubtitleStats)
+	subtitle.Post("/set-language", h.QueueHandler.BatchSetLanguage)
 	subtitle.Post("/detect-all", h.QueueHandler.BatchDetectAll)
 	subtitle.Post("/transcribe-all", h.QueueHandler.BatchTranscribeAll)
 	subtitle.Post("/translate-all", h.QueueHandler.BatchTranslateAll)

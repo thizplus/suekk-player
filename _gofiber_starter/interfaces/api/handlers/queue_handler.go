@@ -464,6 +464,27 @@ func (h *QueueHandler) GetSubtitleStats(c *fiber.Ctx) error {
 	return utils.SuccessResponse(c, stats)
 }
 
+// BatchSetLanguage set detected_language ให้ video ทั้งหมดในหมวดที่เลือก (ไม่ต้องผ่าน worker)
+// POST /api/v1/admin/queues/subtitle/set-language?category=xxx&language=ja&limit=0
+func (h *QueueHandler) BatchSetLanguage(c *fiber.Ctx) error {
+	ctx := c.UserContext()
+	categoryID := c.Query("category", "")
+	language := c.Query("language", "")
+	limit, _ := strconv.Atoi(c.Query("limit", "0"))
+
+	if language == "" {
+		return utils.BadRequestResponse(c, "language is required")
+	}
+
+	result, err := h.queueService.BatchSetLanguage(ctx, categoryID, language, limit)
+	if err != nil {
+		logger.ErrorContext(ctx, "Batch set language failed", "error", err)
+		return utils.InternalServerErrorResponse(c)
+	}
+
+	return utils.SuccessResponse(c, result)
+}
+
 // BatchDetectAll detect language ให้ video ที่ยังไม่ detect
 // POST /api/v1/admin/queues/subtitle/detect-all?category=xxx&limit=50
 func (h *QueueHandler) BatchDetectAll(c *fiber.Ctx) error {

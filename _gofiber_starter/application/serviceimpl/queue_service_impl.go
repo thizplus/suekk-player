@@ -1012,6 +1012,50 @@ func (s *QueueServiceImpl) GetSubtitleStats(ctx context.Context, categoryID stri
 	return stats, nil
 }
 
+// BatchSetLanguage set detected_language ให้ video ทั้งหมดในหมวดที่เลือก (ไม่ต้องผ่าน worker)
+func (s *QueueServiceImpl) BatchSetLanguage(ctx context.Context, categoryID string, language string, limit int) (*dto.BatchActionResponse, error) {
+	videos, err := s.videoRepo.GetByStatus(ctx, models.VideoStatusReady, 0, 5000)
+	if err != nil {
+		return nil, err
+	}
+
+	resp := &dto.BatchActionResponse{Message: fmt.Sprintf("Batch set language to %s completed", language)}
+	updated := 0
+	for _, v := range videos {
+		if limit > 0 && updated >= limit {
+			break
+		}
+		// ข้าม video ที่ detect แล้ว
+		if v.DetectedLanguage != "" {
+			resp.Skipped++
+			continue
+		}
+		// filter category
+		if categoryID != "" && (v.CategoryID == nil || v.CategoryID.String() != categoryID) {
+			continue
+		}
+
+		// set language ตรงๆ
+		v.DetectedLanguage = language
+		if err := s.videoRepo.Update(ctx, v); err != nil {
+			resp.Errors = append(resp.Errors, fmt.Sprintf("video %s: %s", v.Code, err.Error()))
+			resp.Skipped++
+		} else {
+			updated++
+			resp.Queued++
+		}
+	}
+
+	logger.InfoContext(ctx, "Batch set language completed",
+		"language", language,
+		"category", categoryID,
+		"updated", updated,
+		"skipped", resp.Skipped,
+	)
+
+	return resp, nil
+}
+
 // BatchDetectAll detect language ให้ video ที่ยังไม่ detect
 func (s *QueueServiceImpl) BatchDetectAll(ctx context.Context, categoryID string, limit int) (*dto.BatchActionResponse, error) {
 	videos, err := s.videoRepo.GetByStatus(ctx, models.VideoStatusReady, 0, 5000)

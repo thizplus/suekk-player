@@ -51,6 +51,9 @@ type QueueService interface {
 	// BatchTranscribeAll transcribe ให้ video ที่ detect แล้วแต่ยังไม่มี SRT
 	BatchTranscribeAll(ctx context.Context, categoryID string, limit int) (*dto.BatchActionResponse, error)
 
+	// BatchSetLanguage set detected_language ให้ video ทั้งหมดในหมวดที่เลือก (ไม่ต้องผ่าน worker)
+	BatchSetLanguage(ctx context.Context, categoryID string, language string, limit int) (*dto.BatchActionResponse, error)
+
 	// BatchTranslateAll translate ให้ video ที่มี SRT แล้วแต่ยังไม่แปล
 	BatchTranslateAll(ctx context.Context, categoryID string, targetLang string, limit int) (*dto.BatchActionResponse, error)
 

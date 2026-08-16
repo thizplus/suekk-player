@@ -315,6 +315,21 @@ export function useSubtitleStats(category?: string) {
   })
 }
 
+export function useBatchSetLanguage() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ category, language, limit }: { category?: string; language?: string; limit?: number }) =>
+      queueService.batchSetLanguage(category, language, limit),
+    onSuccess: (data) => {
+      toast.success(data.message || `Set language ${data.queued} วิดีโอสำเร็จ`)
+      queryClient.invalidateQueries({ queryKey: queueKeys.all })
+    },
+    onError: () => {
+      toast.error('Batch set language ไม่สำเร็จ')
+    },
+  })
+}
+
 export function useBatchDetect() {
   const queryClient = useQueryClient()
   return useMutation({

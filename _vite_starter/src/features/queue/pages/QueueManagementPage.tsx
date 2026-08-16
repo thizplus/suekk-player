@@ -60,6 +60,7 @@ import {
   useClearSubtitleAll,
   useQueueMissingSubtitles,
   useSubtitleStats,
+  useBatchSetLanguage,
   useBatchDetect,
   useBatchTranscribe,
   useBatchTranslate,
@@ -415,6 +416,7 @@ function SubtitleTab() {
   const queueMissing = useQueueMissingSubtitles()
   const retryJob = useRetryJob()
 
+  const batchSetLanguage = useBatchSetLanguage()
   const batchDetect = useBatchDetect()
   const batchTranscribe = useBatchTranscribe()
   const batchTranslate = useBatchTranslate()
@@ -456,15 +458,26 @@ function SubtitleTab() {
                 <span>ยังไม่ detect</span>
                 <Badge variant="secondary" className="text-xs tabular-nums">{stats.notDetected}</Badge>
               </div>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => batchDetect.mutate({ category: categoryId })}
-                disabled={batchDetect.isPending || stats.notDetected === 0}
-              >
-                {batchDetect.isPending ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Search className="h-4 w-4 mr-1" />}
-                Detect ทั้งหมด
-              </Button>
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => batchSetLanguage.mutate({ category: categoryId, language: 'ja' })}
+                  disabled={batchSetLanguage.isPending || stats.notDetected === 0}
+                >
+                  {batchSetLanguage.isPending ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Languages className="h-4 w-4 mr-1" />}
+                  Set → ja
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => batchDetect.mutate({ category: categoryId })}
+                  disabled={batchDetect.isPending || stats.notDetected === 0}
+                >
+                  {batchDetect.isPending ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Search className="h-4 w-4 mr-1" />}
+                  Detect ทั้งหมด
+                </Button>
+              </div>
             </div>
 
             <div className="flex items-center justify-between px-3 py-2 rounded-lg border border-dashed">
